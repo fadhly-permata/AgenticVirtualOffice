@@ -1,5 +1,14 @@
 import { describe, expect, it } from 'vitest';
-import { type Presence, type SessionActivity, buildPresence } from '../src/office/presence';
+import {
+  OFFICE_CAPACITY,
+  type Presence,
+  type SessionActivity,
+  buildPresence,
+  crewFromRoster,
+  isBusyStatus,
+  sessionActivities,
+  slugify,
+} from '../src/office/presence';
 
 const roster = [
   { name: 'build', mode: 'primary' as const },
@@ -59,5 +68,37 @@ describe('presence engine', () => {
   it('ignores sessions that do not name an agent', () => {
     const presence = buildPresence(roster, [session('ghost', null, null, true)]);
     expect(presence.every((entry) => entry.role === 'idle')).toBe(true);
+  });
+
+  it('slugs roster names into stable employee ids', () => {
+    expect(slugify('  RAG Engineer ')).toBe('rag-engineer');
+    expect(slugify('DevOps/Engineer 2')).toBe('devops-engineer-2');
+    expect(slugify('---')).toBe('');
+  });
+
+  it('turns the roster into one employee per agent, without duplicates or overflow', () => {
+    const many = Array.from({ length: OFFICE_CAPACITY + 6 }, (_, index) => ({ name: `agent ${index}` }));
+    many.push({ name: 'Agent 1' }, { name: 'agent 1' });
+    const crew = crewFromRoster(many);
+    expect(crew).toHaveLength(OFFICE_CAPACITY);
+    expect(crew[0]).toEqual({ id: 'agent-0', label: 'agent 0' });
+    expect(crew.map((entry) => entry.id)).not.toContain('agent-1-again');
+    expect(new Set(crew.map((entry) => entry.id)).size).toBe(OFFICE_CAPACITY);
+  });
+
+  it('reads a run state per session from the status map', () => {
+    const activities = sessionActivities(
+      [
+        { id: 'a', agent: 'RAG Engineer', parentID: null },
+        { id: 'b', agent: null, parentID: 'a' },
+      ],
+      { a: { type: 'retry' }, b: { type: 'busy' } }
+    );
+    expect(activities).toEqual([
+      { id: 'a', agent: 'rag-engineer', parentID: null, busy: true },
+      { id: 'b', agent: null, parentID: 'a', busy: true },
+    ]);
+    expect(sessionActivities([{ id: 'c', agent: 'build', parentID: null }], { c: { type: 'idle' } })[0].busy).toBe(false);
+    expect(isBusyStatus(undefined)).toBe(false);
   });
 });

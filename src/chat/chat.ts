@@ -1,5 +1,11 @@
-import type { AgentSignal } from '../agents/agent';
 import type { VirtOfficeApi } from '../api';
+import {
+  type RosterAgent,
+  buildPresence,
+  crewFromRoster,
+  sessionActivities,
+  slugify,
+} from '../office/presence';
 import { chatApi } from './client';
 import { el, ICON, icon } from './dom';
 import { FolderPicker } from './folder';
@@ -105,9 +111,9 @@ const reasoningToggled = new Map<string, boolean>();
 const clockHosts: { el: HTMLElement; since: number }[] = [];
 let workClockTimer = 0;
 
-let officeAgentId: string | null = null;
-let officeAgentName = '';
 let officeChipLabel = '';
+let officeRoster: RosterAgent[] = [];
+let presenceTimer = 0;
 
 export function installChat(officeApi: VirtOfficeApi): void {
   office = officeApi;
@@ -197,6 +203,9 @@ async function syncWorkspace(): Promise<void> {
 function applyWorkspace(next: WorkspaceInfo | null): void {
   workspaceGeneration += 1;
   releaseOfficeAgent();
+  window.clearTimeout(presenceTimer);
+  presenceTimer = 0;
+  officeRoster = [];
   disconnectStream();
 
   workspace = next;
@@ -227,7 +236,9 @@ function applyWorkspace(next: WorkspaceInfo | null): void {
   renderMessages({ forceBottom: true });
   updateComposer();
 
-  if (!chatWindow.hidden && workspace) void loadBootstrap();
+  // Muat bahkan saat panel tertutup: daftar karyawan di lantai kantor
+  // harus mengikuti agent OpenCode begitu aplikasi terbuka.
+  if (workspace) void loadBootstrap();
 }
 
 function updateChatFolder(): void {
@@ -296,6 +307,9 @@ async function loadBootstrap(): Promise<void> {
     models = data.models;
     agents = data.agents;
     sessions = data.sessions;
+    officeRoster = data.roster ?? [];
+    office?.setCrew(crewFromRoster(officeRoster));
+    void refreshPresence();
     updateChatFolder();
     updateLauncher();
 
@@ -473,7 +487,7 @@ async function selectSession(session: SessionSummary, options: { initial?: boole
     if (data.status.type === 'retry') {
       setNotice('retry', typeof data.status.message === 'string' ? data.status.message : 'OpenCode mencoba ulang…');
     }
-    if (runningSessions.has(session.id)) pinOfficeAgent();
+    if (runningSessions.has(session.id)) schedulePresence(0);
     scheduleFallbackPoll();
   } catch (error) {
     if (generation !== workspaceGeneration) return;
@@ -544,7 +558,7 @@ async function sendMessage(): Promise<void> {
     sending = false;
     sendPhase = '';
     runningSessions.add(session.id);
-    pinOfficeAgent();
+    schedulePresence(0);
     scheduleFallbackPoll();
     setNotice(null);
   } catch (error) {
@@ -710,6 +724,7 @@ function handleEvent(event: ChatEvent): void {
     case 'session.updated': {
       const info = props.info as Record<string, unknown> | undefined;
       if (info) upsertSession(info);
+      schedulePresence();
       return;
     }
 
@@ -723,6 +738,7 @@ function handleEvent(event: ChatEvent): void {
       } else {
         renderSessionSelect();
       }
+      schedulePresence();
       return;
     }
 
@@ -734,8 +750,9 @@ function handleEvent(event: ChatEvent): void {
         markSessionIdle(sessionID);
       } else {
         runningSessions.add(sessionID);
+        // Sesi anak (subagent) juga sibuk: kursi di lantai kantor ikut berubah.
+        schedulePresence(0);
         if (sessionID === currentSession?.id) {
-          pinOfficeAgent();
           if (type === 'retry') {
             const message =
               typeof status.message === 'string' ? status.message : 'Provider sedang bermasalah, mencoba ulang…';
@@ -830,6 +847,7 @@ function handleEvent(event: ChatEvent): void {
 function markSessionIdle(sessionID: string): void {
   runningSessions.delete(sessionID);
   if (sessionID === currentSession?.id) stopFallbackPoll();
+  schedulePresence(0);
   if (sessionID !== currentSession?.id) {
     if (!runningSessions.size) releaseOfficeAgent();
     updateLauncher();
@@ -871,7 +889,7 @@ async function refreshCurrentSession(): Promise<void> {
       if (!runningSessions.size) releaseOfficeAgent();
     } else {
       runningSessions.add(session.id);
-      pinOfficeAgent();
+      schedulePresence(0);
     }
     permissions.clear();
     for (const request of data.permissions) permissions.set(request.id, request);
@@ -1125,13 +1143,6 @@ const RUN_LABEL: Record<RunPhase, string> = {
   write: 'Menulis jawaban…',
 };
 
-const RUN_SIGNAL: Record<RunPhase, AgentSignal> = {
-  prepare: 'waiting',
-  think: 'thinking',
-  tool: 'tool',
-  write: 'writing',
-};
-
 function isReasoningSettled(part: Part): boolean {
   return typeof part.time?.end === 'number';
 }
@@ -1156,7 +1167,8 @@ function runState(message: LiveMessage): RunState {
 
   const since = message.created;
   // Alat yang sedang jalan selalu menang: token bisa saja masih mengalir saat tool dijalankan.
-  if (tool) return { phase: 'tool', label: `Menjalankan ${tool}…`, since };
+  // Label tool sudah diawali kata kerja, jadi tidak perlu ditambahi "Menjalankan" lagi.
+  if (tool) return { phase: 'tool', label: `${tool}…`, since };
   if (thinking) return { phase: 'think', label: RUN_LABEL.think, since };
   if (talking || settled) return { phase: 'write', label: RUN_LABEL.write, since };
   return { phase: 'prepare', label: RUN_LABEL.prepare, since };
@@ -1548,39 +1560,61 @@ function resizeInput(): void {
   input.style.height = `${Math.min(input.scrollHeight, 132)}px`;
 }
 
-function pinOfficeAgent(): void {
-  if (!office || officeAgentId) return;
-  for (const agent of office.agents()) {
-    if (office.setActivity(agent.id, 'working')) {
-      officeAgentId = agent.id;
-      officeAgentName = agent.name;
-      officeChipLabel = '';
-      agentChip.hidden = false;
-      syncOffice(currentRun());
-      return;
-    }
-  }
-}
-
+/** Nothing runs any more: drop the chip and let every employee go back to idle. */
 function releaseOfficeAgent(): void {
-  if (office && officeAgentId) office.release(officeAgentId);
-  officeAgentId = null;
-  officeAgentName = '';
   officeChipLabel = '';
   agentChip.hidden = true;
   agentChip.replaceChildren();
+  schedulePresence(0);
 }
 
-/** Mirror the run phase onto the office agent and the header chip. */
+function schedulePresence(delay = 400): void {
+  window.clearTimeout(presenceTimer);
+  presenceTimer = window.setTimeout(() => void refreshPresence(), delay);
+}
+
+/**
+ * Ask the tool which sessions are running and seat the matching employees:
+ * a plain run takes a desk, a delegation puts both sides at the meeting table.
+ */
+async function refreshPresence(): Promise<void> {
+  if (!office || !workspace) return;
+  try {
+    const { statuses } = await chatApi.status();
+    const presence = buildPresence(officeRoster, sessionActivities(sessions, statuses));
+    office.applyPresence(presence);
+  } catch {
+    // OpenCode belum sempat merespons; posisi tetap seperti sebelumnya dan dicoba lagi.
+  }
+
+  syncOffice(currentRun());
+  if (isAnyRunning()) schedulePresence(3_000);
+}
+
+/** The employee the header chip follows: the agent that owns the open session. */
+function watchedEmployee(): string {
+  if (!office) return 'OpenCode';
+  const id = slugify(currentSession?.agent ?? selectedAgent);
+  for (const agent of office.agents()) {
+    if (agent.id === id) return agent.name;
+  }
+  return 'OpenCode';
+}
+
+/** Header chip: the phase of the session being watched, plus its elapsed clock. */
 function syncOffice(run: RunState | null): void {
-  if (!office || !officeAgentId || !run) return;
-  office.setAgentSignal(officeAgentId, RUN_SIGNAL[run.phase]);
-  if (run.label !== officeChipLabel) {
-    officeChipLabel = run.label;
-    agentChip.replaceChildren(
-      el('span', undefined, `${officeAgentName} · ${run.label}`),
-      el('span', 'workbar__clock')
-    );
+  if (!run) {
+    officeChipLabel = '';
+    agentChip.hidden = true;
+    agentChip.replaceChildren();
+    return;
+  }
+
+  const label = `${watchedEmployee()} · ${run.label}`;
+  agentChip.hidden = false;
+  if (label !== officeChipLabel) {
+    officeChipLabel = label;
+    agentChip.replaceChildren(el('span', undefined, label), el('span', 'workbar__clock'));
   }
   const clock = agentChip.querySelector<HTMLElement>('.workbar__clock');
   if (clock) showWorkClock(clock, run.since);

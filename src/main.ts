@@ -3,11 +3,13 @@ import * as THREE from 'three';
 import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { installApi } from './api';
+import type { CrewFactory } from './api';
 import { installChat } from './chat/chat';
 import { ACTIVITY_LABEL } from './agents/activities';
 import { Agent } from './agents/agent';
 import { Autopilot } from './agents/autopilot';
-import { AGENT_SEEDS, parseAgentCount, startingState } from './agents/seeds';
+import { AGENT_SEEDS, MAX_AGENTS, parseAgentCount, startingState } from './agents/seeds';
+import type { CrewEntry } from './office/presence';
 import { DayCycle } from './core/dayNight';
 import { buildNavGraph, OFFICE_DEPTH, OFFICE_WIDTH, spot } from './world/layout';
 import { OfficeWorld } from './world/office';
@@ -74,31 +76,56 @@ function boot(target: HTMLCanvasElement): void {
   scene.add(world.root);
 
   const nav = buildNavGraph();
+  const agents: Agent[] = [];
+  const plan = startingState(MAX_AGENTS);
   const requestedAgents = parseAgentCount(new URLSearchParams(window.location.search).get('agents'));
-  const agents = startingState(requestedAgents).map((entry) => {
-    const seed = AGENT_SEEDS[entry.seedIndex];
-    return new Agent(seed, nav, spot(entry.spot), entry.holdFor);
-  });
+  let legendDirty = true;
 
-  for (const agent of agents) {
-    agent.onSettled = (settled) => {
-      document.dispatchEvent(
-        new CustomEvent('virtoffice:agent', {
-          detail: {
-            id: settled.id,
-            name: settled.name,
-            activity: settled.activity,
-            spot: settled.spot.id,
-            room: settled.spot.room,
-          },
-        })
+  const crew: CrewFactory = {
+    add(entry, index) {
+      const seatPlan = plan[index];
+      const seed = AGENT_SEEDS[seatPlan?.seedIndex ?? 0];
+      if (!seatPlan || !seed) return null;
+
+      const agent = new Agent(
+        { id: entry.id, name: entry.label, color: seed.color, look: seed.look },
+        nav,
+        spot(seatPlan.spot),
+        seatPlan.holdFor
       );
-    };
-    world.root.add(agent.group);
-  }
+      agent.onSettled = (settled) => {
+        document.dispatchEvent(
+          new CustomEvent('virtoffice:agent', {
+            detail: {
+              id: settled.id,
+              name: settled.name,
+              activity: settled.activity,
+              spot: settled.spot.id,
+              room: settled.spot.room,
+            },
+          })
+        );
+      };
+      world.root.add(agent.group);
+      legendDirty = true;
+      return agent;
+    },
+
+    remove(agent) {
+      agent.group.removeFromParent();
+      agent.group.traverse((node) => {
+        if (!(node instanceof THREE.Mesh)) return;
+        node.geometry.dispose();
+        const materials = Array.isArray(node.material) ? node.material : [node.material];
+        for (const material of materials) material?.dispose();
+      });
+      legendDirty = true;
+    },
+  };
 
   const autopilot = new Autopilot(agents);
   const clock = new DayCycle(8.1, 0.11);
+  const office = installApi(agents, clock, crew);
 
   // ------------------------------------------------------------------ hud ---
 
@@ -109,8 +136,13 @@ function boot(target: HTMLCanvasElement): void {
   const legendEl = document.getElementById('legend');
   const stateEls = new Map<string, HTMLElement>();
 
-  if (countEl) countEl.textContent = String(agents.length);
-  if (legendEl) {
+  function renderLegend(): void {
+    if (countEl) countEl.textContent = String(agents.length);
+    if (!legendEl) return;
+
+    legendEl.replaceChildren();
+    stateEls.clear();
+
     for (const agent of agents) {
       const row = document.createElement('li');
       row.className = 'legend__row';
@@ -133,10 +165,23 @@ function boot(target: HTMLCanvasElement): void {
     }
   }
 
+  // Without a workspace to read agents from, the floor keeps its demo staff.
+  const demoCrew: CrewEntry[] = AGENT_SEEDS.slice(0, requestedAgents).map((seed) => ({
+    id: seed.id,
+    label: seed.name,
+  }));
+  office.setCrew(demoCrew);
+  renderLegend();
+  legendDirty = false;
+
   function updateHUD(): void {
     if (timeEl) timeEl.textContent = clock.timeLabel;
     if (phaseEl) phaseEl.textContent = clock.phaseLabel;
     if (progressEl) progressEl.style.width = `${(clock.progress * 100).toFixed(1)}%`;
+    if (legendDirty) {
+      renderLegend();
+      legendDirty = false;
+    }
 
     for (const agent of agents) {
       const el = stateEls.get(agent.id);
@@ -246,7 +291,7 @@ function boot(target: HTMLCanvasElement): void {
   }
 
   requestAnimationFrame(frame);
-  installChat(installApi(agents, clock));
+  installChat(office);
 
   window.addEventListener('error', (event) => {
     fail(`Render error: ${event.message}`);

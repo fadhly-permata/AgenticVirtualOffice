@@ -2,7 +2,7 @@
 
 Diorama kantor bergaya isometrik yang dibangun penuh dengan Three.js, tanpa aset 3D eksternal. Empat ruangan — **Ruang Kerja**, **Ruang Meeting**, **Pantry**, dan **Ruang Santai** — dihuni 2–15 karyawan low-poly (default 5) yang bekerja, ngopi, meeting, main game, dan menonton TV. Pencahayaan bergerak mengikuti siklus pagi–siang–sore–malam.
 
-Selain auto-play, aplikasi ini sekarang punya **pemilih folder workspace** dan **jendela chat OpenCode**. Chat terhubung ke OpenCode CLI lokal lewat bridge HTTP di `127.0.0.1`, mendukung streaming teks, reasoning langsung, tool call, permission, pertanyaan agent, serta stop. Saat satu agent OpenCode bekerja, salah satu karyawan di kantor otomatis dipin ke meja kerja dan pil di kepalanya mengikuti fase run.
+Selain auto-play, aplikasi ini sekarang punya **pemilih folder workspace** dan **jendela chat OpenCode**. Chat terhubung ke OpenCode CLI lokal lewat bridge HTTP di `127.0.0.1`, mendukung streaming teks, reasoning langsung, tool call, permission, pertanyaan agent, serta stop. Karyawan di kantor disusun dari daftar agent OpenCode workspace (bukan nama demo lagi) dan posisi mereka mengikuti sesi yang benar-benar berjalan: yang sedang bekerja duduk di meja, yang mendelegasi dan yang didelegasi duduk di ruang meeting.
 
 ## Prasyarat
 
@@ -21,7 +21,7 @@ npm install
 npm run dev      # bridge + Vite di http://127.0.0.1:5199
 npm run build    # typecheck + production build ke dist/
 npm start        # menyajikan dist/ + API di http://127.0.0.1:4180
-npm test         # 61 test: layout, navigasi, autopilot, siklus waktu, agen, layar, scene, chat, presence, server
+npm test         # 64 test: layout, navigasi, autopilot, siklus waktu, agen, layar, scene, chat, presence, server
 ```
 
 `npm run dev` menjalankan server Node lokal (bukan `vite` langsung). Server yang sama melayani API, proxy event OpenCode, dan Vite dev middleware. Port dev sengaja jauh dari 5173 supaya Vite yang lupa dimatikan tidak bisa menyamar jadi bridge ini (gejalanya: `/api/*` dijawab HTML). Untuk port lain:
@@ -37,7 +37,7 @@ http://127.0.0.1:5199/?agents=2
 http://127.0.0.1:5199/?agents=15
 ```
 
-Roster berisi 15 agent dengan spot awal unik. Ruang kerja punya sepuluh meja dalam dua baris, jadi sepuluh agent pertama langsung terlihat bekerja; lima sisanya dibagikan autopilot ke meeting, pantry, dan lounge.
+Roster demo berisi 15 agent dengan spot awal unik. Ruang kerja punya sepuluh meja dalam dua baris, jadi sepuluh agent pertama langsung terlihat bekerja; lima sisanya dibagikan autopilot ke meeting, pantry, dan lounge. Begitu workspace OpenCode dimuat, roster ini diganti oleh agent asli dari workspace (maksimal 15, sesuai jumlah kursi).
 
 Kamera isometrik memakai `OrthographicCamera` dan bisa di-orbit terbatas di sekitar diorama.
 
@@ -84,6 +84,8 @@ src/
     autopilot.ts    penjadwal aktivitas berbobot
     activities.ts   label, durasi, bobot aktivitas per waktu
     seeds.ts        roster 15 karyawan, batas jumlah agent, dan posisi awal unik
+  office/
+    presence.ts     daftar agent + status sesi → peran tiap karyawan (working/delegating/delegated/idle)
   api.ts            jembatan window.virtOffice
   main.ts           renderer, kamera, HUD, loop, pemasangan chat
 tests/              vitest (scene, chat reducer, helper server)
@@ -109,7 +111,7 @@ Klik pill **OpenCode** di kanan bawah untuk membuka chat. Kalau belum ada worksp
 - **Model & agent** — dropdown model bisa dicari berdasarkan nama model atau provider; daftarnya diambil dari provider yang terhubung di OpenCode. Pilihan terakhir disimpan di browser, default mengikuti `model` di config OpenCode.
 - **Streaming** — teks, tool call, status busy/retry, error, dan hasil tool tampil real-time lewat SSE. Tool call yang butuh izin memunculkan kartu **Izinkan / Selalu izinkan / Tolak**; pertanyaan agent memunculkan pilihan jawaban.
 - **Stop** — tombol stop memanggil abort pada sesi yang sedang berjalan.
-- **Kantor** — selama satu sesi bekerja, satu karyawan dipin ke aktivitas `working`; pil di kepalanya berubah warna mengikuti fase run (menyiapkan / menalar / tool / menulis) dan chip header menampilkan fase yang sama beserta hitungan waktu berjalan. Saat idle ia dilepas kembali ke autopilot.
+- **Kantor** — jumlah karyawan mengikuti `roster` agent OpenCode di workspace. Setiap ~3 detik (dan setiap ada event sesi) server ditanya sesi mana yang busy, lalu `presence` menentukan kursinya: sesi biasa → meja kerja, sesi yang punya anak busy → ruang meeting bersama anak yang didelegasi. Pil di kepala menandai peran (menulis/menjalankan alat/menalar), chip header menampilkan fase run sesi yang sedang dibuka beserta hitungan waktu. Saat sesi selesai, karyawan dilepas kembali ke autopilot.
 
 Workspace dan recents disimpan di `.virtoffice/workspace.json` (gitignored). Bridge menjalankan `opencode serve --hostname 127.0.0.1 --port 0` dan mengarahkan setiap request ke folder aktif lewat query `directory`, sehingga config, `AGENTS.md`, dan tool OpenCode mengikuti proyek yang dibuka.
 
@@ -138,20 +140,28 @@ API global untuk mengendalikan karyawan tetap tersedia:
 
 ```js
 virtOffice.agents();
-// [{ id: 'budi', name: 'Budi', activity: 'working', state: 'settled', signal: 'thinking', room: 'workspace', ... }]
+// [{ id: 'build', name: 'build', activity: 'working', state: 'settled', signal: 'writing', room: 'workspace', ... }]
 
-virtOffice.setActivity('budi', 'gaming');      // true bila berhasil
-virtOffice.setAgentSignal('budi', 'tool');     // pil fase kerja di atas kepalanya
-virtOffice.release('budi');                    // kembalikan ke autopilot (sekaligus menghapus pil)
+virtOffice.setCrew([{ id: 'build', label: 'build' }]);   // susun ulang karyawan dari daftar agent
+virtOffice.applyPresence([                                // duduk sesuai aktivitas sesi
+  { agent: 'build', role: 'delegating', sessionID: 'ses_1' },
+  { agent: 'explore', role: 'delegated', sessionID: 'ses_2' },
+]);
+virtOffice.setActivity('build', 'gaming');      // true bila berhasil
+virtOffice.setAgentSignal('build', 'tool');     // pil di atas kepalanya
+virtOffice.release('build');                    // kembalikan ke autopilot (sekaligus menghapus pil)
 virtOffice.setTimeOfDay(19.5);
 virtOffice.setTimeScale(0);                     // bekukan waktu
 ```
 
 Aktivitas yang tersedia: `working`, `meeting`, `coffee`, `gaming`, `tv`, `idle`.
-Sinyal fase: `waiting`, `thinking`, `tool`, `writing` — dipakai chat untuk menunjukkan apa yang sedang dikerjakan model.
+Sinyal pil: `waiting`, `thinking`, `tool`, `writing`.
+Peran presence: `working` (meja kerja), `delegating` + `delegated` (ruang meeting), `idle` (bebas).
 
 Perilaku penting:
 
+- Jumlah karyawan mengikuti `roster` dari `/api/chat/bootstrap` (maksimal 15 karena kursi terbatas); tanpa workspace, lantai kantor tetap memakai karyawan demo.
+- `applyPresence` hanya memindahkan karyawan yang perannya benar-benar berubah, jadi karyawan tidak berjalan ulang tanpa perlu.
 - `setActivity` memilih spot kosong untuk aktivitas tersebut, mengunci (`pinned`) agent, dan membuatnya berjalan ke sana. Agent tetap di sana sampai `release` dipanggil.
 - Agent yang di-`release` akan dijadwalkan ulang oleh autopilot pada tick berikutnya.
 - Setiap kali agent tiba di tujuannya, event `virtoffice:agent` dipancarkan:
