@@ -170,7 +170,7 @@ body.is-ready #scene {
   display: grid;
   gap: var(--legend-gap);
   margin: 0;
-  padding-right: 5px;
+  padding: 0 5px 0 0;
   list-style: none;
   max-height: calc(5 * var(--legend-row) + 4 * var(--legend-gap));
   overflow-y: auto;
