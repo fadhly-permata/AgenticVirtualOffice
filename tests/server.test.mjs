@@ -2,7 +2,7 @@ import fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
-import { buildAgentList, buildAgentRoster, buildModelCatalog, buildSessionList, readableError } from '../server/opencode.mjs';
+import { buildAgentList, buildAgentRoster, buildModelCatalog, buildSessionActivity, buildSessionList, readableError } from '../server/opencode.mjs';
 import { WorkspaceStore, browseDirectory, workspaceName } from '../server/workspace.mjs';
 
 const temps = [];
@@ -135,6 +135,45 @@ describe('agent and session lists', () => {
     expect(roster[0].mode).toBe('primary');
     expect(roster[2].mode).toBe('subagent');
     expect(roster[3].description).toBe('');
+  });
+});
+
+describe('session activity peek', () => {
+  const assistant = (...parts) => [{ info: { role: 'assistant' }, parts }];
+
+  it('reports the running tool with a single-line title', () => {
+    const activity = buildSessionActivity(
+      assistant({ type: 'tool', tool: 'bash', state: { status: 'running', title: 'npm  run\n  test' } })
+    );
+    expect(activity).toEqual({ phase: 'tool', tool: 'bash', detail: 'npm run test' });
+  });
+
+  it('quotes the tail of live reasoning', () => {
+    const long = `${'a'.repeat(400)} FINAL THOUGHT`;
+    const activity = buildSessionActivity(assistant({ type: 'reasoning', text: long }));
+    expect(activity.phase).toBe('think');
+    expect(activity.detail.endsWith('FINAL THOUGHT')).toBe(true);
+    expect(activity.detail).toHaveLength(161);
+    expect(activity.detail.startsWith('…')).toBe(true);
+  });
+
+  it('reads only the last assistant message', () => {
+    const activity = buildSessionActivity([
+      { info: { role: 'assistant' }, parts: [{ type: 'tool', tool: 'read', state: { status: 'running' } }] },
+      { info: { role: 'user' }, parts: [] },
+      ...assistant({ type: 'text', text: 'Jawaban   selesai.' }),
+    ]);
+    expect(activity).toEqual({ phase: 'write', tool: null, detail: 'Jawaban selesai.' });
+  });
+
+  it('falls back to prepare for an empty reply', () => {
+    expect(buildSessionActivity([])).toEqual({ phase: 'prepare', tool: null, detail: '' });
+    expect(buildSessionActivity(assistant({ type: 'step-start' }))).toEqual({
+      phase: 'prepare',
+      tool: null,
+      detail: '',
+    });
+    expect(buildSessionActivity(assistant({ type: 'reasoning', text: '', time: { end: 1 } })).phase).toBe('write');
   });
 });
 

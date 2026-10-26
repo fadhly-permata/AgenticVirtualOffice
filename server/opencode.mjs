@@ -144,6 +144,51 @@ export function buildSessionList(sessions) {
   return kept.sort((a, b) => b.updated - a.updated);
 }
 
+const ACTIVITY_DETAIL = 160;
+
+function oneLine(text) {
+  return typeof text === 'string' ? text.replace(/\s+/g, ' ').trim() : '';
+}
+
+/** Keep the end of a stream: that is what the model is saying right now. */
+function tail(text, limit = ACTIVITY_DETAIL) {
+  const line = oneLine(text);
+  if (line.length <= limit) return line;
+  return `…${line.slice(-limit)}`;
+}
+
+/**
+ * The shortest honest answer to "what is this session doing": the running tool,
+ * the tail of live reasoning, or the tail of the answer being written. Only the
+ * last assistant message is read and every string is clipped, so the office can
+ * poll this for several sessions without shipping whole histories.
+ */
+export function buildSessionActivity(messages) {
+  const list = Array.isArray(messages) ? messages : [];
+  const last = [...list].reverse().find((entry) => entry?.info?.role === 'assistant');
+  const parts = Array.isArray(last?.parts) ? last.parts : [];
+
+  const running = parts.find(
+    (part) => part?.type === 'tool' && (part.state?.status === 'running' || part.state?.status === 'pending')
+  );
+  if (running) {
+    return {
+      phase: 'tool',
+      tool: typeof running.tool === 'string' ? running.tool : null,
+      detail: oneLine(running.state?.title).slice(0, ACTIVITY_DETAIL),
+    };
+  }
+
+  const thinking = parts.filter((part) => part?.type === 'reasoning' && typeof part.time?.end !== 'number');
+  if (thinking.length) return { phase: 'think', tool: null, detail: tail(thinking[thinking.length - 1].text) };
+
+  const answered = parts.filter((part) => part?.type === 'text' && oneLine(part.text));
+  if (answered.length) return { phase: 'write', tool: null, detail: tail(answered[answered.length - 1].text) };
+
+  if (parts.some((part) => part?.type === 'reasoning')) return { phase: 'write', tool: null, detail: '' };
+  return { phase: 'prepare', tool: null, detail: '' };
+}
+
 export class OpenCodeBridge {
   #cwd;
   #child = null;

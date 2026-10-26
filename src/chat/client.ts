@@ -3,6 +3,7 @@ import type {
   BrowseResult,
   ModelKey,
   PermissionReply,
+  RunActivity,
   SessionMessages,
   SessionSummary,
   WorkspaceState,
@@ -71,6 +72,10 @@ export const chatApi = {
     request<WorkspaceState>('/api/workspace', { method: 'POST', body: JSON.stringify({ path: target }) }),
   bootstrap: () => request<Bootstrap>('/api/chat/bootstrap', {}, 120_000),
   status: () => request<{ statuses: Record<string, { type?: string }> }>('/api/chat/status'),
+  activity: (ids: string[]) =>
+    request<{ activities: Record<string, RunActivity> }>(
+      `/api/chat/activity?ids=${encodeURIComponent(ids.join(','))}`
+    ),
   createSession: () =>
     request<SessionSummary>('/api/chat/sessions', { method: 'POST', body: JSON.stringify({}) }),
   session: (id: string) => request<SessionMessages>(`/api/chat/sessions/${encodeURIComponent(id)}`),

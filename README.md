@@ -21,7 +21,7 @@ npm install
 npm run dev      # bridge + Vite di http://127.0.0.1:5199
 npm run build    # typecheck + production build ke dist/
 npm start        # menyajikan dist/ + API di http://127.0.0.1:4180
-npm test         # 64 test: layout, navigasi, autopilot, siklus waktu, agen, layar, scene, chat, presence, server
+npm test         # 68 test: layout, navigasi, autopilot, siklus waktu, agen, layar, scene, chat, presence, server
 ```
 
 `npm run dev` menjalankan server Node lokal (bukan `vite` langsung). Server yang sama melayani API, proxy event OpenCode, dan Vite dev middleware. Port dev sengaja jauh dari 5173 supaya Vite yang lupa dimatikan tidak bisa menyamar jadi bridge ini (gejalanya: `/api/*` dijawab HTML). Untuk port lain:
@@ -124,6 +124,7 @@ Workspace dan recents disimpan di `.virtoffice/workspace.json` (gitignored). Bri
 | GET | `/api/workspace/browse?path=` | isi folder (tanpa file, dot-dir, `node_modules`) |
 | GET | `/api/chat/bootstrap` | workspace, model, agent (pemilih chat), `roster` (semua agent untuk lantai kantor), sesi |
 | GET | `/api/chat/status` | peta `sessionID → status` untuk presence kantor |
+| GET | `/api/chat/activity?ids=a,b` | ekor pesan terakhir tiap sesi (fase, alat, potongan teks) untuk bubble kantor |
 | POST | `/api/chat/sessions` | buat sesi |
 | GET | `/api/chat/sessions/:id` | riwayat pesan + status + permission |
 | POST | `/api/chat/sessions/:id/messages` | kirim prompt (`prompt_async`) |

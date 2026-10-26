@@ -63,6 +63,13 @@ export interface SessionSummary {
   parentID: string | null;
 }
 
+/** What one busy session is doing right now, as reported by the bridge. */
+export interface RunActivity {
+  phase: 'prepare' | 'think' | 'tool' | 'write';
+  tool: string | null;
+  detail: string;
+}
+
 export interface Bootstrap {
   workspace: WorkspaceInfo;
   models: ModelGroup[];

@@ -8,6 +8,7 @@ import {
   buildAgentList,
   buildAgentRoster,
   buildModelCatalog,
+  buildSessionActivity,
   buildSessionList,
   OpenCodeBridge,
 } from './opencode.mjs';
@@ -183,6 +184,26 @@ async function handleApi(req, res, url) {
     const directory = workspaceOrThrow();
     const statuses = await bridge.request('/session/status', { query: { directory } }).catch(() => ({}));
     return sendJson(res, 200, { statuses });
+  }
+
+  if (pathname === '/api/chat/activity' && method === 'GET') {
+    const directory = workspaceOrThrow();
+    const ids = String(searchParams.get('ids') ?? '')
+      .split(',')
+      .map((id) => id.trim())
+      .filter(Boolean)
+      .slice(0, 8)
+      .map(sessionId);
+    const activities = {};
+    await Promise.all(
+      ids.map(async (id) => {
+        const messages = await bridge
+          .request(`/session/${id}/message`, { query: { directory } })
+          .catch(() => []);
+        activities[id] = buildSessionActivity(messages);
+      })
+    );
+    return sendJson(res, 200, { activities });
   }
 
   if (pathname === '/api/chat/sessions' && method === 'POST') {
