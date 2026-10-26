@@ -18,23 +18,23 @@ opencode auth login
 
 ```bash
 npm install
-npm run dev      # bridge + Vite di http://127.0.0.1:5173
+npm run dev      # bridge + Vite di http://127.0.0.1:5199
 npm run build    # typecheck + production build ke dist/
-npm start        # menyajikan dist/ + API di http://127.0.0.1:4173
-npm test         # 50 test: layout, navigasi, autopilot, siklus waktu, agen, layar, scene, chat, server
+npm start        # menyajikan dist/ + API di http://127.0.0.1:4180
+npm test         # 52 test: layout, navigasi, autopilot, siklus waktu, agen, layar, scene, chat, server
 ```
 
-`npm run dev` menjalankan server Node lokal (bukan `vite` langsung). Server yang sama melayani API, proxy event OpenCode, dan Vite dev middleware. Untuk port lain:
+`npm run dev` menjalankan server Node lokal (bukan `vite` langsung). Server yang sama melayani API, proxy event OpenCode, dan Vite dev middleware. Port dev sengaja jauh dari 5173 supaya Vite yang lupa dimatikan tidak bisa menyamar jadi bridge ini (gejalanya: `/api/*` dijawab HTML). Untuk port lain:
 
 ```bash
-npm run dev -- --port 5180
+npm run dev -- --port 5299
 ```
 
 Jumlah agent diatur lewat query `?agents=N` (dibatasi ke 2–15, default 5):
 
 ```bash
-http://127.0.0.1:5173/?agents=2
-http://127.0.0.1:5173/?agents=15
+http://127.0.0.1:5199/?agents=2
+http://127.0.0.1:5199/?agents=15
 ```
 
 Roster berisi 15 agent dengan spot awal unik. Ruang kerja punya sepuluh meja dalam dua baris, jadi sepuluh agent pertama langsung terlihat bekerja; lima sisanya dibagikan autopilot ke meeting, pantry, dan lounge.

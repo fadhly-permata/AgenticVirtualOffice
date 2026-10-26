@@ -17,7 +17,8 @@ const DIST_DIR = path.join(APP_DIR, 'dist');
 const argv = process.argv.slice(2);
 const isDev = argv.includes('--dev');
 const portFlag = argv.indexOf('--port');
-const PORT = Number(process.env.PORT ?? (portFlag >= 0 ? argv[portFlag + 1] : isDev ? 5173 : 4173));
+// Jauh dari 5173/4173 supaya Vite yang lupa dimatikan tidak bisa menyamar jadi bridge ini.
+const PORT = Number(process.env.PORT ?? (portFlag >= 0 ? argv[portFlag + 1] : isDev ? 5199 : 4180));
 const HOST = process.env.HOST ?? '127.0.0.1';
 
 const MIME = {
@@ -327,14 +328,48 @@ async function main() {
     });
     serverRef.removeAllListeners('request');
     serverRef.on('request', (req, res) => route(req, res, vite));
-    serverRef.listen(PORT, HOST, () => logReady());
+    serveLoopback(serverRef);
     wireShutdown(serverRef);
     return;
   }
 
   const server = http.createServer((req, res) => route(req, res, null));
-  server.listen(PORT, HOST, () => logReady());
+  serveLoopback(server);
   wireShutdown(server);
+}
+
+// Windows bisa memecah localhost menjadi ::1 sementara server ini hanya memegang
+// 127.0.0.1, sehingga browser habisnya ke Vite lama yang tidak punya /api/*.
+function serveLoopback(server) {
+  server.on('error', (error) => {
+    console.error(
+      error?.code === 'EADDRINUSE'
+        ? `Port ${PORT} sudah dipakai proses lain. Hentikan server lama atau jalankan ulang dengan --port ${PORT + 1}.`
+        : `Server gagal berjalan: ${error instanceof Error ? error.message : String(error)}`
+    );
+    bridge.stop();
+    process.exit(1);
+  });
+
+  server.listen(PORT, HOST, () => {
+    logReady();
+    void warnForeignLoopback();
+  });
+}
+
+async function warnForeignLoopback() {
+  if (HOST !== '127.0.0.1') return;
+  try {
+    const response = await fetch(`http://[::1]:${PORT}/api/workspace`, { signal: AbortSignal.timeout(1_500) });
+    const body = (await response.text()).trim();
+    if (body.startsWith('{')) return;
+  } catch {
+    return;
+  }
+  console.warn(
+    `Proses lain (kemungkinan Vite yang belum mati) sudah menjawab http://[::1]:${PORT}, ` +
+      `jadi http://localhost:${PORT} bisa salah server. Cari dengan: netstat -ano | findstr :${PORT}`
+  );
 }
 
 function route(req, res, vite) {
@@ -373,6 +408,7 @@ function logReady() {
   readyLogged = true;
   const mode = isDev ? 'dev' : 'production';
   console.log(`VirtOffice ${mode} server berjalan di http://${HOST}:${PORT}`);
+  console.log(`Buka di browser: http://localhost:${PORT} (sama saja dengan http://${HOST}:${PORT}).`);
   if (!isDev) console.log('Menyajikan hasil build dari dist/. Jalankan npm run build jika baru diubah.');
 }
 

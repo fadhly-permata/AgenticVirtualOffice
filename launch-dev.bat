@@ -1,12 +1,10 @@
 @echo off
 :: VirtOffice-OpenCode Development Server Launcher
-:: Adjust this path if your project folder moves
-set "PROJECT_DIR=D:\_- Research\AI\Personal Research\- AI Tools\VirtOffice-OpenCode"
+cd /d "%~dp0"
 
-cd "%PROJECT_DIR%"
 echo 🏁 Starting VirtOffice dev server...
 echo.
-echo Project folder: %PROJECT_DIR%
+echo Project folder: %CD%
 echo.
-npm run dev -- --port 5173 --strictPort
+npm run dev -- --port 5199
 pause
