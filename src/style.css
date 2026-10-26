@@ -941,6 +941,23 @@ body.chat-open .hint,
   }
 }
 
+.stream-caret {
+  display: inline-block;
+  width: 2px;
+  height: 1.05em;
+  margin-left: 3px;
+  border-radius: 2px;
+  background: var(--accent);
+  vertical-align: -0.16em;
+  animation: stream-caret 1s steps(2, start) infinite;
+}
+
+@keyframes stream-caret {
+  50% {
+    opacity: 0;
+  }
+}
+
 /* ------------------------------------------------------------- tools --- */
 
 .tool {
@@ -1738,6 +1755,7 @@ body.chat-open .hint,
   .modal__card,
   .spinner,
   .typing span,
+  .stream-caret,
   .launcher__dot,
   .tool__mark {
     animation: none !important;

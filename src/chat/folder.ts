@@ -52,7 +52,7 @@ export class FolderPicker {
         this.#showError('Isi path folder terlebih dahulu.');
         return;
       }
-      void this.#openWorkspace(target);
+      void this.#browse(target);
     });
     document.addEventListener('keydown', (event) => {
       if (event.key === 'Escape' && this.isOpen) this.hide();

@@ -80,7 +80,10 @@ const permissions = new Map<string, PermissionRequest>();
 const questions = new Map<string, QuestionRequest>();
 
 let stream: EventSource | null = null;
+let streamReady = false;
 let streamErrorShown = false;
+const streamWaiters = new Set<() => void>();
+let fallbackTimer = 0;
 let reading = false;
 let sending = false;
 let sendPhase = '';
@@ -206,6 +209,7 @@ function applyWorkspace(next: WorkspaceInfo | null): void {
   renderMessages({ forceBottom: true });
   updateComposer();
 
+  if (workspace) void ensureStream();
   if (!chatWindow.hidden && workspace) void loadBootstrap();
 }
 
@@ -448,6 +452,7 @@ async function selectSession(session: SessionSummary, options: { initial?: boole
       setNotice('retry', typeof data.status.message === 'string' ? data.status.message : 'OpenCode mencoba ulang…');
     }
     if (runningSessions.has(session.id)) pinOfficeAgent();
+    scheduleFallbackPoll();
   } catch (error) {
     if (generation !== workspaceGeneration) return;
     setNotice('error', describeError(error), { label: 'Muat ulang', run: () => void selectSession(session) });
@@ -486,6 +491,7 @@ async function sendMessage(): Promise<void> {
   const generation = workspaceGeneration;
   const model = selectedModel;
   const agent = selectedAgent;
+  const connected = ensureStream();
   sending = true;
   sendPhase = currentSession ? 'Mengirim permintaan…' : 'Membuat sesi…';
   setNotice(null);
@@ -506,7 +512,7 @@ async function sendMessage(): Promise<void> {
       updateComposer();
     }
 
-    ensureStream();
+    await connected;
     await chatApi.send(session.id, text, model, agent);
     if (generation !== workspaceGeneration || currentSession?.id !== session.id) return;
 
@@ -516,6 +522,7 @@ async function sendMessage(): Promise<void> {
     sendPhase = '';
     runningSessions.add(session.id);
     pinOfficeAgent();
+    scheduleFallbackPoll();
     setNotice(null);
   } catch (error) {
     if (generation !== workspaceGeneration) return;
@@ -544,42 +551,89 @@ async function stopResponse(): Promise<void> {
   }
 }
 
-function ensureStream(): void {
-  if (stream || !workspace) return;
-  const source = new EventSource('/api/chat/events');
-  stream = source;
+function ensureStream(): Promise<void> {
+  if (!workspace) return Promise.resolve();
+  if (!stream) {
+    const source = new EventSource('/api/chat/events');
+    stream = source;
 
-  source.onopen = () => {
-    if (streamErrorShown) {
-      streamErrorShown = false;
-      if (noticeKind === 'disconnect') setNotice(null);
-      if (currentSession) void refreshCurrentSession();
-    }
-  };
+    source.onopen = () => {
+      streamReady = true;
+      stopFallbackPoll();
+      for (const resolve of streamWaiters) resolve();
+      streamWaiters.clear();
 
-  source.onerror = () => {
-    streamErrorShown = true;
-    if (!chatWindow.hidden) {
-      setNotice('disconnect', 'Koneksi event terputus. Mencoba menyambung ulang…');
-    }
-  };
+      if (streamErrorShown) {
+        streamErrorShown = false;
+        if (noticeKind === 'disconnect') setNotice(null);
+        if (currentSession) void refreshCurrentSession();
+      }
+    };
 
-  source.onmessage = (raw) => {
-    if (!raw.data) return;
-    let event: ChatEvent;
-    try {
-      event = JSON.parse(raw.data) as ChatEvent;
-    } catch {
-      return;
-    }
-    handleEvent(event);
-  };
+    source.onerror = () => {
+      streamReady = false;
+      streamErrorShown = true;
+      scheduleFallbackPoll();
+      if (!chatWindow.hidden) {
+        setNotice('disconnect', 'Koneksi event terputus. Mencoba menyambung ulang…');
+      }
+    };
+
+    source.onmessage = (raw) => {
+      if (!raw.data) return;
+      let event: ChatEvent;
+      try {
+        event = JSON.parse(raw.data) as ChatEvent;
+      } catch {
+        return;
+      }
+      handleEvent(event);
+    };
+  }
+
+  return waitForStream();
+}
+
+function waitForStream(timeoutMs = 3_000): Promise<void> {
+  if (streamReady) return Promise.resolve();
+  return new Promise((resolve) => {
+    let timer = 0;
+    const done = () => {
+      window.clearTimeout(timer);
+      streamWaiters.delete(done);
+      resolve();
+    };
+    streamWaiters.add(done);
+    timer = window.setTimeout(done, timeoutMs);
+  });
+}
+
+function scheduleFallbackPoll(): void {
+  window.clearTimeout(fallbackTimer);
+  fallbackTimer = 0;
+  if (streamReady || !currentSession || !isCurrentRunning()) return;
+
+  fallbackTimer = window.setTimeout(async () => {
+    fallbackTimer = 0;
+    if (streamReady || !currentSession || !isCurrentRunning()) return;
+    await refreshCurrentSession();
+    scheduleFallbackPoll();
+  }, 1_500);
+}
+
+function stopFallbackPoll(): void {
+  window.clearTimeout(fallbackTimer);
+  fallbackTimer = 0;
 }
 
 function disconnectStream(): void {
   stream?.close();
   stream = null;
+  streamReady = false;
   streamErrorShown = false;
+  stopFallbackPoll();
+  for (const resolve of streamWaiters) resolve();
+  streamWaiters.clear();
 }
 
 function handleEvent(event: ChatEvent): void {
@@ -629,6 +683,7 @@ function handleEvent(event: ChatEvent): void {
             setNotice(null);
           }
           updateComposer();
+          scheduleFallbackPoll();
         }
       }
       return;
@@ -710,6 +765,7 @@ function handleEvent(event: ChatEvent): void {
 
 function markSessionIdle(sessionID: string): void {
   runningSessions.delete(sessionID);
+  if (sessionID === currentSession?.id) stopFallbackPoll();
   if (sessionID !== currentSession?.id) {
     if (!runningSessions.size) releaseOfficeAgent();
     updateLauncher();
@@ -733,8 +789,14 @@ async function refreshCurrentSession(): Promise<void> {
     const data = await chatApi.session(session.id);
     if (generation !== workspaceGeneration || currentSession?.id !== session.id) return;
     messages = rawToLive(data.messages);
-    if (data.status.type === 'idle') runningSessions.delete(session.id);
-    else runningSessions.add(session.id);
+    if (data.status.type === 'idle') {
+      runningSessions.delete(session.id);
+      stopFallbackPoll();
+      if (!runningSessions.size) releaseOfficeAgent();
+    } else {
+      runningSessions.add(session.id);
+      pinOfficeAgent();
+    }
     permissions.clear();
     for (const request of data.permissions) permissions.set(request.id, request);
     questions.clear();
@@ -742,6 +804,7 @@ async function refreshCurrentSession(): Promise<void> {
     renderMessages();
     renderPrompts();
     updateComposer();
+    updateLauncher();
   } catch {
     // The live stream may still recover; a manual reload is available via notice actions.
   }
@@ -897,6 +960,7 @@ function renderMessage(message: LiveMessage, runningLast: boolean): HTMLElement 
 
   const content = el('div', 'msg__content');
   let hasContent = false;
+  let lastTextBlock: HTMLElement | null = null;
 
   for (const part of message.parts) {
     if (part.type === 'text' && typeof part.text === 'string' && part.text.trim()) {
@@ -904,6 +968,7 @@ function renderMessage(message: LiveMessage, runningLast: boolean): HTMLElement 
       renderRichText(block, part.text);
       if (block.childElementCount) {
         content.append(block);
+        lastTextBlock = block;
         hasContent = true;
       }
     } else if (part.type === 'tool') {
@@ -931,6 +996,10 @@ function renderMessage(message: LiveMessage, runningLast: boolean): HTMLElement 
     const typing = el('div', 'typing');
     typing.append(el('span'), el('span'), el('span'));
     content.append(typing);
+  } else if (runningLast && lastTextBlock) {
+    const caret = el('span', 'stream-caret');
+    caret.setAttribute('aria-hidden', 'true');
+    lastTextBlock.append(caret);
   }
 
   const article = el('article', 'msg msg--assistant');
