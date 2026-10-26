@@ -98,23 +98,23 @@ export const AGENT_SEEDS: AgentSeed[] = [
   },
 ];
 
-/** Unique starting seats for the roster, in a believable mid-morning snapshot. */
+/** Unique starting seats for the roster, filling all ten desks before the common areas. */
 const STARTING_PLAN: { spot: string; holdFor: number }[] = [
   { spot: 'desk-1', holdFor: 26 },
   { spot: 'desk-2', holdFor: 34 },
   { spot: 'desk-3', holdFor: 20 },
-  { spot: 'meet-n2', holdFor: 14 },
-  { spot: 'coffee-1', holdFor: 24 },
   { spot: 'desk-4', holdFor: 18 },
-  { spot: 'meet-n1', holdFor: 29 },
-  { spot: 'coffee-2', holdFor: 22 },
-  { spot: 'sofa-1', holdFor: 31 },
-  { spot: 'desk-5', holdFor: 17 },
-  { spot: 'meet-n3', holdFor: 25 },
-  { spot: 'coffee-3', holdFor: 33 },
-  { spot: 'sofa-2', holdFor: 19 },
-  { spot: 'meet-s1', holdFor: 28 },
-  { spot: 'sofa-3', holdFor: 23 },
+  { spot: 'desk-5', holdFor: 30 },
+  { spot: 'desk-6', holdFor: 22 },
+  { spot: 'desk-7', holdFor: 28 },
+  { spot: 'desk-8', holdFor: 16 },
+  { spot: 'desk-9', holdFor: 32 },
+  { spot: 'desk-10', holdFor: 24 },
+  { spot: 'meet-n2', holdFor: 14 },
+  { spot: 'coffee-1', holdFor: 21 },
+  { spot: 'meet-n1', holdFor: 19 },
+  { spot: 'coffee-2', holdFor: 17 },
+  { spot: 'sofa-1', holdFor: 23 },
 ];
 
 export interface StartingAgent {

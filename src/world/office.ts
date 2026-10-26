@@ -16,9 +16,9 @@ import {
 import { TypingScreen } from '../core/typing';
 import { ball, box, cyl, plane, rbox } from './kit';
 import {
-  DESK_SEAT_Z,
+  DESK_ROW_Z,
+  DESK_SEAT_OFFSET,
   DESK_X,
-  DESK_Z,
   OFFICE_DEPTH,
   OFFICE_WIDTH,
   PARTITION_HEIGHT,
@@ -604,21 +604,26 @@ export class OfficeWorld {
 
   private buildWorkspace(): THREE.Group {
     const g = new THREE.Group();
-    DESK_X.forEach((x, i) => g.add(this.buildDesk(x, i)));
+    DESK_ROW_Z.forEach((rowZ, row) => {
+      DESK_X.forEach((x, i) => {
+        const desk = this.buildDesk(row * DESK_X.length + i);
+        desk.position.set(x, 0, rowZ);
+        g.add(desk);
+      });
+    });
     g.add(this.buildCabinet(1.55, 1.15));
     g.add(this.plant(12.0, 1.2, 1.1, 0.4));
     g.add(this.plant(0.9, 9.6, 0.85, 1.7));
     return g;
   }
 
-  private buildDesk(x: number, index: number): THREE.Group {
+  private buildDesk(index: number): THREE.Group {
     const g = new THREE.Group();
-    const z = DESK_Z;
 
-    g.add(rbox(1.9, 0.09, 1.0, 0.04, M.deskTop, x, 0.74, z));
-    g.add(this.contact(x, z, 2.55, 1.65, 0.26));
-    g.add(box(0.07, 0.72, 0.86, mat(C.metal), x - 0.86, 0.36, z));
-    g.add(box(0.07, 0.72, 0.86, mat(C.metal), x + 0.86, 0.36, z));
+    g.add(rbox(1.9, 0.09, 1.0, 0.04, M.deskTop, 0, 0.74, 0));
+    g.add(this.contact(0, 0, 2.55, 1.65, 0.26));
+    g.add(box(0.07, 0.72, 0.86, mat(C.metal), -0.86, 0.36, 0));
+    g.add(box(0.07, 0.72, 0.86, mat(C.metal), 0.86, 0.36, 0));
 
     const idle = idleScreenTexture();
     const screenMat = new THREE.MeshStandardMaterial({
@@ -638,23 +643,23 @@ export class OfficeWorld {
       active: false,
     });
 
-    g.add(box(0.36, 0.03, 0.2, mat(C.dark), x, 0.795, z - 0.34));
-    g.add(box(0.06, 0.3, 0.06, mat(C.dark), x, 0.95, z - 0.34));
-    g.add(rbox(0.94, 0.58, 0.06, 0.02, mat(C.dark), x, 1.28, z - 0.34));
-    g.add(plane(0.84, 0.47, screenMat, x, 1.28, z - 0.303));
+    g.add(box(0.36, 0.03, 0.2, mat(C.dark), 0, 0.795, -0.34));
+    g.add(box(0.06, 0.3, 0.06, mat(C.dark), 0, 0.95, -0.34));
+    g.add(rbox(0.94, 0.58, 0.06, 0.02, mat(C.dark), 0, 1.28, -0.34));
+    g.add(plane(0.84, 0.47, screenMat, 0, 1.28, -0.303));
 
-    g.add(rbox(0.6, 0.03, 0.18, 0.012, mat(0x39424a), x, 0.795, z + 0.2));
-    g.add(rbox(0.09, 0.035, 0.14, 0.03, mat(0x39424a), x + 0.42, 0.795, z + 0.17));
+    g.add(rbox(0.6, 0.03, 0.18, 0.012, mat(0x39424a), 0, 0.795, 0.2));
+    g.add(rbox(0.09, 0.035, 0.14, 0.03, mat(0x39424a), 0.42, 0.795, 0.17));
 
-    const pad = box(0.3, 0.012, 0.22, mat(C.paper), x + 0.5, 0.8, z - 0.12);
+    const pad = box(0.3, 0.012, 0.22, mat(C.paper), 0.5, 0.8, -0.12);
     pad.rotation.y = 0.25;
     g.add(pad);
-    g.add(this.mug(x - 0.62, 0.79, z + 0.06, C.coral));
+    g.add(this.mug(-0.62, 0.79, 0.06, C.coral));
 
-    if (index === 1) g.add(this.deskLamp(x + 0.72, z - 0.26));
-    if (index === 0 || index === 3) g.add(this.smallPlant(x - 0.78, 0.79, z - 0.3));
+    if (index % 5 === 1) g.add(this.deskLamp(0.72, -0.26));
+    if (index % 5 === 0 || index % 5 === 3) g.add(this.smallPlant(-0.78, 0.79, -0.3));
 
-    g.add(this.chair(x, DESK_SEAT_Z, Math.PI));
+    g.add(this.chair(0, DESK_SEAT_OFFSET, Math.PI));
     return g;
   }
 

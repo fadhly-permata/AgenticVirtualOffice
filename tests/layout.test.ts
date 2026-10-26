@@ -39,6 +39,16 @@ describe('office layout', () => {
     }
   });
 
+  it('has ten desks in two rows of five', () => {
+    const desks = spotsFor('working');
+    expect(desks).toHaveLength(10);
+    const rows = new Set(desks.map((spot) => spot.z));
+    expect(rows.size).toBe(2);
+    for (const z of rows) {
+      expect(desks.filter((spot) => spot.z === z)).toHaveLength(5);
+    }
+  });
+
   it('has unique navigation node ids and valid edge endpoints', () => {
     const ids = NODES.map((node) => node.id);
     expect(new Set(ids).size).toBe(ids.length);

@@ -11,7 +11,7 @@ npm install
 npm run dev      # http://localhost:5173
 npm run build    # typecheck + production build ke dist/
 npm run preview  # menyajikan hasil build
-npm test         # 31 test: layout, navigasi, autopilot, siklus waktu, agen, layar, scene
+npm test         # 33 test: layout, navigasi, autopilot, siklus waktu, agen, layar, scene
 ```
 
 Jumlah agent diatur lewat query `?agents=N` (dibatasi ke 2–15, default 5):
@@ -21,13 +21,13 @@ http://localhost:5173/?agents=2
 http://localhost:5173/?agents=15
 ```
 
-Roster berisi 15 agent dengan spot awal unik. Ruang kerja tetap punya lima meja, jadi maksimal lima agent bisa `working` pada saat yang sama; sisanya dibagikan autopilot ke meeting, pantry, dan lounge.
+Roster berisi 15 agent dengan spot awal unik. Ruang kerja punya sepuluh meja dalam dua baris, jadi sepuluh agent pertama langsung terlihat bekerja; lima sisanya dibagikan autopilot ke meeting, pantry, dan lounge.
 
 Kamera isometrik memakai `OrthographicCamera` dan bisa di-orbit terbatas di sekitar diorama.
 
 ## Yang ada di scene
 
-- **Ruang Kerja** — lima meja dengan monitor yang mengetik baris kode acak saat agen bekerja dan meredup bersih saat idle, kursi roda, rak buku, tanaman, jam dinding, dan jendela.
+- **Ruang Kerja** — sepuluh meja dalam dua baris, masing-masing dengan monitor yang mengetik baris kode acak saat agen bekerja dan meredup bersih saat idle, kursi roda, rak buku, tanaman, jam dinding, dan jendela.
 - **Ruang Meeting** — meja 6 kursi, laptop, papan tulis, dan dinding kaca.
 - **Pantry** — counter dengan coffee machine (uapnya beranimasi), sink, kulkas, dispenser, meja bundar dengan stool, dan ubin lantai.
 - **Ruang Santai** — sofa, bean bag, TV dengan delapan slide berganti-ganti plus transisi static, konsol game, karpet, lampu lantai, dan tanaman.

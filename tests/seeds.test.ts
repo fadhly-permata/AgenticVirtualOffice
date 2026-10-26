@@ -42,4 +42,10 @@ describe('agent roster', () => {
       for (const id of spots) expect(SPOT_MAP.has(id)).toBe(true);
     }
   });
+
+  it('starts up to ten agents at the desks', () => {
+    expect(startingState(10).map((entry) => entry.spot)).toEqual(
+      Array.from({ length: 10 }, (_, i) => `desk-${i + 1}`),
+    );
+  });
 });

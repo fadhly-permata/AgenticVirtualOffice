@@ -81,22 +81,27 @@ interface SpotDef extends Omit<Spot, 'node' | 'room'> {}
 const HALF_PI = Math.PI / 2;
 const NORTH = Math.PI; // facing -z
 
-/** Desk row and where its chairs sit, shared with the furniture builder. */
+/** Desk columns, row positions, and how far the chair sits behind each desk. */
 export const DESK_X = [2.1, 4.35, 6.6, 8.85, 11.1];
-export const DESK_Z = 3.6;
-export const DESK_SEAT_Z = 4.45;
+export const DESK_ROW_Z = [2.6, 6.0];
+export const DESK_SEAT_OFFSET = 0.85;
 
 const SPOT_DEFS: SpotDef[] = [
-  // Workspace: five desks facing the back wall, chairs towards the camera.
-  ...DESK_X.map((x, i) => ({
-    id: `desk-${i + 1}`,
-    label: `Meja ${i + 1}`,
-    activity: 'working' as const,
-    x,
-    z: DESK_SEAT_Z,
-    facing: NORTH,
-    seatHeight: 0.52,
-  })),
+  // Workspace: two rows of five desks, all facing the back wall.
+  ...DESK_ROW_Z.flatMap((rowZ, row) =>
+    DESK_X.map((x, i) => {
+      const n = row * DESK_X.length + i + 1;
+      return {
+        id: `desk-${n}`,
+        label: `Meja ${n}`,
+        activity: 'working' as const,
+        x,
+        z: rowZ + DESK_SEAT_OFFSET,
+        facing: NORTH,
+        seatHeight: 0.52,
+      };
+    }),
+  ),
   {
     id: 'desk-window',
     label: 'Jendela',
@@ -246,12 +251,21 @@ interface AisleNode extends Vec2 {
 }
 
 const AISLES: AisleNode[] = [
-  // Workspace
-  { id: 'ws-west', x: 1.6, z: 7.2 },
-  { id: 'ws-mid', x: 6.6, z: 7.3 },
-  { id: 'ws-hub', x: 9.6, z: 7.9 },
-  { id: 'ws-door-a', x: 11.4, z: 7.5 },
-  { id: 'ws-door-c', x: 5.3, z: 9.2 },
+  // Workspace: inner aisle between the desk rows, main aisle behind row two.
+  { id: 'ws-inner-w', x: 0.7, z: 4.7 },
+  { id: 'ws-inner-1', x: 2.1, z: 4.7 },
+  { id: 'ws-inner-2', x: 4.35, z: 4.7 },
+  { id: 'ws-inner-3', x: 6.6, z: 4.7 },
+  { id: 'ws-inner-4', x: 8.85, z: 4.7 },
+  { id: 'ws-inner-5', x: 11.1, z: 4.7 },
+  { id: 'ws-inner-e', x: 12.5, z: 4.7 },
+  { id: 'ws-west-n', x: 0.7, z: 7.5 },
+  { id: 'ws-east-n', x: 12.5, z: 7.8 },
+  { id: 'ws-west', x: 1.8, z: 8.6 },
+  { id: 'ws-mid', x: 6.6, z: 8.6 },
+  { id: 'ws-hub', x: 9.6, z: 8.5 },
+  { id: 'ws-door-a', x: 11.4, z: 8.2 },
+  { id: 'ws-door-c', x: 5.3, z: 9.3 },
   // Meeting
   { id: 'mt-door-a', x: 14.3, z: 7.7 },
   { id: 'mt-door-d', x: 15.7, z: 9.2 },
@@ -297,21 +311,34 @@ export const NODES: NavNodeData[] = [
 const s = (spotId: string) => `s:${spotId}`;
 
 export const EDGES: [string, string][] = [
-  // Workspace
+  // Workspace: row one hangs off the inner aisle, row two off the main aisle.
+  ['ws-inner-w', 'ws-inner-1'],
+  ['ws-inner-1', 'ws-inner-2'],
+  ['ws-inner-2', 'ws-inner-3'],
+  ['ws-inner-3', 'ws-inner-4'],
+  ['ws-inner-4', 'ws-inner-5'],
+  ['ws-inner-5', 'ws-inner-e'],
+  ['ws-inner-1', s('desk-1')],
+  ['ws-inner-2', s('desk-2')],
+  ['ws-inner-3', s('desk-3')],
+  ['ws-inner-4', s('desk-4')],
+  ['ws-inner-5', s('desk-5')],
+  ['ws-inner-w', 'ws-west-n'],
+  ['ws-west-n', 'ws-west'],
   ['ws-west', 'ws-mid'],
-  ['ws-west', s('desk-1')],
+  ['ws-west', s('desk-6')],
   ['ws-west', s('desk-window')],
-  ['ws-mid', s('desk-1')],
-  ['ws-mid', s('desk-2')],
-  ['ws-mid', s('desk-3')],
-  ['ws-mid', s('desk-4')],
+  ['ws-mid', s('desk-7')],
+  ['ws-mid', s('desk-8')],
   ['ws-mid', 'ws-hub'],
   ['ws-mid', 'ws-door-c'],
-  ['ws-hub', s('desk-4')],
-  ['ws-hub', s('desk-5')],
+  ['ws-hub', s('desk-9')],
+  ['ws-hub', s('desk-10')],
   ['ws-hub', 'ws-door-a'],
   ['ws-hub', 'ws-door-c'],
   ['ws-door-a', 'ws-door-c'],
+  ['ws-inner-e', 'ws-east-n'],
+  ['ws-east-n', 'ws-door-a'],
   // Meeting
   ['mt-door-a', 'mt-west'],
   ['mt-door-a', 'mt-south'],
