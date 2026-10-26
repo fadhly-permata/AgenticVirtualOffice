@@ -1,5 +1,7 @@
 import { ACTIVITY_LABEL } from './agents/activities';
+import type { FloorMode } from './agents/activities';
 import type { Agent, AgentSignal } from './agents/agent';
+import type { Autopilot } from './agents/autopilot';
 import type { DayCycle } from './core/dayNight';
 import type { CrewEntry, Presence, PresenceRole } from './office/presence';
 import { type ActivityId, type RoomId, SPOTS } from './world/layout';
@@ -50,6 +52,8 @@ export interface VirtOfficeApi {
   agents(): AgentSnapshot[];
   setCrew(entries: CrewEntry[]): boolean;
   applyPresence(presence: Presence[], copy?: Record<string, string>): void;
+  /** 'live' means a real tool drives the floor: free time stays in the common areas. */
+  setFloorMode(mode: FloorMode): void;
   setActivity(agentId: string, activity: ActivityId): boolean;
   setAgentSignal(agentId: string, signal: AgentSignal | null, text?: string): boolean;
   release(agentId: string): boolean;
@@ -57,7 +61,12 @@ export interface VirtOfficeApi {
   setTimeScale(hoursPerSecond: number): void;
 }
 
-export function installApi(agents: Agent[], clock: DayCycle, crew?: CrewFactory): VirtOfficeApi {
+export function installApi(
+  agents: Agent[],
+  clock: DayCycle,
+  autopilot: Autopilot,
+  crew?: CrewFactory
+): VirtOfficeApi {
   const find = (key: string): Agent | undefined =>
     agents.find((agent) => agent.id === key || agent.name.toLowerCase() === key.toLowerCase());
 
@@ -104,6 +113,13 @@ export function installApi(agents: Agent[], clock: DayCycle, crew?: CrewFactory)
       });
 
       return agents.length > 0;
+    },
+
+    setFloorMode: (mode) => {
+      autopilot.setFloorMode(mode);
+      // Ganti mode = mulai dari nol: tidak ada sesi nyata yang boleh tertahan
+      // di kursi lama, dan karyawan bebas langsung cari tempat istirahat.
+      for (const agent of agents) agent.release();
     },
 
     /** `copy` maps a busy session id to the short text shown over the agent's head. */

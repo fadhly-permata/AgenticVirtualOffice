@@ -1,5 +1,5 @@
 import { type ActivityId, type Spot, spotsFor } from '../world/layout';
-import { ACTIVITIES, durationFor, weightsFor } from './activities';
+import { ACTIVITIES, durationFor, FREE_TIME_POOL, type FloorMode, weightsFor } from './activities';
 
 export interface AutopilotAgent {
   id: string;
@@ -12,13 +12,24 @@ export interface AutopilotAgent {
 
 /**
  * Chooses a new activity for every agent whose stay expired. Activity
- * likelihood shifts with the simulated time of day.
+ * likelihood shifts with the simulated time of day. In live mode the pool is
+ * limited to the common areas, so a free agent never pretends to work.
  */
 export class Autopilot {
+  private mode: FloorMode = 'demo';
+
   constructor(
     private readonly agents: AutopilotAgent[],
     private readonly rng: () => number = Math.random,
   ) {}
+
+  get floorMode(): FloorMode {
+    return this.mode;
+  }
+
+  setFloorMode(mode: FloorMode): void {
+    this.mode = mode;
+  }
 
   update(now: number, night: number): void {
     const taken = new Set(this.agents.map((agent) => agent.spot.id));
@@ -40,8 +51,10 @@ export class Autopilot {
 
   private pick(agent: AutopilotAgent, taken: Set<string>, night: number): Spot | null {
     const weights = weightsFor(night);
+    const allowed = new Set(FREE_TIME_POOL[this.mode]);
     const candidates = ACTIVITIES.filter(
       (activity) =>
+        allowed.has(activity) &&
         activity !== agent.spot.activity &&
         spotsFor(activity).some((spot) => !taken.has(spot.id)),
     );

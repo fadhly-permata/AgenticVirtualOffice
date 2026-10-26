@@ -116,6 +116,7 @@ let workClockTimer = 0;
 let officeChipLabel = '';
 let officeRoster: RosterAgent[] = [];
 let presenceTimer = 0;
+let presenceFailures = 0;
 
 export function installChat(officeApi: VirtOfficeApi): void {
   office = officeApi;
@@ -207,10 +208,14 @@ function applyWorkspace(next: WorkspaceInfo | null): void {
   releaseOfficeAgent();
   window.clearTimeout(presenceTimer);
   presenceTimer = 0;
+  presenceFailures = 0;
   officeRoster = [];
   disconnectStream();
 
   workspace = next;
+  // Tanpa workspace lantai kembali jadi panggung demo; dengan workspace,
+  // bangku kerja hanya boleh diisi sesi yang benar-benar berjalan.
+  office?.setFloorMode(next ? 'live' : 'demo');
   bootstrap = null;
   bootLoading = false;
   bootError = false;
@@ -311,6 +316,7 @@ async function loadBootstrap(): Promise<void> {
     sessions = data.sessions;
     officeRoster = data.roster ?? [];
     office?.setCrew(crewFromRoster(officeRoster));
+    office?.setFloorMode('live');
     void refreshPresence();
     updateChatFolder();
     updateLauncher();
@@ -1588,8 +1594,12 @@ async function refreshPresence(): Promise<void> {
     // Kursi dulu, teks belakangan: potongan pikiran bisa lambat tanpa memindahkan orang.
     office.applyPresence(presence);
     office.applyPresence(presence, await activityCopy(presence));
+    presenceFailures = 0;
   } catch {
-    // OpenCode belum sempat merespons; posisi tetap seperti sebelumnya dan dicoba lagi.
+    // OpenCode belum sempat merespons; satu-dua percobaan gagal tidak mengubah
+    // kursi. Bridge yang mati betulan tidak boleh membekukan status sibuk.
+    presenceFailures += 1;
+    if (presenceFailures >= 3) office.applyPresence(buildPresence(officeRoster, []));
   }
 
   syncOffice(currentRun());

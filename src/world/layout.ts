@@ -1,7 +1,14 @@
 import { NavGraph } from './nav';
 
 export type RoomId = 'workspace' | 'meeting' | 'pantry' | 'lounge';
-export type ActivityId = 'working' | 'meeting' | 'coffee' | 'gaming' | 'tv' | 'idle';
+export type ActivityId =
+  | 'working'
+  | 'meeting'
+  | 'coffee'
+  | 'gaming'
+  | 'tv'
+  | 'chatting'
+  | 'idle';
 
 export interface Vec2 {
   x: number;
@@ -187,6 +194,43 @@ const SPOT_DEFS: SpotDef[] = [
     facing: NORTH,
     seatHeight: 0.7,
   },
+  // Pantry chatter: two standing pairs, mid-room and along the east wall.
+  {
+    id: 'chat-pantry-1',
+    label: 'Obrolan pantry',
+    activity: 'chatting',
+    x: 11.4,
+    z: 12.6,
+    facing: 0,
+    seatHeight: 0,
+  },
+  {
+    id: 'chat-pantry-2',
+    label: 'Obrolan pantry',
+    activity: 'chatting',
+    x: 11.4,
+    z: 14.2,
+    facing: NORTH,
+    seatHeight: 0,
+  },
+  {
+    id: 'chat-pantry-3',
+    label: 'Obrolan pantry',
+    activity: 'chatting',
+    x: 5.6,
+    z: 13.6,
+    facing: HALF_PI,
+    seatHeight: 0,
+  },
+  {
+    id: 'chat-pantry-4',
+    label: 'Obrolan pantry',
+    activity: 'chatting',
+    x: 7.2,
+    z: 13.6,
+    facing: -HALF_PI,
+    seatHeight: 0,
+  },
   {
     id: 'pantry-water',
     label: 'Dispenser',
@@ -215,6 +259,25 @@ const SPOT_DEFS: SpotDef[] = [
     z: 16.8,
     facing: NORTH,
     seatHeight: 0.5,
+  },
+  // Lounge chatter: a pair standing in front of the media wall.
+  {
+    id: 'chat-lounge-1',
+    label: 'Obrolan ruang santai',
+    activity: 'chatting',
+    x: 16.7,
+    z: 12.9,
+    facing: HALF_PI,
+    seatHeight: 0,
+  },
+  {
+    id: 'chat-lounge-2',
+    label: 'Obrolan ruang santai',
+    activity: 'chatting',
+    x: 18.3,
+    z: 12.9,
+    facing: -HALF_PI,
+    seatHeight: 0,
   },
   {
     id: 'lounge-plant',
@@ -375,6 +438,12 @@ export const EDGES: [string, string][] = [
   ['pn-west', s('coffee-3')],
   ['pn-east', s('coffee-4')],
   ['pn-south', s('coffee-5')],
+  ['pn-north', s('chat-pantry-1')],
+  [s('chat-pantry-1'), s('chat-pantry-2')],
+  [s('chat-pantry-2'), 'pn-east'],
+  ['pn-north', s('chat-pantry-4')],
+  [s('chat-pantry-3'), s('chat-pantry-4')],
+  [s('chat-pantry-3'), 'pn-west'],
   // Lounge
   ['lg-door-d', 'lg-north'],
   ['lg-door-d', 'lg-west'],
@@ -393,6 +462,9 @@ export const EDGES: [string, string][] = [
   ['lg-front-w', s('sofa-2')],
   ['lg-front-e', s('sofa-3')],
   ['lg-front-e', s('beanbag')],
+  ['lg-door-d', s('chat-lounge-1')],
+  [s('chat-lounge-1'), s('chat-lounge-2')],
+  [s('chat-lounge-2'), 'lg-north'],
   // Doors between rooms
   ['ws-door-a', 'mt-door-a'],
   ['ws-door-c', 'pn-door-c'],

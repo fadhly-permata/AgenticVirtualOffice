@@ -125,7 +125,7 @@ function boot(target: HTMLCanvasElement): void {
 
   const autopilot = new Autopilot(agents);
   const clock = new DayCycle(8.1, 0.11);
-  const office = installApi(agents, clock, crew);
+  const office = installApi(agents, clock, autopilot, crew);
 
   // ------------------------------------------------------------------ hud ---
 
@@ -133,6 +133,7 @@ function boot(target: HTMLCanvasElement): void {
   const phaseEl = document.getElementById('phase');
   const progressEl = document.getElementById('progress');
   const countEl = document.getElementById('agent-count');
+  const floorModeEl = document.getElementById('floor-mode');
   const legendEl = document.getElementById('legend');
   const stateEls = new Map<string, HTMLElement>();
   const legendRankById = new Map<string, number>();
@@ -190,6 +191,8 @@ function boot(target: HTMLCanvasElement): void {
     if (timeEl) timeEl.textContent = clock.timeLabel;
     if (phaseEl) phaseEl.textContent = clock.phaseLabel;
     if (progressEl) progressEl.style.width = `${(clock.progress * 100).toFixed(1)}%`;
+    // Lantai 'live' berarti bangku kerja hanya diisi sesi OpenCode yang benar-benar jalan.
+    if (floorModeEl) floorModeEl.textContent = autopilot.floorMode === 'live' ? 'LIVE' : 'AUTO-PLAY';
     // Orang pindah kursi = barisnya harus disusun ulang, bukan cuma labelnya diganti.
     if (agents.some((agent) => legendRankById.get(agent.id) !== legendRank(agent))) legendDirty = true;
     if (legendDirty) {
@@ -203,6 +206,8 @@ function boot(target: HTMLCanvasElement): void {
       const label = ACTIVITY_LABEL[agent.spot.activity];
       el.textContent = agent.mode === 'walking' ? `→ ${label}` : label;
       el.dataset.state = agent.mode;
+      // 'real' = kursi dipegang sesi OpenCode yang jalan, bukan jatah autopilot.
+      el.dataset.live = agent.pinned ? 'real' : 'auto';
     }
   }
 

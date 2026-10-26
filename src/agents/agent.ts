@@ -393,6 +393,20 @@ export class Agent {
         t.headY = Math.sin(time * 0.55) * 0.16;
         break;
       }
+      case 'chatting': {
+        // Spot ids pair up (1/2, 3/4), so the even half listens while the other talks.
+        const offset = /[24]$/.test(this.spot.id) ? Math.PI : 0;
+        const gesture = Math.max(0, Math.sin(time * 1.3 + offset));
+        const nod = Math.sin(time * 2.6 + offset);
+        t.armR = -0.2 - gesture * 0.9;
+        t.armL = 0.02 + gesture * 0.1;
+        t.armZL = 0.12;
+        t.bodyY = Math.abs(Math.sin(time * 0.9 + offset)) * 0.015;
+        t.lean = 0.04 + gesture * 0.05;
+        t.headX = 0.03 + nod * 0.05;
+        t.headY = gesture * 0.12 - nod * 0.06;
+        break;
+      }
       case 'idle':
       default: {
         t.armL = 0.04 + Math.sin(time * 1.4) * 0.04;

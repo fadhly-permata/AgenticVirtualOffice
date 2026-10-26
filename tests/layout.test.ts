@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { ACTIVITIES } from '../src/agents/activities';
 import {
   buildNavGraph,
   EDGES,
@@ -34,8 +35,8 @@ describe('office layout', () => {
   });
 
   it('has spots for every activity', () => {
-    for (const activity of ['working', 'meeting', 'coffee', 'gaming', 'tv', 'idle'] as const) {
-      expect(spotsFor(activity).length).toBeGreaterThan(0);
+    for (const activity of ACTIVITIES) {
+      expect(spotsFor(activity).length, `no spot for ${activity}`).toBeGreaterThan(0);
     }
   });
 

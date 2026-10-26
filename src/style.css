@@ -211,6 +211,12 @@ body.is-ready #scene {
   color: var(--accent);
 }
 
+/* Hanya sesi OpenCode yang benar-benar jalan boleh menampilkan status emas. */
+.legend__state[data-live='real'] {
+  color: var(--accent);
+  font-weight: 650;
+}
+
 .hint {
   position: absolute;
   right: 26px;
