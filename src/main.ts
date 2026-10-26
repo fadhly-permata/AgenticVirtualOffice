@@ -206,7 +206,10 @@ function boot(target: HTMLCanvasElement): void {
     if (phaseEl) phaseEl.textContent = clock.phaseLabel;
     if (progressEl) progressEl.style.width = `${(clock.progress * 100).toFixed(1)}%`;
     // Lantai 'live' berarti bangku kerja hanya diisi sesi OpenCode yang benar-benar jalan.
-    if (floorModeEl) floorModeEl.textContent = autopilot.floorMode === 'live' ? 'LIVE' : 'AUTO-PLAY';
+    if (floorModeEl) {
+      floorModeEl.textContent = autopilot.floorMode === 'live' ? 'LIVE' : 'AUTO-PLAY';
+      floorModeEl.dataset.mode = autopilot.floorMode;
+    }
     // Orang pindah kursi = barisnya harus disusun ulang, bukan cuma labelnya diganti.
     if (agents.some((agent) => legendRankById.get(agent.id) !== legendRank(agent))) legendDirty = true;
     if (legendDirty) {
