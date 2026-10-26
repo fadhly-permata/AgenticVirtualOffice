@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import type { ChatEvent } from '../src/chat/types';
 import {
   applyChatEvent,
+  bubbleCopy,
   describeError,
   isAbortError,
   prettyToolName,
@@ -10,6 +11,7 @@ import {
   toolTitle,
   truncate,
 } from '../src/chat/state';
+import type { RunActivity } from '../src/chat/types';
 
 const session = 'ses_test';
 
@@ -268,6 +270,36 @@ describe('chat reducer', () => {
       session
     );
     expect(after).toBe(withTool);
+  });
+});
+
+describe('bubble copy', () => {
+  function activity(phase: RunActivity['phase'], detail = '', tool: string | null = null): RunActivity {
+    return { phase, tool, detail };
+  }
+
+  it('quotes the tool with its own title', () => {
+    expect(bubbleCopy(activity('tool', 'README.md', 'read'))).toBe('Membaca file: README.md');
+    expect(bubbleCopy(activity('tool', '', 'task'))).toBe('Menjalankan subagent');
+  });
+
+  it('labels live reasoning and the answer being written', () => {
+    expect(bubbleCopy(activity('think', 'coba pakai  glob  dulu'))).toBe('Mikir: coba pakai glob dulu');
+    expect(bubbleCopy(activity('think'))).toBe('Menalar…');
+    expect(bubbleCopy(activity('write', 'Hasilnya adalah'))).toBe('Nulis: Hasilnya adalah');
+    expect(bubbleCopy(activity('write'))).toBe('Menulis jawaban…');
+  });
+
+  it('drops the peek marker and says nothing before the model starts', () => {
+    expect(bubbleCopy(activity('think', '…sampai di sini'))).toBe('Mikir: sampai di sini');
+    expect(bubbleCopy(activity('prepare'))).toBe('');
+    expect(bubbleCopy(null)).toBe('');
+  });
+
+  it('clips to what fits the bubble', () => {
+    const copy = bubbleCopy(activity('write', 'x'.repeat(120)));
+    expect(copy).toHaveLength(46);
+    expect(copy.endsWith('…')).toBe(true);
   });
 });
 

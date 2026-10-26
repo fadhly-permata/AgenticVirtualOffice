@@ -1,5 +1,6 @@
 import type { VirtOfficeApi } from '../api';
 import {
+  type Presence,
   type RosterAgent,
   buildPresence,
   crewFromRoster,
@@ -12,6 +13,7 @@ import { FolderPicker } from './folder';
 import { SearchSelect } from './select';
 import {
   applyChatEvent,
+  bubbleCopy,
   describeError,
   isAbortError,
   prettyToolName,
@@ -1579,16 +1581,32 @@ function schedulePresence(delay = 400): void {
  */
 async function refreshPresence(): Promise<void> {
   if (!office || !workspace) return;
+  let presence: Presence[] = [];
   try {
     const { statuses } = await chatApi.status();
-    const presence = buildPresence(officeRoster, sessionActivities(sessions, statuses));
+    presence = buildPresence(officeRoster, sessionActivities(sessions, statuses));
+    // Kursi dulu, teks belakangan: potongan pikiran bisa lambat tanpa memindahkan orang.
     office.applyPresence(presence);
+    office.applyPresence(presence, await activityCopy(presence));
   } catch {
     // OpenCode belum sempat merespons; posisi tetap seperti sebelumnya dan dicoba lagi.
   }
 
   syncOffice(currentRun());
   if (isAnyRunning()) schedulePresence(3_000);
+}
+
+/** Short bubble copy per busy session, quoted from what that session is really doing. */
+async function activityCopy(presence: Presence[]): Promise<Record<string, string>> {
+  const busy = presence.filter((entry) => entry.role !== 'idle' && entry.sessionID).slice(0, 6);
+  if (!busy.length) return {};
+  const { activities } = await chatApi.activity(busy.map((entry) => entry.sessionID as string));
+  const copy: Record<string, string> = {};
+  for (const entry of busy) {
+    const text = bubbleCopy(activities[entry.sessionID as string]);
+    if (text) copy[entry.sessionID as string] = text;
+  }
+  return copy;
 }
 
 /** The employee the header chip follows: the agent that owns the open session. */

@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { createBubbleCanvas, paintBubble } from '../core/textBubble';
 import { dampAngle } from '../core/math';
 import { signalBubble } from '../core/textures';
 import type { Spot, Vec2 } from '../world/layout';
@@ -96,6 +97,9 @@ export class Agent {
   private readonly speed = 3.05;
   private bubble: THREE.Sprite | null = null;
   private bubbleFrames: THREE.DataTexture[] = [];
+  private bubbleText = '';
+  private bubbleCanvas: HTMLCanvasElement | null = null;
+  private bubbleTexture: THREE.CanvasTexture | null = null;
   private path: Vec2[] = [];
   private stayFor: number;
   private facing: number;
@@ -133,6 +137,11 @@ export class Agent {
     return this.spot.activity;
   }
 
+  /** The text currently floated over this agent's head, empty when only dots show. */
+  get bubbleCopy(): string {
+    return this.signal ? this.bubbleText : '';
+  }
+
   /** Detach from the autopilot and let it resume later. */
   release(): void {
     this.setSignal(null);
@@ -140,21 +149,63 @@ export class Agent {
     this.busyUntil = 0;
   }
 
-  /** The pill floated over this agent's head while an OpenCode run holds it busy. */
-  setSignal(signal: AgentSignal | null): void {
-    if (signal === this.signal) return;
+  /** The bubble floated over this agent's head while an OpenCode run holds it busy. */
+  setSignal(signal: AgentSignal | null, text = ''): void {
+    const copy = signal ? text : '';
+    if (signal === this.signal && copy === this.bubbleText) return;
     this.signal = signal;
+    this.bubbleText = copy;
     this.signalTime = 0;
 
     if (!signal) {
+      this.clearFrames();
       if (this.bubble) this.bubble.visible = false;
       return;
     }
 
+    this.ensureBubble().visible = true;
+    if (copy) {
+      this.clearFrames();
+      this.paintTextBubble(signal);
+      return;
+    }
+
+    this.clearTextBubble();
     this.bubbleFrames = [1, 2, 3].map((lit) => signalBubble(SIGNAL_COLOR[signal], lit));
-    const sprite = this.ensureBubble();
-    sprite.visible = true;
     this.applyBubbleFrame();
+  }
+
+  private clearFrames(): void {
+    for (const frame of this.bubbleFrames) frame.dispose();
+    this.bubbleFrames = [];
+  }
+
+  private clearTextBubble(): void {
+    if (!this.bubbleTexture) return;
+    const material = this.bubble?.material as THREE.SpriteMaterial | undefined;
+    if (material && material.map === this.bubbleTexture) material.map = null;
+    this.bubbleTexture.dispose();
+    this.bubbleTexture = null;
+  }
+
+  /** Repaint the shared canvas; only the pixels change, the texture stays. */
+  private paintTextBubble(signal: AgentSignal): void {
+    if (!this.bubble) return;
+    const material = this.bubble.material as THREE.SpriteMaterial;
+    if (!this.bubbleCanvas) this.bubbleCanvas = createBubbleCanvas();
+    const [r, g, b] = SIGNAL_COLOR[signal];
+    paintBubble(this.bubbleCanvas, this.bubbleText, `rgb(${r}, ${g}, ${b})`);
+
+    if (this.bubbleTexture) {
+      this.bubbleTexture.needsUpdate = true;
+      return;
+    }
+    this.bubbleTexture = new THREE.CanvasTexture(this.bubbleCanvas);
+    this.bubbleTexture.colorSpace = THREE.SRGBColorSpace;
+    material.map = this.bubbleTexture;
+    material.needsUpdate = true;
+    this.bubble.scale.set(0.92, 0.29, 1);
+    this.bubble.position.set(0, 0.78, 0.04);
   }
 
   private ensureBubble(): THREE.Sprite {
@@ -207,7 +258,7 @@ export class Agent {
   update(dt: number, now: number): void {
     if (this.mode === 'walking') this.step(dt, now);
     this.elapsed += dt;
-    if (this.signal) {
+    if (this.signal && !this.bubbleText) {
       this.signalTime += dt;
       this.applyBubbleFrame();
     }

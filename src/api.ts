@@ -11,6 +11,7 @@ export interface AgentSnapshot {
   activityLabel: string;
   state: 'walking' | 'settled';
   signal: AgentSignal | null;
+  bubble: string;
   room: RoomId;
   spot: string;
 }
@@ -48,9 +49,9 @@ export interface VirtOfficeApi {
   readonly ready: true;
   agents(): AgentSnapshot[];
   setCrew(entries: CrewEntry[]): boolean;
-  applyPresence(presence: Presence[]): void;
+  applyPresence(presence: Presence[], copy?: Record<string, string>): void;
   setActivity(agentId: string, activity: ActivityId): boolean;
-  setAgentSignal(agentId: string, signal: AgentSignal | null): boolean;
+  setAgentSignal(agentId: string, signal: AgentSignal | null, text?: string): boolean;
   release(agentId: string): boolean;
   setTimeOfDay(hours: number): void;
   setTimeScale(hoursPerSecond: number): void;
@@ -81,6 +82,7 @@ export function installApi(agents: Agent[], clock: DayCycle, crew?: CrewFactory)
         activityLabel: ACTIVITY_LABEL[agent.spot.activity],
         state: agent.mode,
         signal: agent.signal,
+        bubble: agent.bubbleCopy,
         room: agent.spot.room,
         spot: agent.spot.id,
       })),
@@ -104,7 +106,8 @@ export function installApi(agents: Agent[], clock: DayCycle, crew?: CrewFactory)
       return agents.length > 0;
     },
 
-    applyPresence: (presence) => {
+    /** `copy` maps a busy session id to the short text shown over the agent's head. */
+    applyPresence: (presence, copy) => {
       for (const entry of presence) {
         const agent = find(entry.agent);
         if (!agent) continue;
@@ -118,7 +121,7 @@ export function installApi(agents: Agent[], clock: DayCycle, crew?: CrewFactory)
         const activity = ROLE_ACTIVITY[entry.role];
         // Re-seating an agent that is already in the right room would restart its walk.
         if (!agent.pinned || agent.activity !== activity) seat(agent, activity);
-        agent.setSignal(ROLE_SIGNAL[entry.role]);
+        agent.setSignal(ROLE_SIGNAL[entry.role], (entry.sessionID ? copy?.[entry.sessionID] : '') ?? '');
       }
     },
 
@@ -128,10 +131,10 @@ export function installApi(agents: Agent[], clock: DayCycle, crew?: CrewFactory)
       return seat(agent, activity);
     },
 
-    setAgentSignal: (agentId, signal) => {
+    setAgentSignal: (agentId, signal, text = '') => {
       const agent = find(agentId);
       if (!agent) return false;
-      agent.setSignal(signal);
+      agent.setSignal(signal, text);
       return true;
     },
 

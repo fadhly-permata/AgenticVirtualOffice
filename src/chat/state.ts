@@ -1,4 +1,4 @@
-import type { ChatEvent, LiveMessage, MessageInfo, Part, RawMessage } from './types';
+import type { ChatEvent, LiveMessage, MessageInfo, Part, RawMessage, RunActivity } from './types';
 
 function messageFromInfo(info: MessageInfo, parts: Part[] = []): LiveMessage {
   return {
@@ -157,6 +157,30 @@ export function prettyToolName(tool: string | undefined): string {
 export function toolTitle(part: Part): string {
   const title = part.state?.title;
   return typeof title === 'string' && title.trim() ? title.trim() : prettyToolName(part.tool);
+}
+
+const BUBBLE_LIMIT = 46;
+
+function clampBubble(text: string): string {
+  return text.length <= BUBBLE_LIMIT ? text : `${text.slice(0, BUBBLE_LIMIT - 1).trimEnd()}…`;
+}
+
+/**
+ * One or two short lines over an employee's head. Everything here comes from the
+ * session's own stream, so an empty activity means "say nothing" rather than a
+ * made-up status.
+ */
+export function bubbleCopy(activity: RunActivity | null | undefined): string {
+  if (!activity) return '';
+  const detail = activity.detail.replace(/\s+/g, ' ').replace(/^…/, '').trim();
+
+  if (activity.phase === 'tool') {
+    const name = prettyToolName(activity.tool ?? undefined);
+    return clampBubble(detail ? `${name}: ${detail}` : name);
+  }
+  if (activity.phase === 'think') return detail ? clampBubble(`Mikir: ${detail}`) : 'Menalar…';
+  if (activity.phase === 'write') return detail ? clampBubble(`Nulis: ${detail}`) : 'Menulis jawaban…';
+  return '';
 }
 
 export function relativeTime(timestamp: number, now = Date.now()): string {

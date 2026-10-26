@@ -21,7 +21,7 @@ npm install
 npm run dev      # bridge + Vite di http://127.0.0.1:5199
 npm run build    # typecheck + production build ke dist/
 npm start        # menyajikan dist/ + API di http://127.0.0.1:4180
-npm test         # 68 test: layout, navigasi, autopilot, siklus waktu, agen, layar, scene, chat, presence, server
+npm test         # 72 test: layout, navigasi, autopilot, siklus waktu, agen, layar, scene, chat, presence, server
 ```
 
 `npm run dev` menjalankan server Node lokal (bukan `vite` langsung). Server yang sama melayani API, proxy event OpenCode, dan Vite dev middleware. Port dev sengaja jauh dari 5173 supaya Vite yang lupa dimatikan tidak bisa menyamar jadi bridge ini (gejalanya: `/api/*` dijawab HTML). Untuk port lain:
@@ -72,6 +72,7 @@ src/
     math.ts         clamp, smoothstep, damping sudut
     palette.ts      palet warna + cache material
     textures.ts     tekstur prosedural (kayu, kain, plester, halo lampu, contact shadow, slide TV)
+    textBubble.ts   bubble teks di atas kepala karyawan (canvas 2D → sprite)
     typing.ts       simulasi baris kode yang mengetik sendiri untuk monitor
   world/
     layout.ts       denah 4 ruangan, daftar spot, node & edge navigasi
@@ -111,7 +112,7 @@ Klik pill **OpenCode** di kanan bawah untuk membuka chat. Kalau belum ada worksp
 - **Model & agent** — dropdown model bisa dicari berdasarkan nama model atau provider; daftarnya diambil dari provider yang terhubung di OpenCode. Pilihan terakhir disimpan di browser, default mengikuti `model` di config OpenCode.
 - **Streaming** — teks, tool call, status busy/retry, error, dan hasil tool tampil real-time lewat SSE. Tool call yang butuh izin memunculkan kartu **Izinkan / Selalu izinkan / Tolak**; pertanyaan agent memunculkan pilihan jawaban.
 - **Stop** — tombol stop memanggil abort pada sesi yang sedang berjalan.
-- **Kantor** — jumlah karyawan mengikuti `roster` agent OpenCode di workspace. Setiap ~3 detik (dan setiap ada event sesi) server ditanya sesi mana yang busy, lalu `presence` menentukan kursinya: sesi biasa → meja kerja, sesi yang punya anak busy → ruang meeting bersama anak yang didelegasi. Pil di kepala menandai peran (menulis/menjalankan alat/menalar), chip header menampilkan fase run sesi yang sedang dibuka beserta hitungan waktu. Saat sesi selesai, karyawan dilepas kembali ke autopilot.
+- **Kantor** — jumlah karyawan mengikuti `roster` agent OpenCode di workspace. Setiap ~3 detik (dan setiap ada event sesi) server ditanya sesi mana yang busy, lalu `presence` menentukan kursinya: sesi biasa → meja kerja, sesi yang punya anak busy → ruang meeting bersama anak yang didelegasi. Di atas kepalanya muncul bubble berisi potongan aktivitas aslinya (`Mikir: …`, `Nulis: …`, `Membaca file: README.md`) yang diambil dari `/api/chat/activity`; kalau belum ada yang bisa dikutip, bubble berubah jadi pil titik-titik. Chip header menampilkan fase run sesi yang sedang dibuka beserta hitungan waktu. Saat sesi selesai, karyawan dilepas kembali ke autopilot.
 
 Workspace dan recents disimpan di `.virtoffice/workspace.json` (gitignored). Bridge menjalankan `opencode serve --hostname 127.0.0.1 --port 0` dan mengarahkan setiap request ke folder aktif lewat query `directory`, sehingga config, `AGENTS.md`, dan tool OpenCode mengikuti proyek yang dibuka.
 
@@ -141,15 +142,15 @@ API global untuk mengendalikan karyawan tetap tersedia:
 
 ```js
 virtOffice.agents();
-// [{ id: 'build', name: 'build', activity: 'working', state: 'settled', signal: 'writing', room: 'workspace', ... }]
+// [{ id: 'build', name: 'build', activity: 'working', state: 'settled', signal: 'writing', bubble: 'Mikir: …', ... }]
 
 virtOffice.setCrew([{ id: 'build', label: 'build' }]);   // susun ulang karyawan dari daftar agent
 virtOffice.applyPresence([                                // duduk sesuai aktivitas sesi
   { agent: 'build', role: 'delegating', sessionID: 'ses_1' },
   { agent: 'explore', role: 'delegated', sessionID: 'ses_2' },
-]);
+], { ses_1: 'Menjalankan subagent: cari README' });      // argumen kedua: teks bubble per sesi
 virtOffice.setActivity('build', 'gaming');      // true bila berhasil
-virtOffice.setAgentSignal('build', 'tool');     // pil di atas kepalanya
+virtOffice.setAgentSignal('build', 'tool', 'Mikir: …');  // pil / bubble di atas kepalanya
 virtOffice.release('build');                    // kembalikan ke autopilot (sekaligus menghapus pil)
 virtOffice.setTimeOfDay(19.5);
 virtOffice.setTimeScale(0);                     // bekukan waktu
