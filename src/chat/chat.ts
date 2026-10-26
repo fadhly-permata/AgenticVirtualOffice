@@ -177,9 +177,9 @@ async function syncWorkspace(): Promise<void> {
   try {
     const state = await chatApi.workspace();
     applyWorkspace(state.workspace);
-  } catch {
+  } catch (error) {
     launcherStatus.dataset.state = 'error';
-    launcher.title = 'Server lokal tidak tersedia. Jalankan npm run dev.';
+    launcher.title = describeError(error) || 'Server lokal tidak tersedia. Jalankan npm run dev.';
   }
 }
 

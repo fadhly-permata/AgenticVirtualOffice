@@ -35,11 +35,13 @@ async function request<T>(pathname: string, init: RequestInit = {}, timeoutMs = 
 
   const text = await response.text();
   let payload: unknown = null;
+  let parsed = false;
   if (text) {
     try {
       payload = JSON.parse(text);
+      parsed = true;
     } catch {
-      payload = null;
+      parsed = false;
     }
   }
 
@@ -49,6 +51,12 @@ async function request<T>(pathname: string, init: RequestInit = {}, timeoutMs = 
         ? payload.error
         : `Permintaan gagal (${response.status}).`;
     throw new ChatApiError(response.status, message);
+  }
+  if (!parsed) {
+    throw new ChatApiError(
+      0,
+      'Server ini bukan bridge VirtOffice (mengembalikan HTML, bukan JSON). Jalankan npm run dev dan buka alamat yang dicetak di terminal.'
+    );
   }
   return payload as T;
 }
