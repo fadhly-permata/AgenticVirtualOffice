@@ -530,14 +530,29 @@ body.chat-open .hint,
   padding: 0 7px;
   border: 1px solid rgba(255, 255, 255, 0.1);
   border-radius: 8px;
-  background: rgba(255, 255, 255, 0.045);
+  background-color: #17222c;
   color: var(--ink);
   font: inherit;
-  font-size: 10.5px;
+  font-size: 11.5px;
   letter-spacing: 0.01em;
   outline: none;
   cursor: pointer;
   color-scheme: dark;
+}
+
+.field select optgroup {
+  background-color: #17222c;
+  color: #c8d2da;
+}
+
+.field select option {
+  background-color: #17222c;
+  color: var(--ink);
+}
+
+.field select option:checked {
+  background-color: #2a3a48;
+  color: #ffffff;
 }
 
 .field select:hover,
