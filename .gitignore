@@ -1,6 +1,7 @@
 node_modules/
 dist/
 .chrome-tmp/
+.virtoffice/
 dom.txt
 chrome.log
 *.local

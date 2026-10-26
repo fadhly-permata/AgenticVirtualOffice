@@ -3,6 +3,7 @@ import * as THREE from 'three';
 import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { installApi } from './api';
+import { installChat } from './chat/chat';
 import { ACTIVITY_LABEL } from './agents/activities';
 import { Agent } from './agents/agent';
 import { Autopilot } from './agents/autopilot';
@@ -245,7 +246,7 @@ function boot(target: HTMLCanvasElement): void {
   }
 
   requestAnimationFrame(frame);
-  installApi(agents, clock);
+  installChat(installApi(agents, clock));
 
   window.addEventListener('error', (event) => {
     fail(`Render error: ${event.message}`);

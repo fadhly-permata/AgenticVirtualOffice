@@ -1,0 +1,1297 @@
+import type { VirtOfficeApi } from '../api';
+import { chatApi } from './client';
+import { el, ICON, icon } from './dom';
+import { FolderPicker } from './folder';
+import {
+  applyChatEvent,
+  describeError,
+  isAbortError,
+  prettyToolName,
+  rawToLive,
+  truncate,
+} from './state';
+import type {
+  AgentChoice,
+  Bootstrap,
+  ChatEvent,
+  LiveMessage,
+  ModelGroup,
+  ModelKey,
+  Part,
+  PermissionRequest,
+  QuestionRequest,
+  SessionSummary,
+  WorkspaceInfo,
+} from './types';
+
+const STORAGE_MODEL = 'virtoOffice.chatModel';
+const STORAGE_AGENT = 'virtoOffice.chatAgent';
+
+function byId<T extends HTMLElement>(id: string): T {
+  const node = document.getElementById(id);
+  if (!node) throw new Error(`Elemen #${id} tidak ditemukan.`);
+  return node as T;
+}
+
+const launcher = byId<HTMLButtonElement>('chat-launcher');
+const launcherEyebrow = byId<HTMLElement>('launcher-eyebrow');
+const launcherLabel = byId<HTMLElement>('launcher-label');
+const launcherStatus = byId<HTMLElement>('launcher-status');
+
+const chatWindow = byId<HTMLElement>('chat-window');
+const chatFolder = byId<HTMLElement>('chat-folder');
+const chatChangeFolder = byId<HTMLButtonElement>('chat-change-folder');
+const chatNew = byId<HTMLButtonElement>('chat-new');
+const chatClose = byId<HTMLButtonElement>('chat-close');
+const sessionSelect = byId<HTMLSelectElement>('chat-session');
+const modelSelect = byId<HTMLSelectElement>('chat-model');
+const agentSelect = byId<HTMLSelectElement>('chat-agent');
+const noticeEl = byId<HTMLElement>('chat-notice');
+const messagesEl = byId<HTMLElement>('chat-messages');
+const promptsEl = byId<HTMLElement>('chat-prompts');
+const agentChip = byId<HTMLElement>('chat-agent-chip');
+const statusEl = byId<HTMLElement>('chat-status');
+const form = byId<HTMLFormElement>('chat-form');
+const input = byId<HTMLTextAreaElement>('chat-input');
+const sendButton = byId<HTMLButtonElement>('chat-send');
+const stopButton = byId<HTMLButtonElement>('chat-stop');
+
+type NoticeKind = 'info' | 'error' | 'retry' | 'disconnect';
+
+let office: VirtOfficeApi | null = null;
+let folderPicker: FolderPicker | null = null;
+
+let workspace: WorkspaceInfo | null = null;
+let bootstrap: Bootstrap | null = null;
+let bootLoading = false;
+let bootError = false;
+let workspaceGeneration = 0;
+
+let models: ModelGroup[] = [];
+let agents: AgentChoice[] = [];
+let sessions: SessionSummary[] = [];
+let currentSession: SessionSummary | null = null;
+let messages: LiveMessage[] = [];
+let selectedModel: ModelKey | null = null;
+let selectedAgent = 'build';
+
+const runningSessions = new Set<string>();
+const permissions = new Map<string, PermissionRequest>();
+const questions = new Map<string, QuestionRequest>();
+
+let stream: EventSource | null = null;
+let streamErrorShown = false;
+let reading = false;
+let sending = false;
+let sendPhase = '';
+
+let noticeKind: NoticeKind | '' = '';
+let renderQueued = false;
+let historyReloadTimer = 0;
+
+let officeAgentId: string | null = null;
+
+export function installChat(officeApi: VirtOfficeApi): void {
+  office = officeApi;
+  folderPicker = new FolderPicker((selected) => {
+    applyWorkspace(selected);
+    openChat();
+  });
+
+  launcher.addEventListener('click', () => {
+    if (!workspace) {
+      folderPicker?.show(null);
+      return;
+    }
+    openChat();
+  });
+  chatClose.addEventListener('click', () => {
+    closeChat();
+    launcher.focus();
+  });
+  chatNew.addEventListener('click', () => startNewChat(true));
+  chatChangeFolder.addEventListener('click', () => {
+    if (isAnyRunning()) {
+      setNotice('error', 'Hentikan respons yang sedang berjalan sebelum mengganti workspace.');
+      return;
+    }
+    folderPicker?.show(workspace?.path ?? null);
+  });
+
+  sessionSelect.addEventListener('change', () => {
+    const value = sessionSelect.value;
+    if (value === 'new') {
+      startNewChat(false);
+      return;
+    }
+    const target = sessions.find((session) => session.id === value);
+    if (target && target.id !== currentSession?.id) void selectSession(target);
+  });
+  modelSelect.addEventListener('change', () => {
+    const next = modelFromKey(modelSelect.value);
+    if (!next) return;
+    selectedModel = next;
+    localStorage.setItem(STORAGE_MODEL, modelSelect.value);
+    updateComposer();
+  });
+  agentSelect.addEventListener('change', () => {
+    selectedAgent = agentSelect.value;
+    localStorage.setItem(STORAGE_AGENT, selectedAgent);
+  });
+
+  form.addEventListener('submit', (event) => {
+    event.preventDefault();
+    void sendMessage();
+  });
+  input.addEventListener('input', () => {
+    resizeInput();
+    updateComposer();
+  });
+  input.addEventListener('keydown', (event) => {
+    if (event.key === 'Enter' && !event.shiftKey && !event.isComposing) {
+      event.preventDefault();
+      form.requestSubmit();
+    }
+  });
+  stopButton.addEventListener('click', () => void stopResponse());
+
+  updateLauncher();
+  updateChatFolder();
+  renderMessages({ forceBottom: true });
+  updateComposer();
+
+  void syncWorkspace();
+}
+
+async function syncWorkspace(): Promise<void> {
+  try {
+    const state = await chatApi.workspace();
+    applyWorkspace(state.workspace);
+  } catch {
+    launcherStatus.dataset.state = 'error';
+    launcher.title = 'Server lokal tidak tersedia. Jalankan npm run dev.';
+  }
+}
+
+function applyWorkspace(next: WorkspaceInfo | null): void {
+  workspaceGeneration += 1;
+  releaseOfficeAgent();
+  disconnectStream();
+
+  workspace = next;
+  bootstrap = null;
+  bootLoading = false;
+  bootError = false;
+  models = [];
+  agents = [];
+  sessions = [];
+  currentSession = null;
+  messages = [];
+  selectedModel = null;
+  selectedAgent = 'build';
+  runningSessions.clear();
+  permissions.clear();
+  questions.clear();
+  reading = false;
+  sending = false;
+  sendPhase = '';
+  setNotice(null);
+
+  updateChatFolder();
+  updateLauncher();
+  renderSessionSelect();
+  renderModelSelect();
+  renderAgentSelect();
+  renderPrompts();
+  renderMessages({ forceBottom: true });
+  updateComposer();
+
+  if (!chatWindow.hidden && workspace) void loadBootstrap();
+}
+
+function updateChatFolder(): void {
+  chatFolder.textContent = workspace?.name ?? '—';
+  chatFolder.title = workspace?.path ?? '';
+  input.placeholder = workspace
+    ? `Minta OpenCode mengerjakan sesuatu di ${workspace.name}…`
+    : 'Buka workspace untuk mulai…';
+}
+
+function updateLauncher(): void {
+  launcherEyebrow.textContent = workspace ? 'OpenCode chat' : 'OpenCode';
+  launcherLabel.textContent = workspace?.name ?? 'Buka workspace';
+  launcher.title = workspace ? `Chat OpenCode di ${workspace.path}` : 'Pilih folder workspace untuk OpenCode';
+  launcherStatus.dataset.state = bootLoading
+    ? 'loading'
+    : isAnyRunning()
+      ? 'busy'
+      : workspace
+        ? 'ready'
+        : 'idle';
+}
+
+function openChat(): void {
+  if (!workspace) {
+    folderPicker?.show(null);
+    return;
+  }
+  chatWindow.hidden = false;
+  document.body.classList.add('chat-open');
+  updateLauncher();
+  updateComposer();
+  if (!bootstrap && !bootLoading) {
+    void loadBootstrap();
+  } else {
+    ensureStream();
+    renderMessages({ forceBottom: true });
+  }
+  if (window.innerWidth > 760) {
+    window.setTimeout(() => input.focus(), 80);
+  }
+}
+
+function closeChat(): void {
+  chatWindow.hidden = true;
+  document.body.classList.remove('chat-open');
+  updateLauncher();
+}
+
+async function loadBootstrap(): Promise<void> {
+  if (!workspace) return;
+  const generation = workspaceGeneration;
+  bootLoading = true;
+  bootError = false;
+  setNotice('info', 'Menyiapkan OpenCode…');
+  renderMessages();
+  updateLauncher();
+  updateComposer();
+
+  try {
+    const data = await chatApi.bootstrap();
+    if (generation !== workspaceGeneration) return;
+
+    bootstrap = data;
+    workspace = data.workspace;
+    models = data.models;
+    agents = data.agents;
+    sessions = data.sessions;
+    updateChatFolder();
+    updateLauncher();
+
+    renderModelSelect();
+    renderAgentSelect();
+    renderSessionSelect();
+
+    setNotice(null);
+    const latest = sessions[0];
+    if (latest) {
+      await selectSession(latest, { initial: true });
+    } else {
+      startNewChat(false);
+    }
+    ensureStream();
+  } catch (error) {
+    if (generation !== workspaceGeneration) return;
+    bootError = true;
+    setNotice('error', describeError(error), { label: 'Coba lagi', run: () => void loadBootstrap() });
+    renderMessages();
+  } finally {
+    if (generation === workspaceGeneration) {
+      bootLoading = false;
+      updateLauncher();
+      updateComposer();
+      renderMessages();
+    }
+  }
+}
+
+function renderModelSelect(): void {
+  modelSelect.replaceChildren();
+  selectedModel = null;
+
+  for (const group of models) {
+    if (!group.models.length) continue;
+    const optgroup = document.createElement('optgroup');
+    optgroup.label = group.name;
+    for (const model of group.models) {
+      const option = document.createElement('option');
+      option.value = `${model.providerID}/${model.id}`;
+      option.textContent = model.name;
+      option.title = model.id;
+      optgroup.append(option);
+    }
+    modelSelect.append(optgroup);
+  }
+
+  if (!modelSelect.options.length) {
+    const option = document.createElement('option');
+    option.value = '';
+    option.textContent = 'Tidak ada model';
+    option.disabled = true;
+    modelSelect.append(option);
+    modelSelect.disabled = true;
+    return;
+  }
+  modelSelect.disabled = false;
+
+  const stored = localStorage.getItem(STORAGE_MODEL);
+  const defaultKey = bootstrap?.defaultModel
+    ? `${bootstrap.defaultModel.providerID}/${bootstrap.defaultModel.modelID}`
+    : '';
+  const candidates = [stored, defaultKey].filter((value): value is string => Boolean(value));
+  const match = candidates.find((key) => Array.from(modelSelect.options).some((option) => option.value === key));
+  modelSelect.value = match ?? modelSelect.options[0].value;
+  selectedModel = modelFromKey(modelSelect.value);
+}
+
+function renderAgentSelect(): void {
+  agentSelect.replaceChildren();
+  for (const agent of agents) {
+    const option = document.createElement('option');
+    option.value = agent.name;
+    option.textContent = agent.name;
+    option.title = agent.description;
+    agentSelect.append(option);
+  }
+  if (!agentSelect.options.length) {
+    const option = document.createElement('option');
+    option.value = 'build';
+    option.textContent = 'build';
+    agentSelect.append(option);
+  }
+  const stored = localStorage.getItem(STORAGE_AGENT);
+  const match = [stored, 'build'].find((value) =>
+    agentSelect.options ? Array.from(agentSelect.options).some((option) => option.value === value) : false
+  );
+  agentSelect.value = match ?? agentSelect.options[0].value;
+  selectedAgent = agentSelect.value || 'build';
+}
+
+function renderSessionSelect(): void {
+  sessionSelect.replaceChildren();
+  const fresh = document.createElement('option');
+  fresh.value = 'new';
+  fresh.textContent = '＋ Chat baru';
+  sessionSelect.append(fresh);
+
+  for (const session of sessions) {
+    const option = document.createElement('option');
+    option.value = session.id;
+    option.textContent = session.title;
+    option.title = session.title;
+    sessionSelect.append(option);
+  }
+  sessionSelect.value = currentSession?.id ?? 'new';
+}
+
+function upsertSession(info: Record<string, unknown>): void {
+  if (typeof info.id !== 'string') return;
+  const summary: SessionSummary = {
+    id: info.id,
+    title: typeof info.title === 'string' && info.title.trim() ? info.title : 'Sesi tanpa judul',
+    created: typeof (info.time as { created?: number } | undefined)?.created === 'number'
+      ? (info.time as { created: number }).created
+      : Date.now(),
+    updated: typeof (info.time as { updated?: number } | undefined)?.updated === 'number'
+      ? (info.time as { updated: number }).updated
+      : Date.now(),
+  };
+
+  const index = sessions.findIndex((session) => session.id === summary.id);
+  if (index >= 0) {
+    sessions[index] = summary;
+    const option = Array.from(sessionSelect.options).find((entry) => entry.value === summary.id);
+    if (option && option.textContent !== summary.title) option.textContent = summary.title;
+    if (currentSession?.id === summary.id) currentSession = summary;
+    return;
+  }
+
+  sessions.unshift(summary);
+  renderSessionSelect();
+}
+
+function modelFromKey(key: string): ModelKey | null {
+  for (const group of models) {
+    for (const model of group.models) {
+      if (`${model.providerID}/${model.id}` === key) {
+        return { providerID: model.providerID, modelID: model.id };
+      }
+    }
+  }
+  return null;
+}
+
+async function selectSession(session: SessionSummary, options: { initial?: boolean } = {}): Promise<void> {
+  const generation = workspaceGeneration;
+  currentSession = session;
+  messages = [];
+  permissions.clear();
+  questions.clear();
+  reading = true;
+  setNotice(null);
+  renderSessionSelect();
+  renderMessages({ forceBottom: true });
+  renderPrompts();
+  updateComposer();
+
+  try {
+    const data = await chatApi.session(session.id);
+    if (generation !== workspaceGeneration || currentSession?.id !== session.id) return;
+
+    messages = rawToLive(data.messages);
+    if (data.status.type === 'idle') runningSessions.delete(session.id);
+    else runningSessions.add(session.id);
+    for (const request of data.permissions) permissions.set(request.id, request);
+    for (const request of data.questions) questions.set(request.id, request);
+
+    if (data.status.type === 'retry') {
+      setNotice('retry', typeof data.status.message === 'string' ? data.status.message : 'OpenCode mencoba ulang…');
+    }
+    if (runningSessions.has(session.id)) pinOfficeAgent();
+  } catch (error) {
+    if (generation !== workspaceGeneration) return;
+    setNotice('error', describeError(error), { label: 'Muat ulang', run: () => void selectSession(session) });
+  } finally {
+    if (generation === workspaceGeneration && currentSession?.id === session.id) {
+      reading = false;
+      renderMessages({ forceBottom: options.initial ?? true });
+      renderPrompts();
+      updateComposer();
+    }
+  }
+}
+
+function startNewChat(focus: boolean): void {
+  currentSession = null;
+  messages = [];
+  permissions.clear();
+  questions.clear();
+  reading = false;
+  setNotice(null);
+  renderSessionSelect();
+  renderPrompts();
+  renderMessages({ forceBottom: true });
+  updateComposer();
+  if (focus) input.focus();
+}
+
+async function sendMessage(): Promise<void> {
+  const text = input.value.trim();
+  if (!text || !workspace || sending || isCurrentRunning() || bootLoading || reading) return;
+  if (!selectedModel) {
+    setNotice('error', 'Pilih model OpenCode terlebih dahulu.');
+    return;
+  }
+
+  const generation = workspaceGeneration;
+  const model = selectedModel;
+  const agent = selectedAgent;
+  sending = true;
+  sendPhase = currentSession ? 'Mengirim permintaan…' : 'Membuat sesi…';
+  setNotice(null);
+  updateComposer();
+
+  try {
+    let session = currentSession;
+    if (!session) {
+      const created = await chatApi.createSession();
+      if (generation !== workspaceGeneration) return;
+      session = created;
+      currentSession = created;
+      sessions = [created, ...sessions.filter((entry) => entry.id !== created.id)];
+      messages = [];
+      renderSessionSelect();
+      renderMessages({ forceBottom: true });
+      sendPhase = 'Mengirim permintaan…';
+      updateComposer();
+    }
+
+    ensureStream();
+    await chatApi.send(session.id, text, model, agent);
+    if (generation !== workspaceGeneration || currentSession?.id !== session.id) return;
+
+    input.value = '';
+    resizeInput();
+    sending = false;
+    sendPhase = '';
+    runningSessions.add(session.id);
+    pinOfficeAgent();
+    setNotice(null);
+  } catch (error) {
+    if (generation !== workspaceGeneration) return;
+    sending = false;
+    sendPhase = '';
+    setNotice('error', describeError(error), { label: 'Coba lagi', run: () => form.requestSubmit() });
+  } finally {
+    if (generation === workspaceGeneration) {
+      sending = false;
+      sendPhase = '';
+      updateComposer();
+    }
+  }
+}
+
+async function stopResponse(): Promise<void> {
+  const session = currentSession;
+  if (!session || !runningSessions.has(session.id)) return;
+  stopButton.disabled = true;
+  try {
+    await chatApi.abort(session.id);
+  } catch (error) {
+    setNotice('error', describeError(error), { label: 'Muat ulang', run: () => void refreshCurrentSession() });
+  } finally {
+    stopButton.disabled = false;
+  }
+}
+
+function ensureStream(): void {
+  if (stream || !workspace) return;
+  const source = new EventSource('/api/chat/events');
+  stream = source;
+
+  source.onopen = () => {
+    if (streamErrorShown) {
+      streamErrorShown = false;
+      if (noticeKind === 'disconnect') setNotice(null);
+      if (currentSession) void refreshCurrentSession();
+    }
+  };
+
+  source.onerror = () => {
+    streamErrorShown = true;
+    if (!chatWindow.hidden) {
+      setNotice('disconnect', 'Koneksi event terputus. Mencoba menyambung ulang…');
+    }
+  };
+
+  source.onmessage = (raw) => {
+    if (!raw.data) return;
+    let event: ChatEvent;
+    try {
+      event = JSON.parse(raw.data) as ChatEvent;
+    } catch {
+      return;
+    }
+    handleEvent(event);
+  };
+}
+
+function disconnectStream(): void {
+  stream?.close();
+  stream = null;
+  streamErrorShown = false;
+}
+
+function handleEvent(event: ChatEvent): void {
+  const props = event.properties ?? {};
+  const sessionID = typeof props.sessionID === 'string' ? props.sessionID : '';
+
+  switch (event.type) {
+    case 'bridge.error':
+      setNotice('error', typeof props.message === 'string' ? props.message : 'Koneksi ke server terputus.');
+      return;
+
+    case 'session.created':
+    case 'session.updated': {
+      const info = props.info as Record<string, unknown> | undefined;
+      if (info) upsertSession(info);
+      return;
+    }
+
+    case 'session.deleted': {
+      const info = props.info as Record<string, unknown> | undefined;
+      const id = typeof info?.id === 'string' ? info.id : sessionID;
+      sessions = sessions.filter((session) => session.id !== id);
+      if (currentSession?.id === id) {
+        startNewChat(false);
+        setNotice('info', 'Sesi dihapus.');
+      } else {
+        renderSessionSelect();
+      }
+      return;
+    }
+
+    case 'session.status': {
+      const status = props.status as Record<string, unknown> | undefined;
+      if (!sessionID || !status) return;
+      const type = typeof status.type === 'string' ? status.type : 'idle';
+      if (type === 'idle') {
+        markSessionIdle(sessionID);
+      } else {
+        runningSessions.add(sessionID);
+        if (sessionID === currentSession?.id) {
+          pinOfficeAgent();
+          if (type === 'retry') {
+            const message =
+              typeof status.message === 'string' ? status.message : 'Provider sedang bermasalah, mencoba ulang…';
+            setNotice('retry', message);
+          } else if (noticeKind === 'retry') {
+            setNotice(null);
+          }
+          updateComposer();
+        }
+      }
+      return;
+    }
+
+    case 'session.idle':
+      if (sessionID) markSessionIdle(sessionID);
+      return;
+
+    case 'session.error': {
+      if (sessionID === currentSession?.id) {
+        setNotice('error', describeError(props.error));
+      }
+      return;
+    }
+
+    case 'message.updated':
+    case 'message.part.updated':
+    case 'message.part.delta': {
+      if (!sessionID || sessionID !== currentSession?.id) return;
+      const next = applyChatEvent(messages, event, sessionID);
+      if (next !== messages) {
+        messages = next;
+        scheduleRender();
+      }
+      return;
+    }
+
+    case 'message.removed': {
+      const messageID = typeof props.messageID === 'string' ? props.messageID : '';
+      if (!messageID || sessionID !== currentSession?.id) return;
+      messages = messages.filter((message) => message.id !== messageID);
+      scheduleRender();
+      return;
+    }
+
+    case 'permission.asked':
+    case 'permission.v2.asked': {
+      const request = normalizePermission(props);
+      if (!request) return;
+      permissions.set(request.id, request);
+      if (request.sessionID === currentSession?.id) renderPrompts();
+      return;
+    }
+
+    case 'permission.replied':
+    case 'permission.v2.replied': {
+      const requestID = typeof props.requestID === 'string' ? props.requestID : '';
+      if (!requestID) return;
+      permissions.delete(requestID);
+      if (sessionID === currentSession?.id) renderPrompts();
+      return;
+    }
+
+    case 'question.asked':
+    case 'question.v2.asked': {
+      const request = normalizeQuestion(props);
+      if (!request) return;
+      questions.set(request.id, request);
+      if (request.sessionID === currentSession?.id) renderPrompts();
+      return;
+    }
+
+    case 'question.replied':
+    case 'question.v2.replied':
+    case 'question.rejected':
+    case 'question.v2.rejected': {
+      const requestID = typeof props.requestID === 'string' ? props.requestID : '';
+      if (!requestID) return;
+      questions.delete(requestID);
+      if (sessionID === currentSession?.id) renderPrompts();
+      return;
+    }
+
+    default:
+      return;
+  }
+}
+
+function markSessionIdle(sessionID: string): void {
+  runningSessions.delete(sessionID);
+  if (sessionID !== currentSession?.id) {
+    if (!runningSessions.size) releaseOfficeAgent();
+    updateLauncher();
+    return;
+  }
+  if (!runningSessions.size) releaseOfficeAgent();
+  if (noticeKind === 'retry') setNotice(null);
+  updateComposer();
+  updateLauncher();
+  window.clearTimeout(historyReloadTimer);
+  historyReloadTimer = window.setTimeout(() => {
+    if (currentSession?.id === sessionID) void refreshCurrentSession();
+  }, 220);
+}
+
+async function refreshCurrentSession(): Promise<void> {
+  const session = currentSession;
+  if (!session) return;
+  const generation = workspaceGeneration;
+  try {
+    const data = await chatApi.session(session.id);
+    if (generation !== workspaceGeneration || currentSession?.id !== session.id) return;
+    messages = rawToLive(data.messages);
+    if (data.status.type === 'idle') runningSessions.delete(session.id);
+    else runningSessions.add(session.id);
+    permissions.clear();
+    for (const request of data.permissions) permissions.set(request.id, request);
+    questions.clear();
+    for (const request of data.questions) questions.set(request.id, request);
+    renderMessages();
+    renderPrompts();
+    updateComposer();
+  } catch {
+    // The live stream may still recover; a manual reload is available via notice actions.
+  }
+}
+
+function normalizePermission(props: Record<string, unknown>): PermissionRequest | null {
+  const id = typeof props.id === 'string' ? props.id : '';
+  const sessionID = typeof props.sessionID === 'string' ? props.sessionID : '';
+  if (!id || !sessionID) return null;
+  const strings = (value: unknown): string[] =>
+    Array.isArray(value) ? value.filter((entry): entry is string => typeof entry === 'string') : [];
+  return {
+    id,
+    sessionID,
+    permission: typeof props.permission === 'string' ? props.permission : typeof props.action === 'string' ? props.action : 'tool',
+    patterns: strings(props.patterns ?? props.resources),
+    always: strings(props.always ?? props.save),
+    metadata: typeof props.metadata === 'object' && props.metadata !== null ? (props.metadata as Record<string, unknown>) : undefined,
+  };
+}
+
+function normalizeQuestion(props: Record<string, unknown>): QuestionRequest | null {
+  const id = typeof props.id === 'string' ? props.id : '';
+  const sessionID = typeof props.sessionID === 'string' ? props.sessionID : '';
+  const asked = Array.isArray(props.questions) ? props.questions : [];
+  if (!id || !sessionID || !asked.length) return null;
+  const normalized = asked
+    .map((entry) => {
+      if (!entry || typeof entry !== 'object') return null;
+      const question = entry as Record<string, unknown>;
+      const options = Array.isArray(question.options)
+        ? question.options
+            .map((option) => {
+              if (!option || typeof option !== 'object') return null;
+              const record = option as Record<string, unknown>;
+              const label = typeof record.label === 'string' ? record.label : '';
+              if (!label) return null;
+              return { label, description: typeof record.description === 'string' ? record.description : '' };
+            })
+            .filter((option): option is { label: string; description: string } => option !== null)
+        : [];
+      return {
+        question: typeof question.question === 'string' ? question.question : '',
+        header: typeof question.header === 'string' ? question.header : 'Pertanyaan',
+        options,
+        multiple: question.multiple === true,
+        custom: question.custom !== false,
+      };
+    })
+    .filter((question): question is NonNullable<typeof question> => question !== null);
+  if (!normalized.length) return null;
+  return { id, sessionID, questions: normalized };
+}
+
+function scheduleRender(): void {
+  if (renderQueued) return;
+  renderQueued = true;
+  window.requestAnimationFrame(() => {
+    renderQueued = false;
+    renderMessages();
+    updateComposer();
+  });
+}
+
+function renderMessages(options: { forceBottom?: boolean } = {}): void {
+  const nearBottom =
+    messagesEl.scrollHeight - messagesEl.scrollTop - messagesEl.clientHeight < 96;
+  messagesEl.replaceChildren();
+
+  if (!workspace) {
+    messagesEl.append(renderEmptyState('Buka workspace', 'Pilih folder proyek untuk mulai menggunakan OpenCode.'));
+  } else if (bootLoading) {
+    messagesEl.append(renderLoading('Menyiapkan OpenCode…', 'Menghubungkan CLI dan membaca konfigurasi workspace.'));
+  } else if (reading) {
+    messagesEl.append(renderLoading('Memuat sesi…', 'Mengambil riwayat percakapan.'));
+  } else if (!messages.length) {
+    const title = bootError ? 'OpenCode belum siap' : 'Mulai percakapan';
+    const body = bootError
+      ? 'Periksa pesan error di atas, lalu coba lagi.'
+      : `OpenCode akan bekerja langsung di folder ${workspace.name}. Ia bisa membaca, menulis, dan menjalankan perintah — setiap aksi sensitif meminta izin.`;
+    messagesEl.append(renderEmptyState(title, body));
+    if (!bootError) messagesEl.append(renderSuggestions());
+  } else {
+    const running = isCurrentRunning();
+    messages.forEach((message, index) => {
+      const node = renderMessage(message, running && index === messages.length - 1);
+      if (node) messagesEl.append(node);
+    });
+  }
+
+  if (options.forceBottom || nearBottom) {
+    messagesEl.scrollTop = messagesEl.scrollHeight;
+  }
+}
+
+function renderEmptyState(title: string, body: string): HTMLElement {
+  const wrap = el('div', 'chat__empty');
+  const mark = el('span', 'chat__empty-mark');
+  mark.append(icon(ICON.terminal, 22));
+  wrap.append(mark, el('h3', 'chat__empty-title', title), el('p', 'chat__empty-text', body));
+  if (workspace) {
+    const path = el('p', 'chat__empty-path', workspace.path);
+    path.title = workspace.path;
+    wrap.append(path);
+  }
+  return wrap;
+}
+
+function renderLoading(title: string, body: string): HTMLElement {
+  const wrap = el('div', 'chat__loading');
+  const spinner = el('span', 'spinner');
+  const text = el('div');
+  text.append(el('p', 'chat__loading-title', title), el('p', 'chat__loading-text', body));
+  wrap.append(spinner, text);
+  return wrap;
+}
+
+function renderSuggestions(): HTMLElement {
+  const wrap = el('div', 'chat__suggestions');
+  const prompts = [
+    'Jelaskan struktur proyek ini',
+    'Cari bug atau masalah yang perlu diperbaiki',
+    'Ringkas apa yang bisa ditingkatkan',
+  ];
+  for (const prompt of prompts) {
+    const button = el('button', 'chat__suggestion', prompt);
+    button.type = 'button';
+    button.addEventListener('click', () => {
+      input.value = prompt;
+      resizeInput();
+      input.focus();
+      updateComposer();
+    });
+    wrap.append(button);
+  }
+  return wrap;
+}
+
+function renderMessage(message: LiveMessage, runningLast: boolean): HTMLElement | null {
+  if (message.role === 'user') {
+    const article = el('article', 'msg msg--user');
+    const bubble = el('div', 'msg__bubble');
+    const text = message.parts
+      .filter((part) => part.type === 'text' && typeof part.text === 'string')
+      .map((part) => part.text as string)
+      .join('\n')
+      .trim();
+    if (text) renderRichText(bubble, text);
+    if (!bubble.childElementCount) return null;
+    article.append(bubble);
+    return article;
+  }
+
+  const content = el('div', 'msg__content');
+  let hasContent = false;
+
+  for (const part of message.parts) {
+    if (part.type === 'text' && typeof part.text === 'string' && part.text.trim()) {
+      const block = el('div', 'msg__text');
+      renderRichText(block, part.text);
+      if (block.childElementCount) {
+        content.append(block);
+        hasContent = true;
+      }
+    } else if (part.type === 'tool') {
+      content.append(renderTool(part));
+      hasContent = true;
+    } else if (part.type === 'reasoning' && typeof part.text === 'string' && part.text.trim()) {
+      content.append(renderReasoning(part.text));
+      hasContent = true;
+    } else if (part.type === 'file' && typeof part.filename === 'string') {
+      const chip = el('span', 'msg__file', part.filename);
+      content.append(chip);
+      hasContent = true;
+    }
+  }
+
+  if (message.error && !isAbortError(message.error)) {
+    const error = el('div', 'msg__error');
+    error.append(el('p', 'msg__error-title', 'OpenCode error'), el('p', 'msg__error-text', describeError(message.error)));
+    content.append(error);
+    hasContent = true;
+  }
+
+  if (!hasContent) {
+    if (!runningLast) return null;
+    const typing = el('div', 'typing');
+    typing.append(el('span'), el('span'), el('span'));
+    content.append(typing);
+  }
+
+  const article = el('article', 'msg msg--assistant');
+  const head = el('header', 'msg__head');
+  const avatar = el('span', 'msg__avatar', 'OC');
+  const name = el('span', 'msg__name', 'OpenCode');
+  head.append(avatar, name);
+  article.append(head, content);
+  return article;
+}
+
+function renderTool(part: Part): HTMLElement {
+  const state = part.state;
+  const status = state?.status ?? 'pending';
+  const details = el('details', 'tool');
+  details.dataset.status = status;
+  if (status === 'error') details.open = true;
+
+  const summary = el('summary', 'tool__summary');
+  const mark = el('span', 'tool__mark');
+  if (status === 'completed') mark.append(icon(ICON.check, 12));
+  else if (status === 'error') mark.append(icon(ICON.close, 12));
+  const name = el('span', 'tool__name', prettyToolName(part.tool));
+  const title = el('span', 'tool__title', typeof state?.title === 'string' ? state.title : '');
+  const badge = el('span', 'tool__badge', toolStatusLabel(status));
+  summary.append(mark, name, title, badge);
+  details.append(summary);
+
+  const body = el('div', 'tool__body');
+  const inputData = state?.input;
+  if (inputData && Object.keys(inputData).length) {
+    body.append(el('p', 'tool__label', 'Input'));
+    const pre = el('pre', 'tool__pre');
+    pre.textContent = truncate(JSON.stringify(inputData, null, 2), 4_000);
+    body.append(pre);
+  }
+  if (typeof state?.output === 'string' && state.output.trim()) {
+    body.append(el('p', 'tool__label', 'Output'));
+    const pre = el('pre', 'tool__pre');
+    pre.textContent = truncate(state.output.trim(), 8_000);
+    body.append(pre);
+  }
+  if (typeof state?.error === 'string' && state.error.trim()) {
+    body.append(el('p', 'tool__label', 'Error'));
+    const pre = el('pre', 'tool__pre tool__pre--error');
+    pre.textContent = state.error;
+    body.append(pre);
+  }
+  if (body.childElementCount) details.append(body);
+  return details;
+}
+
+function toolStatusLabel(status: string): string {
+  if (status === 'running') return 'Berjalan';
+  if (status === 'completed') return 'Selesai';
+  if (status === 'error') return 'Gagal';
+  return 'Menunggu';
+}
+
+function renderReasoning(text: string): HTMLElement {
+  const details = el('details', 'reasoning');
+  const summary = el('summary', undefined, 'Penalaran');
+  const pre = el('pre', 'reasoning__text');
+  pre.textContent = text;
+  details.append(summary, pre);
+  return details;
+}
+
+function renderRichText(container: HTMLElement, text: string): void {
+  const fence = /```([^\n`]*)\n?([\s\S]*?)```/g;
+  let last = 0;
+  let match: RegExpExecArray | null;
+
+  while ((match = fence.exec(text)) !== null) {
+    appendProse(container, text.slice(last, match.index));
+    const block = el('div', 'md-code');
+    const language = match[1].trim();
+    if (language) block.append(el('span', 'md-code__lang', language));
+    const pre = el('pre');
+    pre.append(el('code', undefined, match[2].replace(/\n$/, '')));
+    block.append(pre);
+    container.append(block);
+    last = fence.lastIndex;
+  }
+  appendProse(container, text.slice(last));
+  if (!container.childElementCount && text.trim()) {
+    container.append(el('p', 'md-p', text));
+  }
+}
+
+function appendProse(container: HTMLElement, prose: string): void {
+  const chunks = prose.split(/\n{2,}/).filter((chunk) => chunk.trim());
+  for (const chunk of chunks) {
+    const lines = chunk.split('\n');
+    let buffer: string[] = [];
+
+    const flush = () => {
+      if (!buffer.length) return;
+      const paragraph = el('p', 'md-p');
+      appendInline(paragraph, buffer.join('\n'));
+      container.append(paragraph);
+      buffer = [];
+    };
+
+    for (const line of lines) {
+      const heading = line.match(/^(#{1,4})\s+(.*)$/);
+      if (heading) {
+        flush();
+        const node = el('p', `md-head md-head--${heading[1].length}`);
+        appendInline(node, heading[2]);
+        container.append(node);
+      } else {
+        buffer.push(line);
+      }
+    }
+    flush();
+  }
+}
+
+function appendInline(parent: HTMLElement, text: string): void {
+  const inline = /(`[^`\n]+`|\*\*[^*\n]+\*\*)/g;
+  let last = 0;
+  let match: RegExpExecArray | null;
+  while ((match = inline.exec(text)) !== null) {
+    if (match.index > last) parent.append(document.createTextNode(text.slice(last, match.index)));
+    const token = match[0];
+    if (token.startsWith('`')) {
+      parent.append(el('code', 'md-inline', token.slice(1, -1)));
+    } else {
+      parent.append(el('strong', undefined, token.slice(2, -2)));
+    }
+    last = inline.lastIndex;
+  }
+  if (last < text.length) parent.append(document.createTextNode(text.slice(last)));
+}
+
+function renderPrompts(): void {
+  promptsEl.replaceChildren();
+  const sessionID = currentSession?.id;
+  if (!sessionID) {
+    promptsEl.hidden = true;
+    return;
+  }
+
+  const activePermissions = [...permissions.values()].filter((request) => request.sessionID === sessionID);
+  const activeQuestions = [...questions.values()].filter((request) => request.sessionID === sessionID);
+
+  for (const request of activePermissions) promptsEl.append(renderPermissionPrompt(request));
+  for (const request of activeQuestions) promptsEl.append(renderQuestionPrompt(request));
+  promptsEl.hidden = promptsEl.childElementCount === 0;
+}
+
+function renderPermissionPrompt(request: PermissionRequest): HTMLElement {
+  const card = el('article', 'prompt');
+  const head = el('header', 'prompt__head');
+  head.append(el('span', 'prompt__kind', 'Izin diperlukan'), el('span', 'prompt__tool', prettyToolName(request.permission)));
+  card.append(head);
+
+  card.append(el('p', 'prompt__text', 'OpenCode ingin menggunakan tool ini di workspace.'));
+
+  const targets = request.patterns?.length ? request.patterns : [];
+  if (targets.length) {
+    const list = el('ul', 'prompt__targets');
+    for (const target of targets.slice(0, 8)) {
+      const item = el('li');
+      item.append(el('code', undefined, target));
+      list.append(item);
+    }
+    if (targets.length > 8) list.append(el('li', 'prompt__more', `+${targets.length - 8} lainnya`));
+    card.append(list);
+  }
+
+  const actions = el('div', 'prompt__actions');
+  const error = el('p', 'prompt__error');
+  error.hidden = true;
+
+  const reply = async (kind: 'once' | 'always' | 'reject') => {
+    const buttons = actions.querySelectorAll('button');
+    buttons.forEach((button) => ((button as HTMLButtonElement).disabled = true));
+    try {
+      await chatApi.replyPermission(request.id, kind);
+      permissions.delete(request.id);
+      renderPrompts();
+    } catch (caught) {
+      error.textContent = describeError(caught);
+      error.hidden = false;
+      buttons.forEach((button) => ((button as HTMLButtonElement).disabled = false));
+    }
+  };
+
+  const reject = el('button', 'button button--ghost', 'Tolak');
+  reject.type = 'button';
+  reject.addEventListener('click', () => void reply('reject'));
+  const once = el('button', 'button', 'Izinkan');
+  once.type = 'button';
+  once.addEventListener('click', () => void reply('once'));
+  actions.append(reject, once);
+
+  if (request.always?.length) {
+    const always = el('button', 'button button--soft', 'Selalu izinkan');
+    always.type = 'button';
+    always.addEventListener('click', () => void reply('always'));
+    actions.append(always);
+  }
+
+  card.append(actions, error);
+  return card;
+}
+
+function renderQuestionPrompt(request: QuestionRequest): HTMLElement {
+  const card = el('article', 'prompt');
+  const head = el('header', 'prompt__head');
+  head.append(el('span', 'prompt__kind', 'OpenCode bertanya'));
+  card.append(head);
+
+  const answers: string[][] = request.questions.map(() => []);
+  const customInputs: HTMLInputElement[] = [];
+  const error = el('p', 'prompt__error');
+  error.hidden = true;
+
+  request.questions.forEach((question, index) => {
+    const block = el('div', 'question');
+    block.append(el('p', 'question__header', question.header), el('p', 'question__text', question.question));
+
+    const options = el('div', 'question__options');
+    for (const option of question.options) {
+      const button = el('button', 'question__option');
+      button.type = 'button';
+      button.title = option.description;
+      button.append(el('span', 'question__option-label', option.label));
+      if (option.description) button.append(el('span', 'question__option-desc', option.description));
+      button.addEventListener('click', () => {
+        if (question.multiple) {
+          const selected = answers[index].includes(option.label);
+          answers[index] = selected
+            ? answers[index].filter((value) => value !== option.label)
+            : [...answers[index], option.label];
+        } else {
+          answers[index] = [option.label];
+        }
+        options.querySelectorAll('button').forEach((entry) => {
+          const label = entry.querySelector('.question__option-label')?.textContent ?? '';
+          entry.classList.toggle('is-selected', answers[index].includes(label));
+        });
+      });
+      options.append(button);
+    }
+    if (options.childElementCount) block.append(options);
+
+    if (question.custom) {
+      const custom = document.createElement('input');
+      custom.type = 'text';
+      custom.className = 'question__input';
+      custom.placeholder = 'Jawaban lain…';
+      custom.setAttribute('aria-label', `Jawaban lain untuk ${question.header}`);
+      customInputs[index] = custom;
+      block.append(custom);
+    }
+
+    card.append(block);
+  });
+
+  const actions = el('div', 'prompt__actions');
+  const submit = el('button', 'button', 'Kirim jawaban');
+  submit.type = 'button';
+  submit.addEventListener('click', async () => {
+    error.hidden = true;
+    const payload = request.questions.map((_, index) => {
+      const custom = customInputs[index]?.value.trim() ?? '';
+      const values = [...answers[index]];
+      if (custom) values.push(custom);
+      return values;
+    });
+    if (payload.some((values) => values.length === 0)) {
+      error.textContent = 'Pilih minimal satu jawaban untuk setiap pertanyaan.';
+      error.hidden = false;
+      return;
+    }
+    submit.disabled = true;
+    try {
+      await chatApi.replyQuestion(request.id, payload);
+      questions.delete(request.id);
+      renderPrompts();
+    } catch (caught) {
+      error.textContent = describeError(caught);
+      error.hidden = false;
+      submit.disabled = false;
+    }
+  });
+  actions.append(submit);
+  card.append(actions, error);
+  return card;
+}
+
+function setNotice(kind: NoticeKind | null, message = '', action?: { label: string; run: () => void }): void {
+  noticeKind = kind ?? '';
+  if (!kind || !message) {
+    noticeEl.hidden = true;
+    noticeEl.replaceChildren();
+    return;
+  }
+  noticeEl.hidden = false;
+  noticeEl.dataset.kind = kind;
+  const text = el('span', 'chat__notice-text', message);
+  noticeEl.replaceChildren(text);
+  if (action) {
+    const button = el('button', 'chat__notice-action', action.label);
+    button.type = 'button';
+    button.addEventListener('click', action.run);
+    noticeEl.append(button);
+  }
+}
+
+function isCurrentRunning(): boolean {
+  return Boolean(currentSession && runningSessions.has(currentSession.id));
+}
+
+function isAnyRunning(): boolean {
+  return runningSessions.size > 0;
+}
+
+function updateComposer(): void {
+  const running = isCurrentRunning();
+  const unavailable = !workspace || bootLoading || reading;
+  sendButton.disabled =
+    unavailable || sending || running || !selectedModel || !input.value.trim();
+  stopButton.hidden = !running;
+  stopButton.disabled = false;
+  input.disabled = !workspace || bootLoading;
+
+  if (!workspace) statusEl.textContent = 'Pilih workspace';
+  else if (bootLoading) statusEl.textContent = 'Menyiapkan OpenCode…';
+  else if (reading) statusEl.textContent = 'Memuat sesi…';
+  else if (sending) statusEl.textContent = sendPhase || 'Mengirim…';
+  else if (running) statusEl.textContent = noticeKind === 'retry' ? 'Menunggu percobaan ulang…' : 'OpenCode sedang bekerja…';
+  else statusEl.textContent = 'Siap';
+
+  statusEl.dataset.state = running ? 'busy' : unavailable ? 'loading' : 'idle';
+  updateLauncher();
+}
+
+function resizeInput(): void {
+  input.style.height = 'auto';
+  input.style.height = `${Math.min(input.scrollHeight, 132)}px`;
+}
+
+function pinOfficeAgent(): void {
+  if (!office || officeAgentId) return;
+  for (const agent of office.agents()) {
+    if (office.setActivity(agent.id, 'working')) {
+      officeAgentId = agent.id;
+      agentChip.textContent = `${agent.name} bekerja di kantor`;
+      agentChip.hidden = false;
+      return;
+    }
+  }
+}
+
+function releaseOfficeAgent(): void {
+  if (office && officeAgentId) office.release(officeAgentId);
+  officeAgentId = null;
+  agentChip.hidden = true;
+  agentChip.textContent = '';
+}

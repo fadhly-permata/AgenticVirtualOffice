@@ -4,9 +4,10 @@
   "version": "0.1.0",
   "type": "module",
   "scripts": {
-    "dev": "vite",
+    "dev": "node server/index.mjs --dev",
     "build": "tsc --noEmit && vite build",
-    "preview": "vite preview",
+    "start": "node server/index.mjs",
+    "preview": "node server/index.mjs",
     "typecheck": "tsc --noEmit",
     "test": "vitest run"
   }

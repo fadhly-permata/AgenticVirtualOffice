@@ -1,24 +1,40 @@
-# VirtOffice — Kantor Isometrik 2.5D
+# VirtOffice — Kantor Isometrik 2.5D + OpenCode
 
 Diorama kantor bergaya isometrik yang dibangun penuh dengan Three.js, tanpa aset 3D eksternal. Empat ruangan — **Ruang Kerja**, **Ruang Meeting**, **Pantry**, dan **Ruang Santai** — dihuni 2–15 karyawan low-poly (default 5) yang bekerja, ngopi, meeting, main game, dan menonton TV. Pencahayaan bergerak mengikuti siklus pagi–siang–sore–malam.
 
-Tujuan akhirnya: setiap karyawan mewakili satu agent OpenCode. Saat ini animasinya berjalan sendiri (auto-play), tetapi sudah ada API siap pakai untuk mengendalikan tiap agent dari luar.
+Selain auto-play, aplikasi ini sekarang punya **pemilih folder workspace** dan **jendela chat OpenCode**. Chat terhubung ke OpenCode CLI lokal lewat bridge HTTP di `127.0.0.1`, mendukung streaming teks, tool call, permission, pertanyaan agent, serta stop. Saat satu agent OpenCode bekerja, salah satu karyawan di kantor otomatis dipin ke meja kerja.
+
+## Prasyarat
+
+- Node.js 20+ dan npm.
+- OpenCode CLI terpasang dan sudah punya provider/model yang terhubung:
+
+```bash
+npm i -g opencode-ai
+opencode auth login
+```
 
 ## Menjalankan
 
 ```bash
 npm install
-npm run dev      # http://localhost:5173
+npm run dev      # bridge + Vite di http://127.0.0.1:5173
 npm run build    # typecheck + production build ke dist/
-npm run preview  # menyajikan hasil build
-npm test         # 33 test: layout, navigasi, autopilot, siklus waktu, agen, layar, scene
+npm start        # menyajikan dist/ + API di http://127.0.0.1:4173
+npm test         # 50 test: layout, navigasi, autopilot, siklus waktu, agen, layar, scene, chat, server
+```
+
+`npm run dev` menjalankan server Node lokal (bukan `vite` langsung). Server yang sama melayani API, proxy event OpenCode, dan Vite dev middleware. Untuk port lain:
+
+```bash
+npm run dev -- --port 5180
 ```
 
 Jumlah agent diatur lewat query `?agents=N` (dibatasi ke 2–15, default 5):
 
 ```bash
-http://localhost:5173/?agents=2
-http://localhost:5173/?agents=15
+http://127.0.0.1:5173/?agents=2
+http://127.0.0.1:5173/?agents=15
 ```
 
 Roster berisi 15 agent dengan spot awal unik. Ruang kerja punya sepuluh meja dalam dua baris, jadi sepuluh agent pertama langsung terlihat bekerja; lima sisanya dibagikan autopilot ke meeting, pantry, dan lounge.
@@ -38,7 +54,19 @@ Kamera isometrik memakai `OrthographicCamera` dan bisa di-orbit terbatas di seki
 ## Struktur
 
 ```
+server/
+  index.mjs         HTTP server, routing API, SSE proxy, Vite middleware / static dist
+  http.mjs          helper JSON body, error, dan response
+  opencode.mjs      proses `opencode serve`, katalog model/agent/sesi, event stream
+  workspace.mjs     validasi folder, browse direktori, simpan workspace + recents
 src/
+  chat/
+    chat.ts         controller jendela chat, streaming SSE, sesi, permission, composer
+    client.ts       wrapper fetch ke /api/chat
+    state.ts        reducer event OpenCode + helper format
+    folder.ts       modal pemilih folder workspace
+    types.ts        tipe payload chat
+    dom.ts          helper elemen + ikon SVG
   core/
     dayNight.ts     jam simulasi, faktor siang/malam, warna langit
     math.ts         clamp, smoothstep, damping sudut
@@ -57,8 +85,8 @@ src/
     activities.ts   label, durasi, bobot aktivitas per waktu
     seeds.ts        roster 15 karyawan, batas jumlah agent, dan posisi awal unik
   api.ts            jembatan window.virtOffice
-  main.ts           renderer, kamera, HUD, loop
-tests/              vitest
+  main.ts           renderer, kamera, HUD, loop, pemasangan chat
+tests/              vitest (scene, chat reducer, helper server)
 ```
 
 ## Mengubah denah
@@ -72,9 +100,40 @@ Semua koordinat ada di `src/world/layout.ts`:
 
 Setelah menambah spot, tambahkan juga edge ke aisle terdekat, lalu jalankan `npm test` — test konektivitas dan pintu akan menangkap kesalahan.
 
-## Integrasi dengan OpenCode (tahap berikutnya)
+## Workspace & chat OpenCode
 
-Saat ini tersedia API global:
+Klik pill **OpenCode** di kanan bawah untuk membuka chat. Kalau belum ada workspace, modal folder langsung muncul; kalau sudah ada, chat memakai workspace terakhir.
+
+- **Buka folder** — telusuri drive/folder, tempel path langsung (`C:\...` atau `~/...`), atau pilih dari recents. Folder harus sudah ada dan bisa dibaca.
+- **Sesi** — dropdown sesi memuat riwayat OpenCode untuk folder tersebut; tombol `＋` membuat chat baru.
+- **Model & agent** — daftar model diambil dari provider yang terhubung di OpenCode; pilihan terakhir disimpan di browser. Default mengikuti `model` di config OpenCode.
+- **Streaming** — teks, tool call, status busy/retry, error, dan hasil tool tampil real-time lewat SSE. Tool call yang butuh izin memunculkan kartu **Izinkan / Selalu izinkan / Tolak**; pertanyaan agent memunculkan pilihan jawaban.
+- **Stop** — tombol stop memanggil abort pada sesi yang sedang berjalan.
+- **Kantor** — selama satu sesi bekerja, satu karyawan dipin ke aktivitas `working` (chip “X bekerja di kantor”); saat idle ia dilepas kembali ke autopilot.
+
+Workspace dan recents disimpan di `.virtoffice/workspace.json` (gitignored). Bridge menjalankan `opencode serve --hostname 127.0.0.1 --port 0` dan mengarahkan setiap request ke folder aktif lewat query `directory`, sehingga config, `AGENTS.md`, dan tool OpenCode mengikuti proyek yang dibuka.
+
+### API server
+
+| Method | Path | Fungsi |
+| --- | --- | --- |
+| GET | `/api/health` | status server + OpenCode |
+| GET/POST | `/api/workspace` | baca / buka workspace |
+| GET | `/api/workspace/browse?path=` | isi folder (tanpa file, dot-dir, `node_modules`) |
+| GET | `/api/chat/bootstrap` | workspace, model, agent, sesi |
+| POST | `/api/chat/sessions` | buat sesi |
+| GET | `/api/chat/sessions/:id` | riwayat pesan + status + permission |
+| POST | `/api/chat/sessions/:id/messages` | kirim prompt (`prompt_async`) |
+| POST | `/api/chat/sessions/:id/abort` | hentikan respons |
+| GET | `/api/chat/events` | SSE event OpenCode |
+| POST | `/api/chat/permissions/:id` | balas izin (`once`/`always`/`reject`) |
+| POST | `/api/chat/questions/:id` | balas pertanyaan agent |
+
+Payload `/provider` tidak pernah diteruskan mentah ke browser: server hanya mengirim id/nama model dari provider yang terhubung, tanpa `key` atau `options`.
+
+## API kantor
+
+API global untuk mengendalikan karyawan tetap tersedia:
 
 ```js
 virtOffice.agents();
@@ -99,8 +158,6 @@ document.addEventListener('virtoffice:agent', (event) => {
   console.log(event.detail); // { id, name, activity, spot, room }
 });
 ```
-
-Pola yang disarankan untuk menghubungkan OpenCode nanti: buat bridge kecil (WebSocket atau HTTP lokal) yang menerjemahkan status tool/agent OpenCode menjadi `virtOffice.setActivity(...)`, misalnya `working` saat tool dieksekusi, `meeting` saat sesi review, dan `idle`/`coffee`/`gaming` saat tidak ada tugas. API ini sengaja dipisah dari scene supaya bridge tersebut tidak perlu menyentuh kode Three.js.
 
 ## Catatan teknis
 

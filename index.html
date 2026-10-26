@@ -31,6 +31,143 @@
 
       <p class="hint">AUTO-PLAY · <span id="agent-count">—</span> AGEN</p>
 
+      <button id="chat-launcher" class="launcher" type="button" aria-haspopup="dialog">
+        <span class="launcher__mark" aria-hidden="true">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M21 11.5a8.4 8.4 0 0 1-8.5 8.3H7.4L3 23v-6.1A8.4 8.4 0 0 1 12.5 3 8.4 8.4 0 0 1 21 11.5Z" />
+            <path d="M8 10h9M8 14h5.5" />
+          </svg>
+        </span>
+        <span class="launcher__text">
+          <span class="launcher__eyebrow" id="launcher-eyebrow">OpenCode</span>
+          <span class="launcher__label" id="launcher-label">Buka workspace</span>
+        </span>
+        <span class="launcher__dot" id="launcher-status" aria-hidden="true"></span>
+      </button>
+
+      <section id="chat-window" class="chat" aria-label="Chat OpenCode" hidden>
+        <header class="chat__head">
+          <div class="chat__identity">
+            <span class="chat__folder-mark" aria-hidden="true">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2Z" />
+              </svg>
+            </span>
+            <div class="chat__titles">
+              <p class="chat__eyebrow">OpenCode workspace</p>
+              <p class="chat__folder" id="chat-folder">—</p>
+            </div>
+            <button id="chat-change-folder" class="icon-btn" type="button" title="Ganti workspace" aria-label="Ganti workspace">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2Z" />
+                <path d="m14 13 2 2-2 2" />
+              </svg>
+            </button>
+          </div>
+          <div class="chat__head-actions">
+            <button id="chat-new" class="icon-btn" type="button" title="Chat baru" aria-label="Chat baru">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round">
+                <path d="M12 5v14M5 12h14" />
+              </svg>
+            </button>
+            <button id="chat-close" class="icon-btn" type="button" title="Tutup chat" aria-label="Tutup chat">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round">
+                <path d="m6 6 12 12M18 6 6 18" />
+              </svg>
+            </button>
+          </div>
+        </header>
+
+        <div class="chat__selects">
+          <label class="field field--session">
+            <span>Sesi</span>
+            <select id="chat-session"></select>
+          </label>
+          <label class="field">
+            <span>Model</span>
+            <select id="chat-model"></select>
+          </label>
+          <label class="field field--agent">
+            <span>Agent</span>
+            <select id="chat-agent"></select>
+          </label>
+        </div>
+
+        <div id="chat-notice" class="chat__notice" role="status" hidden></div>
+
+        <div id="chat-messages" class="chat__messages" role="log" aria-live="polite"></div>
+        <div id="chat-prompts" class="chat__prompts"></div>
+
+        <div class="chat__statusbar">
+          <span id="chat-agent-chip" class="chat__agent-chip" hidden></span>
+          <span id="chat-status" class="chat__status">Siap</span>
+        </div>
+
+        <form id="chat-form" class="chat__composer">
+          <textarea
+            id="chat-input"
+            rows="1"
+            placeholder="Minta OpenCode mengerjakan sesuatu…"
+            autocomplete="off"
+            spellcheck="false"
+            aria-label="Pesan untuk OpenCode"
+          ></textarea>
+          <div class="chat__composer-actions">
+            <button id="chat-stop" class="chat__stop" type="button" hidden>Stop</button>
+            <button id="chat-send" class="chat__send" type="submit" title="Kirim" aria-label="Kirim pesan">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M12 19V5M6 11l6-6 6 6" />
+              </svg>
+            </button>
+          </div>
+        </form>
+      </section>
+
+      <div id="folder-modal" class="modal" hidden>
+        <div class="modal__backdrop" data-folder-close></div>
+        <section class="modal__card" role="dialog" aria-modal="true" aria-labelledby="folder-title">
+          <header class="modal__head">
+            <div>
+              <p class="chat__eyebrow">Workspace</p>
+              <h2 id="folder-title">Buka folder proyek</h2>
+            </div>
+            <button id="folder-close" class="icon-btn" type="button" title="Tutup" aria-label="Tutup pemilih folder">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round">
+                <path d="m6 6 12 12M18 6 6 18" />
+              </svg>
+            </button>
+          </header>
+
+          <form id="folder-path-form" class="folder__path">
+            <button id="folder-up" class="icon-btn" type="button" title="Naik satu level" aria-label="Naik satu level" disabled>
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">
+                <path d="m5 12 7-7 7 7M12 5v14" />
+              </svg>
+            </button>
+            <input id="folder-path" type="text" placeholder="Tempel path folder…" spellcheck="false" aria-label="Path folder" />
+            <button class="button button--ghost" type="submit">Buka path</button>
+          </form>
+
+          <p id="folder-crumb" class="folder__crumb">Pilih drive atau folder</p>
+          <ul id="folder-list" class="folder__list"></ul>
+
+          <div id="folder-recents" class="folder__recents" hidden>
+            <p class="chat__eyebrow">Terakhir dibuka</p>
+            <div id="folder-recent-list" class="folder__recent-list"></div>
+          </div>
+
+          <p id="folder-error" class="folder__error" role="alert" hidden></p>
+
+          <footer class="modal__foot">
+            <p id="folder-selection" class="folder__selection">Belum ada folder dipilih</p>
+            <div class="modal__actions">
+              <button id="folder-cancel" class="button button--ghost" type="button">Batal</button>
+              <button id="folder-open" class="button" type="button" disabled>Buka folder ini</button>
+            </div>
+          </footer>
+        </section>
+      </div>
+
       <p id="fatal" class="fatal" hidden></p>
     </main>
     <script type="module" src="/src/main.ts"></script>

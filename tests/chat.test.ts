@@ -1,0 +1,197 @@
+import { describe, expect, it } from 'vitest';
+import type { ChatEvent } from '../src/chat/types';
+import {
+  applyChatEvent,
+  describeError,
+  isAbortError,
+  prettyToolName,
+  rawToLive,
+  relativeTime,
+  toolTitle,
+  truncate,
+} from '../src/chat/state';
+
+const session = 'ses_test';
+
+function event(type: string, properties: Record<string, unknown>): ChatEvent {
+  return { type, properties };
+}
+
+describe('chat reducer', () => {
+  it('inserts messages and merges later updates', () => {
+    const created = applyChatEvent(
+      [],
+      event('message.updated', { info: { id: 'm1', role: 'assistant', sessionID: session, time: { created: 10 } } }),
+      session
+    );
+    expect(created).toHaveLength(1);
+    expect(created[0].role).toBe('assistant');
+
+    const completed = applyChatEvent(
+      created,
+      event('message.updated', {
+        info: { id: 'm1', role: 'assistant', sessionID: session, time: { created: 10, completed: 20 } },
+      }),
+      session
+    );
+    expect(completed[0].completed).toBe(20);
+    expect(created[0].completed).toBeUndefined();
+  });
+
+  it('ignores events from other sessions', () => {
+    const messages = applyChatEvent(
+      [],
+      event('message.updated', { info: { id: 'm1', role: 'assistant', sessionID: 'other' } }),
+      session
+    );
+    expect(messages).toEqual([]);
+
+    const current = applyChatEvent(
+      messages,
+      event('message.updated', { info: { id: 'm2', role: 'assistant', sessionID: session } }),
+      session
+    );
+    const after = applyChatEvent(
+      current,
+      event('message.part.delta', {
+        sessionID: 'other',
+        messageID: 'm2',
+        partID: 'p1',
+        field: 'text',
+        delta: 'nope',
+      }),
+      session
+    );
+    expect(after).toBe(current);
+  });
+
+  it('streams text deltas and replaces them with the final part', () => {
+    let messages = applyChatEvent(
+      [],
+      event('message.updated', { info: { id: 'm1', role: 'assistant', sessionID: session } }),
+      session
+    );
+    messages = applyChatEvent(
+      messages,
+      event('message.part.updated', {
+        sessionID: session,
+        part: { id: 'p1', messageID: 'm1', sessionID: session, type: 'text', text: '' },
+      }),
+      session
+    );
+    messages = applyChatEvent(
+      messages,
+      event('message.part.delta', {
+        sessionID: session,
+        messageID: 'm1',
+        partID: 'p1',
+        field: 'text',
+        delta: 'Halo',
+      }),
+      session
+    );
+    expect(messages[0].parts[0].text).toBe('Halo');
+
+    messages = applyChatEvent(
+      messages,
+      event('message.part.updated', {
+        sessionID: session,
+        part: { id: 'p1', messageID: 'm1', sessionID: session, type: 'text', text: 'Halo dari OpenCode' },
+      }),
+      session
+    );
+    expect(messages[0].parts).toHaveLength(1);
+    expect(messages[0].parts[0].text).toBe('Halo dari OpenCode');
+  });
+
+  it('creates a placeholder message when a part arrives first', () => {
+    const messages = applyChatEvent(
+      [],
+      event('message.part.updated', {
+        sessionID: session,
+        part: { id: 'p1', messageID: 'm9', sessionID: session, type: 'text', text: 'Parsial' },
+      }),
+      session
+    );
+    expect(messages).toHaveLength(1);
+    expect(messages[0].id).toBe('m9');
+    expect(messages[0].parts[0].text).toBe('Parsial');
+  });
+
+  it('rejects parts without a message id or with a non-text delta', () => {
+    const empty = applyChatEvent(
+      [],
+      event('message.part.updated', { sessionID: session, part: { id: 'p1', type: 'text', text: 'x' } }),
+      session
+    );
+    expect(empty).toEqual([]);
+
+    const tool = applyChatEvent(
+      [],
+      event('message.updated', { info: { id: 'm1', role: 'assistant', sessionID: session } }),
+      session
+    );
+    const withTool = applyChatEvent(
+      tool,
+      event('message.part.updated', {
+        sessionID: session,
+        part: { id: 'p1', messageID: 'm1', type: 'tool', tool: 'bash' },
+      }),
+      session
+    );
+    const after = applyChatEvent(
+      withTool,
+      event('message.part.delta', {
+        sessionID: session,
+        messageID: 'm1',
+        partID: 'p1',
+        field: 'text',
+        delta: 'leak',
+      }),
+      session
+    );
+    expect(after).toBe(withTool);
+  });
+});
+
+describe('rawToLive', () => {
+  it('sorts user and assistant messages and drops system entries', () => {
+    const messages = rawToLive([
+      { info: { id: 'b', role: 'assistant', time: { created: 20 } }, parts: [] },
+      { info: { id: 'x', role: 'system', time: { created: 5 } }, parts: [] },
+      { info: { id: 'a', role: 'user', time: { created: 10 } }, parts: [] },
+    ]);
+    expect(messages.map((message) => message.id)).toEqual(['a', 'b']);
+  });
+});
+
+describe('chat helpers', () => {
+  it('describes errors from strings, Error objects and OpenCode payloads', () => {
+    expect(describeError('boom')).toBe('boom');
+    expect(describeError(new Error('rusak'))).toBe('rusak');
+    expect(describeError({ data: { message: 'Model tidak tersedia' } })).toBe('Model tidak tersedia');
+    expect(describeError({ error: 'Rate limited' })).toBe('Rate limited');
+    expect(describeError({})).toBe('OpenCode mengembalikan kesalahan yang tidak dikenal.');
+  });
+
+  it('recognises abort errors so they are not shown as failures', () => {
+    expect(isAbortError({ name: 'MessageAbortedError', data: { message: 'Aborted' } })).toBe(true);
+    expect(isAbortError({ name: 'ProviderError' })).toBe(false);
+    expect(isAbortError(null)).toBe(false);
+  });
+
+  it('labels tools, titles and relative times', () => {
+    expect(prettyToolName('bash')).toBe('Menjalankan perintah');
+    expect(prettyToolName('weird_tool')).toBe('weird tool');
+    expect(toolTitle({ id: 'p', type: 'tool', state: { status: 'running', title: '  ls -la  ' } })).toBe('ls -la');
+    expect(toolTitle({ id: 'p', type: 'tool', tool: 'read' })).toBe('Membaca file');
+    expect(relativeTime(Date.now(), Date.now())).toBe('baru saja');
+    expect(relativeTime(0)).toBe('');
+  });
+
+  it('truncates long output', () => {
+    expect(truncate('abc', 10)).toBe('abc');
+    const long = 'x'.repeat(20);
+    expect(truncate(long, 10)).toContain('10 karakter lagi');
+  });
+});
