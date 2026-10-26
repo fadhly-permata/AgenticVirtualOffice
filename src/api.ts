@@ -1,5 +1,5 @@
 import { ACTIVITY_LABEL } from './agents/activities';
-import type { Agent } from './agents/agent';
+import type { Agent, AgentSignal } from './agents/agent';
 import type { DayCycle } from './core/dayNight';
 import { type ActivityId, type RoomId, SPOTS } from './world/layout';
 
@@ -9,6 +9,7 @@ export interface AgentSnapshot {
   activity: ActivityId;
   activityLabel: string;
   state: 'walking' | 'settled';
+  signal: AgentSignal | null;
   room: RoomId;
   spot: string;
 }
@@ -22,6 +23,7 @@ export interface VirtOfficeApi {
   readonly ready: true;
   agents(): AgentSnapshot[];
   setActivity(agentId: string, activity: ActivityId): boolean;
+  setAgentSignal(agentId: string, signal: AgentSignal | null): boolean;
   release(agentId: string): boolean;
   setTimeOfDay(hours: number): void;
   setTimeScale(hoursPerSecond: number): void;
@@ -41,6 +43,7 @@ export function installApi(agents: Agent[], clock: DayCycle): VirtOfficeApi {
         activity: agent.spot.activity,
         activityLabel: ACTIVITY_LABEL[agent.spot.activity],
         state: agent.mode,
+        signal: agent.signal,
         room: agent.spot.room,
         spot: agent.spot.id,
       })),
@@ -55,6 +58,13 @@ export function installApi(agents: Agent[], clock: DayCycle): VirtOfficeApi {
 
       agent.pinned = true;
       agent.assign(target, Number.POSITIVE_INFINITY);
+      return true;
+    },
+
+    setAgentSignal: (agentId, signal) => {
+      const agent = find(agentId);
+      if (!agent) return false;
+      agent.setSignal(signal);
       return true;
     },
 

@@ -126,6 +126,37 @@ export function glowSprite(): THREE.DataTexture {
   );
 }
 
+const PILL = { left: 0.06, right: 0.94, bottom: 0.4, top: 0.88, radius: 0.22 };
+const PILL_DOTS = [0.3, 0.5, 0.7];
+const PILL_DOT_V = 0.64;
+
+/**
+ * Status pill floated over an agent that is busy for OpenCode. `lit` decides how
+ * many dots glow, so cycling 1 → 2 → 3 reads as "masih kerja" from across the room.
+ */
+export function signalBubble(color: [number, number, number], lit: number): THREE.DataTexture {
+  return cached(`bubble:${color.join('-')}:${lit}`, () =>
+    dataTexture(
+      64,
+      (u, v) => {
+        for (let index = 0; index < PILL_DOTS.length; index += 1) {
+          if (Math.hypot(u - PILL_DOTS[index], v - PILL_DOT_V) > 0.055) continue;
+          const strength = index < lit ? 1 : 0.4;
+          return [color[0] * strength, color[1] * strength, color[2] * strength];
+        }
+        return [30, 26, 24];
+      },
+      (u, v) => {
+        const dx = Math.max(PILL.left + PILL.radius - u, u - (PILL.right - PILL.radius), 0);
+        const dy = Math.max(PILL.bottom + PILL.radius - v, v - (PILL.top - PILL.radius), 0);
+        return clamp01((PILL.radius - Math.hypot(dx, dy)) * 42) * 0.9;
+      },
+      1,
+      1,
+    ),
+  );
+}
+
 /** Radial alpha blob (black RGB) used for cheap contact shadows. */
 export function softShadow(): THREE.DataTexture {
   return cached('shadow', () =>

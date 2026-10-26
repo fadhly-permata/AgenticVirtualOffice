@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { dampAngle } from '../core/math';
+import { signalBubble } from '../core/textures';
 import type { Spot, Vec2 } from '../world/layout';
 import type { NavGraph } from '../world/nav';
 import { createCharacter, type AgentLook, type CharacterRig } from './character';
@@ -10,6 +11,18 @@ export interface AgentSeed {
   color: string;
   look: AgentLook;
 }
+
+/** What the OpenCode run attached to this agent is doing right now. */
+export type AgentSignal = 'waiting' | 'thinking' | 'tool' | 'writing';
+
+const SIGNAL_COLOR: Record<AgentSignal, [number, number, number]> = {
+  waiting: [176, 170, 160],
+  thinking: [242, 208, 146],
+  tool: [150, 208, 236],
+  writing: [168, 226, 188],
+};
+
+const SIGNAL_FRAME_SECONDS = 0.32;
 
 interface Pose {
   hipL: number;
@@ -75,17 +88,21 @@ export class Agent {
   mode: 'walking' | 'settled' = 'settled';
   spot: Spot;
   busyUntil: number;
+  signal: AgentSignal | null = null;
   onSettled?: (agent: Agent) => void;
 
   private readonly nav: NavGraph;
   private readonly rig: CharacterRig;
   private readonly speed = 3.05;
+  private bubble: THREE.Sprite | null = null;
+  private bubbleFrames: THREE.DataTexture[] = [];
   private path: Vec2[] = [];
   private stayFor: number;
   private facing: number;
   private targetFacing: number;
   private walkPhase = 0;
   private elapsed = 0;
+  private signalTime = 0;
   private pose: Pose;
   private target: Pose;
 
@@ -118,8 +135,50 @@ export class Agent {
 
   /** Detach from the autopilot and let it resume later. */
   release(): void {
+    this.setSignal(null);
     this.pinned = false;
     this.busyUntil = 0;
+  }
+
+  /** The pill floated over this agent's head while an OpenCode run holds it busy. */
+  setSignal(signal: AgentSignal | null): void {
+    if (signal === this.signal) return;
+    this.signal = signal;
+    this.signalTime = 0;
+
+    if (!signal) {
+      if (this.bubble) this.bubble.visible = false;
+      return;
+    }
+
+    this.bubbleFrames = [1, 2, 3].map((lit) => signalBubble(SIGNAL_COLOR[signal], lit));
+    const sprite = this.ensureBubble();
+    sprite.visible = true;
+    this.applyBubbleFrame();
+  }
+
+  private ensureBubble(): THREE.Sprite {
+    if (this.bubble) return this.bubble;
+    const sprite = new THREE.Sprite(
+      new THREE.SpriteMaterial({ transparent: true, depthWrite: false, depthTest: false })
+    );
+    sprite.scale.set(0.62, 0.31, 1);
+    sprite.position.set(0, 0.66, 0.04);
+    sprite.renderOrder = 20;
+    sprite.visible = false;
+    this.rig.head.add(sprite);
+    this.bubble = sprite;
+    return sprite;
+  }
+
+  private applyBubbleFrame(): void {
+    if (!this.bubble || !this.signal) return;
+    const step = Math.floor(this.signalTime / SIGNAL_FRAME_SECONDS);
+    const frame = this.bubbleFrames[step % this.bubbleFrames.length];
+    const material = this.bubble.material as THREE.SpriteMaterial;
+    if (!frame || material.map === frame) return;
+    material.map = frame;
+    material.needsUpdate = true;
   }
 
   assign(next: Spot, stayFor: number): void {
@@ -148,6 +207,10 @@ export class Agent {
   update(dt: number, now: number): void {
     if (this.mode === 'walking') this.step(dt, now);
     this.elapsed += dt;
+    if (this.signal) {
+      this.signalTime += dt;
+      this.applyBubbleFrame();
+    }
     this.computeTarget();
 
     const k = 1 - Math.exp(-11 * dt);

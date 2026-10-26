@@ -1,3 +1,4 @@
+import * as THREE from 'three';
 import { describe, expect, it } from 'vitest';
 import { Agent } from '../src/agents/agent';
 import { buildNavGraph, OFFICE_DEPTH, OFFICE_WIDTH, spot } from '../src/world/layout';
@@ -58,4 +59,33 @@ describe('Agent', () => {
     expect(agent.pinned).toBe(false);
     expect(agent.busyUntil).toBe(0);
   });
+
+  it('floats a signal pill over the head while a run holds it busy', () => {
+    const nav = buildNavGraph();
+    const agent = new Agent(seed, nav, spot('desk-3'), 5);
+    expect(pillOf(agent)).toBeUndefined();
+
+    agent.setSignal('thinking');
+    const pill = pillOf(agent);
+    const material = pill?.material as THREE.SpriteMaterial | undefined;
+    expect(pill?.visible).toBe(true);
+    expect(agent.signal).toBe('thinking');
+    const firstFrame = material?.map;
+    expect(firstFrame).toBeDefined();
+
+    agent.update(0.4, 0.4);
+    expect(material?.map).not.toBe(firstFrame);
+
+    agent.release();
+    expect(agent.signal).toBeNull();
+    expect(pill?.visible).toBe(false);
+  });
 });
+
+function pillOf(agent: Agent): THREE.Sprite | undefined {
+  let found: THREE.Sprite | undefined;
+  agent.group.traverse((node) => {
+    if (node instanceof THREE.Sprite) found = node;
+  });
+  return found;
+}

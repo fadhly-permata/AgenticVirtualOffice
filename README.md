@@ -2,7 +2,7 @@
 
 Diorama kantor bergaya isometrik yang dibangun penuh dengan Three.js, tanpa aset 3D eksternal. Empat ruangan — **Ruang Kerja**, **Ruang Meeting**, **Pantry**, dan **Ruang Santai** — dihuni 2–15 karyawan low-poly (default 5) yang bekerja, ngopi, meeting, main game, dan menonton TV. Pencahayaan bergerak mengikuti siklus pagi–siang–sore–malam.
 
-Selain auto-play, aplikasi ini sekarang punya **pemilih folder workspace** dan **jendela chat OpenCode**. Chat terhubung ke OpenCode CLI lokal lewat bridge HTTP di `127.0.0.1`, mendukung streaming teks, tool call, permission, pertanyaan agent, serta stop. Saat satu agent OpenCode bekerja, salah satu karyawan di kantor otomatis dipin ke meja kerja.
+Selain auto-play, aplikasi ini sekarang punya **pemilih folder workspace** dan **jendela chat OpenCode**. Chat terhubung ke OpenCode CLI lokal lewat bridge HTTP di `127.0.0.1`, mendukung streaming teks, reasoning langsung, tool call, permission, pertanyaan agent, serta stop. Saat satu agent OpenCode bekerja, salah satu karyawan di kantor otomatis dipin ke meja kerja dan pil di kepalanya mengikuti fase run.
 
 ## Prasyarat
 
@@ -21,7 +21,7 @@ npm install
 npm run dev      # bridge + Vite di http://127.0.0.1:5199
 npm run build    # typecheck + production build ke dist/
 npm start        # menyajikan dist/ + API di http://127.0.0.1:4180
-npm test         # 52 test: layout, navigasi, autopilot, siklus waktu, agen, layar, scene, chat, server
+npm test         # 53 test: layout, navigasi, autopilot, siklus waktu, agen, layar, scene, chat, server
 ```
 
 `npm run dev` menjalankan server Node lokal (bukan `vite` langsung). Server yang sama melayani API, proxy event OpenCode, dan Vite dev middleware. Port dev sengaja jauh dari 5173 supaya Vite yang lupa dimatikan tidak bisa menyamar jadi bridge ini (gejalanya: `/api/*` dijawab HTML). Untuk port lain:
@@ -109,7 +109,7 @@ Klik pill **OpenCode** di kanan bawah untuk membuka chat. Kalau belum ada worksp
 - **Model & agent** — dropdown model bisa dicari berdasarkan nama model atau provider; daftarnya diambil dari provider yang terhubung di OpenCode. Pilihan terakhir disimpan di browser, default mengikuti `model` di config OpenCode.
 - **Streaming** — teks, tool call, status busy/retry, error, dan hasil tool tampil real-time lewat SSE. Tool call yang butuh izin memunculkan kartu **Izinkan / Selalu izinkan / Tolak**; pertanyaan agent memunculkan pilihan jawaban.
 - **Stop** — tombol stop memanggil abort pada sesi yang sedang berjalan.
-- **Kantor** — selama satu sesi bekerja, satu karyawan dipin ke aktivitas `working` (chip “X bekerja di kantor”); saat idle ia dilepas kembali ke autopilot.
+- **Kantor** — selama satu sesi bekerja, satu karyawan dipin ke aktivitas `working`; pil di kepalanya berubah warna mengikuti fase run (menyiapkan / menalar / tool / menulis) dan chip header menampilkan fase yang sama beserta hitungan waktu berjalan. Saat idle ia dilepas kembali ke autopilot.
 
 Workspace dan recents disimpan di `.virtoffice/workspace.json` (gitignored). Bridge menjalankan `opencode serve --hostname 127.0.0.1 --port 0` dan mengarahkan setiap request ke folder aktif lewat query `directory`, sehingga config, `AGENTS.md`, dan tool OpenCode mengikuti proyek yang dibuka.
 
@@ -137,15 +137,17 @@ API global untuk mengendalikan karyawan tetap tersedia:
 
 ```js
 virtOffice.agents();
-// [{ id: 'budi', name: 'Budi', activity: 'working', state: 'settled', room: 'workspace', ... }]
+// [{ id: 'budi', name: 'Budi', activity: 'working', state: 'settled', signal: 'thinking', room: 'workspace', ... }]
 
-virtOffice.setActivity('budi', 'gaming'); // true bila berhasil
-virtOffice.release('budi');               // kembalikan ke autopilot
+virtOffice.setActivity('budi', 'gaming');      // true bila berhasil
+virtOffice.setAgentSignal('budi', 'tool');     // pil fase kerja di atas kepalanya
+virtOffice.release('budi');                    // kembalikan ke autopilot (sekaligus menghapus pil)
 virtOffice.setTimeOfDay(19.5);
-virtOffice.setTimeScale(0);               // bekukan waktu
+virtOffice.setTimeScale(0);                     // bekukan waktu
 ```
 
 Aktivitas yang tersedia: `working`, `meeting`, `coffee`, `gaming`, `tv`, `idle`.
+Sinyal fase: `waiting`, `thinking`, `tool`, `writing` — dipakai chat untuk menunjukkan apa yang sedang dikerjakan model.
 
 Perilaku penting:
 

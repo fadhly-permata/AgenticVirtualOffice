@@ -1,3 +1,4 @@
+import type { AgentSignal } from '../agents/agent';
 import type { VirtOfficeApi } from '../api';
 import { chatApi } from './client';
 import { el, ICON, icon } from './dom';
@@ -101,11 +102,12 @@ let renderQueued = false;
 let historyReloadTimer = 0;
 
 const reasoningToggled = new Map<string, boolean>();
-let workClockEl: HTMLElement | null = null;
-let workClockSince = 0;
+const clockHosts: { el: HTMLElement; since: number }[] = [];
 let workClockTimer = 0;
 
 let officeAgentId: string | null = null;
+let officeAgentName = '';
+let officeChipLabel = '';
 
 export function installChat(officeApi: VirtOfficeApi): void {
   office = officeApi;
@@ -942,7 +944,7 @@ function renderMessages(options: { forceBottom?: boolean } = {}): void {
   const nearBottom =
     messagesEl.scrollHeight - messagesEl.scrollTop - messagesEl.clientHeight < 96;
   messagesEl.replaceChildren();
-  workClockEl = null;
+  clockHosts.length = 0;
 
   if (!workspace) {
     messagesEl.append(renderEmptyState('Buka workspace', 'Pilih folder proyek untuk mulai menggunakan OpenCode.'));
@@ -967,7 +969,7 @@ function renderMessages(options: { forceBottom?: boolean } = {}): void {
     if (running && messages[messages.length - 1]?.role !== 'assistant') {
       const content = el('div', 'msg__content');
       const since = messages[messages.length - 1]?.created ?? Date.now();
-      content.append(renderWorkBar(WORK_LABEL.prepare, since));
+      content.append(renderWorkBar(RUN_LABEL.prepare, since));
       messagesEl.append(wrapAssistant(content));
     }
     if (nearBottom || options.forceBottom) {
@@ -979,7 +981,8 @@ function renderMessages(options: { forceBottom?: boolean } = {}): void {
     }
   }
 
-  if (!workClockEl) stopWorkClock();
+  syncOffice(currentRun());
+  if (!clockHosts.length) stopWorkClock();
 
   if (options.forceBottom || nearBottom) {
     messagesEl.scrollTop = messagesEl.scrollHeight;
@@ -1047,8 +1050,8 @@ function renderMessage(message: LiveMessage, runningLast: boolean): HTMLElement 
   const content = el('div', 'msg__content');
   let hasContent = false;
   let lastTextBlock: HTMLElement | null = null;
-  const phase = runningLast ? workPhase(message) : null;
-  if (phase) content.append(renderWorkBar(WORK_LABEL[phase], message.created));
+  const phase = runningLast ? runState(message) : null;
+  if (phase) content.append(renderWorkBar(phase.label, phase.since));
 
   for (const part of message.parts) {
     if (part.type === 'text' && typeof part.text === 'string' && part.text.trim()) {
@@ -1082,12 +1085,8 @@ function renderMessage(message: LiveMessage, runningLast: boolean): HTMLElement 
     hasContent = true;
   }
 
-  if (!hasContent && !phase) {
-    if (!runningLast) return null;
-    const typing = el('div', 'typing');
-    typing.append(el('span'), el('span'), el('span'));
-    content.append(typing);
-  } else if (runningLast && lastTextBlock) {
+  if (!hasContent && !phase) return null;
+  if (runningLast && lastTextBlock) {
     const caret = el('span', 'stream-caret');
     caret.setAttribute('aria-hidden', 'true');
     lastTextBlock.append(caret);
@@ -1106,53 +1105,86 @@ function wrapAssistant(content: HTMLElement): HTMLElement {
   return article;
 }
 
-type WorkPhase = 'prepare' | 'think' | 'compose';
+type RunPhase = 'prepare' | 'think' | 'tool' | 'write';
 
-const WORK_LABEL: Record<WorkPhase, string> = {
+interface RunState {
+  phase: RunPhase;
+  label: string;
+  since: number;
+}
+
+const RUN_LABEL: Record<RunPhase, string> = {
   prepare: 'Menyiapkan…',
   think: 'Menalar…',
-  compose: 'Menulis jawaban…',
+  tool: 'Menjalankan alat…',
+  write: 'Menulis jawaban…',
+};
+
+const RUN_SIGNAL: Record<RunPhase, AgentSignal> = {
+  prepare: 'waiting',
+  think: 'thinking',
+  tool: 'tool',
+  write: 'writing',
 };
 
 function isReasoningSettled(part: Part): boolean {
   return typeof part.time?.end === 'number';
 }
 
-function workPhase(message: LiveMessage): WorkPhase | null {
+function runState(message: LiveMessage): RunState {
+  let tool = '';
   let thinking = false;
   let settled = false;
+  let talking = false;
 
   for (const part of message.parts) {
-    if (part.type === 'text' && typeof part.text === 'string' && part.text.trim()) return null;
+    if (part.type === 'text' && typeof part.text === 'string' && part.text.trim()) talking = true;
     if (part.type === 'tool') {
       const status = part.state?.status;
-      if (status === 'running' || status === 'pending') return null;
+      if (status === 'running' || status === 'pending') tool = prettyToolName(part.tool);
     }
     if (part.type === 'reasoning') {
       if (isReasoningSettled(part)) settled = true;
       else thinking = true;
     }
   }
-  if (thinking) return 'think';
-  return settled ? 'compose' : 'prepare';
+
+  const since = message.created;
+  // Alat yang sedang jalan selalu menang: token bisa saja masih mengalir saat tool dijalankan.
+  if (tool) return { phase: 'tool', label: `Menjalankan ${tool}…`, since };
+  if (thinking) return { phase: 'think', label: RUN_LABEL.think, since };
+  if (talking || settled) return { phase: 'write', label: RUN_LABEL.write, since };
+  return { phase: 'prepare', label: RUN_LABEL.prepare, since };
+}
+
+/** The phase the currently open session is in, or null when nothing is running. */
+function currentRun(): RunState | null {
+  // Samakan dengan guard renderMessages: selama panel belum menampilkan pesan,
+  // `messages` masih berisi sesi lama dan fasenya tidak boleh dilaporkan.
+  if (!workspace || bootLoading || reading || !messages.length || !isCurrentRunning()) return null;
+  const last = messages[messages.length - 1];
+  if (!last || last.role !== 'assistant') {
+    return { phase: 'prepare', label: RUN_LABEL.prepare, since: last?.created ?? Date.now() };
+  }
+  return runState(last);
 }
 
 function renderWorkBar(label: string, since: number): HTMLElement {
   const bar = el('div', 'workbar');
   const dots = el('span', 'typing');
   dots.append(el('span'), el('span'), el('span'));
-  bar.append(dots, el('span', 'workbar__label', label), el('span', 'workbar__clock'));
-  showWorkClock(bar.querySelector<HTMLElement>('.workbar__clock')!, since);
+  const clock = el('span', 'workbar__clock');
+  bar.append(dots, el('span', 'workbar__label', label), clock);
+  showWorkClock(clock, since);
   return bar;
 }
 
 function showWorkClock(host: HTMLElement, since: number): void {
-  workClockEl = host;
-  workClockSince = since;
+  clockHosts.push({ el: host, since });
   host.textContent = elapsedLabel(since);
   if (workClockTimer) return;
   workClockTimer = window.setInterval(() => {
-    if (workClockEl) workClockEl.textContent = elapsedLabel(workClockSince);
+    for (const entry of clockHosts) entry.el.textContent = elapsedLabel(entry.since);
   }, 1_000);
 }
 
@@ -1516,8 +1548,10 @@ function pinOfficeAgent(): void {
   for (const agent of office.agents()) {
     if (office.setActivity(agent.id, 'working')) {
       officeAgentId = agent.id;
-      agentChip.textContent = `${agent.name} bekerja di kantor`;
+      officeAgentName = agent.name;
+      officeChipLabel = '';
       agentChip.hidden = false;
+      syncOffice(currentRun());
       return;
     }
   }
@@ -1526,6 +1560,23 @@ function pinOfficeAgent(): void {
 function releaseOfficeAgent(): void {
   if (office && officeAgentId) office.release(officeAgentId);
   officeAgentId = null;
+  officeAgentName = '';
+  officeChipLabel = '';
   agentChip.hidden = true;
-  agentChip.textContent = '';
+  agentChip.replaceChildren();
+}
+
+/** Mirror the run phase onto the office agent and the header chip. */
+function syncOffice(run: RunState | null): void {
+  if (!office || !officeAgentId || !run) return;
+  office.setAgentSignal(officeAgentId, RUN_SIGNAL[run.phase]);
+  if (run.label !== officeChipLabel) {
+    officeChipLabel = run.label;
+    agentChip.replaceChildren(
+      el('span', undefined, `${officeAgentName} · ${run.label}`),
+      el('span', 'workbar__clock')
+    );
+  }
+  const clock = agentChip.querySelector<HTMLElement>('.workbar__clock');
+  if (clock) showWorkClock(clock, run.since);
 }
