@@ -36,18 +36,27 @@ export class Autopilot {
     const taken = new Set(this.agents.map((agent) => agent.spot.id));
 
     for (const agent of this.agents) {
-      if (agent.pinned || agent.mode === 'walking' || now < agent.busyUntil) continue;
+      if (agent.pinned) continue;
+      // Tujuan yang dipilih saat lantai masih demo bisa jadi terlarang sekarang.
+      const stranded = agent.mode === 'walking' && !this.allowed(agent.spot);
+      if (!stranded && (agent.mode === 'walking' || now < agent.busyUntil)) continue;
 
+      taken.delete(agent.spot.id);
       const next = this.pick(agent, taken, night);
       if (!next) {
+        taken.add(agent.spot.id);
         agent.busyUntil = now + 6;
         continue;
       }
 
-      taken.delete(agent.spot.id);
       taken.add(next.id);
       agent.assign(next, durationFor(next.activity, this.rng));
     }
+  }
+
+  /** Whether a free agent may sit in, or walk towards, this spot. */
+  private allowed(spot: Spot): boolean {
+    return this.mode === 'demo' || isBreakRoom(spot);
   }
 
   private pick(agent: AutopilotAgent, taken: Set<string>, night: number): Spot | null {
@@ -56,8 +65,7 @@ export class Autopilot {
     for (const activity of ACTIVITIES) {
       if (activity === agent.spot.activity) continue;
       const free = spotsFor(activity).filter(
-        (candidate) =>
-          !taken.has(candidate.id) && (this.mode === 'demo' || isBreakRoom(candidate)),
+        (candidate) => !taken.has(candidate.id) && this.allowed(candidate),
       );
       if (free.length > 0) pools.set(activity, free);
     }

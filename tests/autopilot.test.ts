@@ -151,6 +151,18 @@ describe('autopilot', () => {
     }
   });
 
+  it('turns around a free agent already walking into a closed room', () => {
+    const agent = new FakeAgent('a', spot('desk-1'));
+    agent.mode = 'walking';
+    const autopilot = new Autopilot([agent], makeRng(5));
+    autopilot.setFloorMode('live');
+
+    autopilot.update(100, 0.2);
+
+    expect(agent.assigned).toHaveLength(1);
+    expect(isBreakRoom(agent.assigned[0]!), `${agent.spot.id} is still a work seat`).toBe(true);
+  });
+
   it('has a break spot for every agent the roster can hold', () => {
     expect(SPOTS.filter(isBreakRoom).length).toBeGreaterThanOrEqual(MAX_AGENTS);
   });
