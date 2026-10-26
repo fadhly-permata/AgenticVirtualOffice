@@ -79,6 +79,10 @@ let selectedAgent = 'build';
 const runningSessions = new Set<string>();
 const permissions = new Map<string, PermissionRequest>();
 const questions = new Map<string, QuestionRequest>();
+const fatalAborts = new Set<string>();
+
+const FATAL_PROVIDER_RE =
+  /free usage exceeded|model is unavailable|personal access tokens are not supported|insufficient credit/i;
 
 let stream: EventSource | null = null;
 let streamReady = false;
@@ -519,6 +523,7 @@ async function sendMessage(): Promise<void> {
     }
 
     await connected;
+    fatalAborts.delete(session.id);
     await chatApi.send(session.id, text, model, agent);
     if (generation !== workspaceGeneration || currentSession?.id !== session.id) return;
 
@@ -723,6 +728,7 @@ function handleEvent(event: ChatEvent): void {
             const message =
               typeof status.message === 'string' ? status.message : 'Provider sedang bermasalah, mencoba ulang…';
             setNotice('retry', message);
+            if (FATAL_PROVIDER_RE.test(message)) abortFatalSession(sessionID, message);
           } else if (noticeKind === 'retry') {
             setNotice(null);
           }
@@ -739,7 +745,9 @@ function handleEvent(event: ChatEvent): void {
 
     case 'session.error': {
       if (sessionID === currentSession?.id) {
-        setNotice('error', describeError(props.error));
+        const message = describeError(props.error);
+        setNotice('error', message);
+        if (sessionID && FATAL_PROVIDER_RE.test(message)) abortFatalSession(sessionID, message);
       }
       return;
     }
@@ -823,6 +831,18 @@ function markSessionIdle(sessionID: string): void {
   historyReloadTimer = window.setTimeout(() => {
     if (currentSession?.id === sessionID) void refreshCurrentSession();
   }, 220);
+}
+
+function abortFatalSession(sessionID: string, message: string): void {
+  if (fatalAborts.has(sessionID)) return;
+  fatalAborts.add(sessionID);
+  void chatApi
+    .abort(sessionID)
+    .catch(() => undefined)
+    .then(() => {
+      if (sessionID !== currentSession?.id) return;
+      setNotice('error', `${message} — ganti model lewat dropdown Model untuk melanjutkan.`);
+    });
 }
 
 async function refreshCurrentSession(): Promise<void> {
