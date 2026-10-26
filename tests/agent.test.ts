@@ -40,6 +40,19 @@ describe('Agent', () => {
     expect(agent.busyUntil).toBeCloseTo(now + 7, 3);
   });
 
+  it('hurries to a seat that a real session is waiting for', () => {
+    const seconds = (pinned: boolean) => {
+      const agent = new Agent(seed, buildNavGraph(), spot('desk-1'), 5);
+      agent.pinned = pinned;
+      agent.assign(spot('coffee-1'), 7);
+      return runUntilSettled(agent);
+    };
+
+    const stroll = seconds(false);
+    const hurry = seconds(true);
+    expect(hurry).toBeLessThan(stroll * 0.6);
+  });
+
   it('crosses rooms through the navigation graph', () => {
     const nav = buildNavGraph();
     const agent = new Agent(seed, nav, spot('desk-5'), 5);

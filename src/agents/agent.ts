@@ -72,6 +72,9 @@ function makePose(): Pose {
   };
 }
 
+const STROLL = 3.05;
+const HURRY = 6.6;
+
 /**
  * One office employee. Walks the nav graph to spots and plays a small
  * procedural animation for whatever activity the spot represents.
@@ -94,7 +97,6 @@ export class Agent {
 
   private readonly nav: NavGraph;
   private readonly rig: CharacterRig;
-  private readonly speed = 3.05;
   private bubble: THREE.Sprite | null = null;
   private bubbleFrames: THREE.DataTexture[] = [];
   private bubbleText = '';
@@ -135,6 +137,14 @@ export class Agent {
 
   get activity() {
     return this.spot.activity;
+  }
+
+  /**
+   * Sesi OpenCode sudah mulai bekerja sementara orangnya masih di tengah lantai,
+   * jadi kursi yang dipegang sesi nyata dikejar, bukan digaya jalan santai.
+   */
+  private get stride(): number {
+    return this.pinned || this.signal ? HURRY : STROLL;
   }
 
   /** The text currently floated over this agent's head, empty when only dots show. */
@@ -280,10 +290,11 @@ export class Agent {
       return;
     }
 
+    const stride = this.stride;
     const dx = point.x - this.group.position.x;
     const dz = point.z - this.group.position.z;
     const distance = Math.hypot(dx, dz);
-    const travel = this.speed * dt;
+    const travel = stride * dt;
 
     if (distance <= 0.03 || distance <= travel) {
       this.group.position.set(point.x, 0, point.z);
@@ -298,8 +309,9 @@ export class Agent {
       this.targetFacing = Math.atan2(dx, dz);
     }
 
-    this.walkPhase += dt * 9.5;
-    this.facing = dampAngle(this.facing, this.targetFacing, 14, dt);
+    // Ayunan kaki dan putar badan ikut cepat, kalau tidak langkah lebar terlihat meluncur.
+    this.walkPhase += dt * 9.5 * (stride / STROLL);
+    this.facing = dampAngle(this.facing, this.targetFacing, 14 * (stride / STROLL), dt);
     this.group.rotation.y = this.facing;
   }
 
