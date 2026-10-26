@@ -11,17 +11,17 @@ npm install
 npm run dev      # http://localhost:5173
 npm run build    # typecheck + production build ke dist/
 npm run preview  # menyajikan hasil build
-npm test         # 23 test: layout, navigasi, autopilot, siklus waktu, agen, scene
+npm test         # 26 test: layout, navigasi, autopilot, siklus waktu, agen, layar, scene
 ```
 
 Kamera isometrik memakai `OrthographicCamera` dengan sudut 45°/35.26° dan tidak bisa di-rotate — scene dibuat sebagai diorama statis.
 
 ## Yang ada di scene
 
-- **Ruang Kerja** — lima meja dengan monitor yang menyala sesuai aktivitas agen, kursi roda, rak buku, tanaman, jam dinding, dan jendela.
+- **Ruang Kerja** — lima meja dengan monitor yang mengetik baris kode acak saat agen bekerja dan meredup bersih saat idle, kursi roda, rak buku, tanaman, jam dinding, dan jendela.
 - **Ruang Meeting** — meja 6 kursi, laptop, papan tulis, dan dinding kaca.
 - **Pantry** — counter dengan coffee machine (uapnya beranimasi), sink, kulkas, dispenser, meja bundar dengan stool, dan ubin lantai.
-- **Ruang Santai** — sofa, bean bag, TV dengan layar yang berkedip dinamis, konsol game, karpet, lampu lantai, dan tanaman.
+- **Ruang Santai** — sofa, bean bag, TV dengan delapan slide berganti-ganti plus transisi static, konsol game, karpet, lampu lantai, dan tanaman.
 - **Siklus waktu** — matahari terbit/terbenam, warna langit, lampu gantung menyala dengan halo saat gelap, dan TV menerangi ruangan di malam hari.
 - **Material** — pencahayaan berbasis lingkungan (IBL) untuk pantulan logam/kaca, tekstur kayu & kain, lantai papan/ubin dengan variasi nada, dan contact shadow di bawah perabot.
 - **Agen** — berjalan mengikuti graph navigasi, duduk di kursi/sofa, mengetik, menyeruput kopi, memegang controller, dan melihat layar.
@@ -34,7 +34,8 @@ src/
     dayNight.ts     jam simulasi, faktor siang/malam, warna langit
     math.ts         clamp, smoothstep, damping sudut
     palette.ts      palet warna + cache material
-    textures.ts     tekstur prosedural (kayu, kain, plester, halo lampu, contact shadow)
+    textures.ts     tekstur prosedural (kayu, kain, plester, halo lampu, contact shadow, slide TV)
+    typing.ts       simulasi baris kode yang mengetik sendiri untuk monitor
   world/
     layout.ts       denah 4 ruangan, daftar spot, node & edge navigasi
     nav.ts          graph berbobot + Dijkstra

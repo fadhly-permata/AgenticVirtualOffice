@@ -11,7 +11,7 @@ export const AGENT_SEEDS: AgentSeed[] = [
     id: 'sari',
     name: 'Sari',
     color: '#e07a5f',
-    look: { shirt: 0xe07a5f, pants: 0x3d4654, skin: 0xe8bd93, hair: 0x3a2a22 },
+    look: { shirt: 0xe07a5f, pants: 0x3d4654, skin: 0xe8bd93, hair: 0x3a2a22, longHair: true },
   },
   {
     id: 'rian',
@@ -23,7 +23,7 @@ export const AGENT_SEEDS: AgentSeed[] = [
     id: 'nadia',
     name: 'Nadia',
     color: '#8a6aa8',
-    look: { shirt: 0x8a6aa8, pants: 0x404654, skin: 0xe3b18a, hair: 0x2b1e1a },
+    look: { shirt: 0x8a6aa8, pants: 0x404654, skin: 0xe3b18a, hair: 0x2b1e1a, longHair: true },
   },
   {
     id: 'tegar',

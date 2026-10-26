@@ -2,7 +2,18 @@ import * as THREE from 'three';
 import type { DayCycle } from '../core/dayNight';
 import { smoothstep } from '../core/math';
 import { C, mat } from '../core/palette';
-import { fabricWeave, glowSprite, plasterNoise, softShadow, woodGrain, monitorScreen, monitorScreenDense, monitorScreenWide, monitorScreenVertical, monitorScreenDiagonal, tvScreen } from '../core/textures';
+import {
+  fabricWeave,
+  glowSprite,
+  idleScreenTexture,
+  plasterNoise,
+  softShadow,
+  tvSlides as createTvSlides,
+  tvStaticFrames,
+  woodGrain,
+  type TvSlide,
+} from '../core/textures';
+import { TypingScreen } from '../core/typing';
 import { ball, box, cyl, plane, rbox } from './kit';
 import {
   DESK_SEAT_Z,
@@ -21,7 +32,9 @@ import {
 interface ScreenRef {
   material: THREE.MeshStandardMaterial;
   spotId: string;
-  phase: number;
+  typing: TypingScreen;
+  idle: THREE.DataTexture;
+  active: boolean;
 }
 
 interface LampRef {
@@ -46,6 +59,12 @@ interface PlantRef {
 interface GlowRef {
   material: THREE.SpriteMaterial;
 }
+
+/** Window band shared by the glass panes and the wall cut-outs. */
+const WINDOW_CENTER_Y = 2.32;
+const WINDOW_HEIGHT = 1.95;
+const WINDOW_OPEN_Y0 = 1.3;
+const WINDOW_OPEN_Y1 = 3.34;
 
 const FLOOR_COLOR: Record<RoomId, number> = {
   workspace: C.floorWorkspace,
@@ -116,11 +135,15 @@ export class OfficeWorld {
   private readonly glassMaterial: THREE.MeshStandardMaterial;
   private readonly glows: GlowRef[] = [];
   private readonly contactMaterials = new Map<number, THREE.MeshBasicMaterial>();
-private tvMaterial: THREE.MeshStandardMaterial | null = null;
+  private tvMaterial: THREE.MeshStandardMaterial | null = null;
   private tvContainer = new THREE.Group();
-  // removed: not used directly
   private elapsed = 0;
   private tvLight: THREE.PointLight | null = null;
+  private readonly tvChannels: TvSlide[] = [];
+  private readonly tvStatic: THREE.DataTexture[] = [];
+  private tvSlideIndex = 0;
+  private tvSlideAge = 0;
+  private tvTexture: THREE.DataTexture | null = null;
 
   constructor() {
     this.hemi = new THREE.HemisphereLight(0xdff0ff, 0xcdb59a, 0.8);
@@ -144,6 +167,10 @@ private tvMaterial: THREE.MeshStandardMaterial | null = null;
       emissiveIntensity: 0.3,
       roughness: 0.2,
       metalness: 0,
+      transparent: true,
+      opacity: 0.26,
+      depthWrite: false,
+      side: THREE.DoubleSide,
     });
     this.bulbMaterial = new THREE.MeshStandardMaterial({
       color: 0xfff2d4,
@@ -294,12 +321,18 @@ private tvMaterial: THREE.MeshStandardMaterial | null = null;
     const trim = mat(C.trim, { roughness: 0.9 });
 
     // Back wall (z = 0) and left wall (x = 0); the other two sides stay open
-    // so the isometric camera can look inside.
-    g.add(box(OFFICE_WIDTH + 0.6, WALL_HEIGHT, 0.3, wall, OFFICE_WIDTH / 2, WALL_HEIGHT / 2, -0.15));
+    // so the isometric camera can look inside. The shells are built around the
+    // window openings so the glass is genuinely see-through from both sides.
+    g.add(
+      this.outerWall('x', -0.3, OFFICE_WIDTH + 0.3, wall, [
+        { from: 0.9, to: 12.1 },
+        { from: 14.4, to: 18.8 },
+      ]),
+    );
     g.add(box(OFFICE_WIDTH + 0.6, 0.18, 0.06, trim, OFFICE_WIDTH / 2, 0.09, 0.035));
     g.add(box(OFFICE_WIDTH + 0.78, 0.1, 0.42, trim, OFFICE_WIDTH / 2, WALL_HEIGHT + 0.05, -0.12));
 
-    g.add(box(0.3, WALL_HEIGHT, OFFICE_DEPTH + 0.6, wall, -0.15, WALL_HEIGHT / 2, OFFICE_DEPTH / 2));
+    g.add(this.outerWall('z', -0.3, OFFICE_DEPTH + 0.3, wall, [{ from: 6.4, to: 9.6 }]));
     g.add(box(0.06, 0.18, OFFICE_DEPTH + 0.6, trim, 0.035, 0.09, OFFICE_DEPTH / 2));
     g.add(box(0.42, 0.1, OFFICE_DEPTH + 0.78, trim, -0.12, WALL_HEIGHT + 0.05, OFFICE_DEPTH / 2));
 
@@ -315,6 +348,44 @@ private tvMaterial: THREE.MeshStandardMaterial | null = null;
     return g;
   }
 
+  /** Runs the plaster shell between window openings, leaving the panes clear. */
+  private outerWall(
+    axis: 'x' | 'z',
+    from: number,
+    to: number,
+    material: THREE.Material,
+    holes: { from: number; to: number }[],
+  ): THREE.Group {
+    const g = new THREE.Group();
+    const thickness = 0.3;
+
+    const add = (a: number, b: number, y: number, height: number) => {
+      if (b - a < 0.01) return;
+      const mid = (a + b) / 2;
+      g.add(
+        axis === 'x'
+          ? box(b - a, height, thickness, material, mid, y, -thickness / 2)
+          : box(thickness, height, b - a, material, -thickness / 2, y, mid),
+      );
+    };
+
+    let cursor = from;
+    for (const hole of [...holes].sort((a, b) => a.from - b.from)) {
+      add(cursor, hole.from, WALL_HEIGHT / 2, WALL_HEIGHT);
+      add(hole.from, hole.to, WINDOW_OPEN_Y0 / 2, WINDOW_OPEN_Y0);
+      add(
+        hole.from,
+        hole.to,
+        WINDOW_OPEN_Y1 + (WALL_HEIGHT - WINDOW_OPEN_Y1) / 2,
+        WALL_HEIGHT - WINDOW_OPEN_Y1,
+      );
+      cursor = hole.to;
+    }
+    add(cursor, to, WALL_HEIGHT / 2, WALL_HEIGHT);
+
+    return g;
+  }
+
   private windowStrip(
     center: number,
     offset: number,
@@ -324,8 +395,8 @@ private tvMaterial: THREE.MeshStandardMaterial | null = null;
   ): THREE.Group {
     const g = new THREE.Group();
     const frameMat = mat(C.frame, { metalness: 0.25, roughness: 0.55 });
-    const height = 1.95;
-    const y = 2.32;
+    const height = WINDOW_HEIGHT;
+    const y = WINDOW_CENTER_Y;
 
     if (axis === 'z') {
       g.add(plane(width - 0.16, height - 0.16, this.windowMaterial, center, y, offset + 0.02));
@@ -356,18 +427,26 @@ private tvMaterial: THREE.MeshStandardMaterial | null = null;
     g.add(plane(4.6, 1.65, mat(0xf7faf7), x, 2.15, z + 0.07));
 
     const inks = [0x6f9e8b, 0xe07a5f, 0x5a7d9a, 0xe2b44a];
-    for (let i = 0; i < 6; i += 1) {
-      const line = box(
-        0.9 + (i % 3) * 0.45,
-        0.035,
-        0.012,
-        mat(inks[i % inks.length]),
-        x - 1.5 + (i % 2) * 1.8,
-        2.62 - Math.floor(i / 2) * 0.33,
-        z + 0.08,
-      );
-      line.castShadow = false;
-      g.add(line);
+    const columns = [
+      { start: x - 2.05, widths: [1.85, 1.2, 0.9] },
+      { start: x + 0.35, widths: [1.5, 1.1, 1.35] },
+    ];
+    for (let column = 0; column < columns.length; column += 1) {
+      const { start, widths } = columns[column];
+      for (let row = 0; row < widths.length; row += 1) {
+        const width = widths[row];
+        const line = box(
+          width,
+          0.035,
+          0.012,
+          mat(inks[(column * widths.length + row) % inks.length]),
+          start + width / 2,
+          2.62 - row * 0.33,
+          z + 0.08,
+        );
+        line.castShadow = false;
+        g.add(line);
+      }
     }
     g.add(box(3.6, 0.06, 0.14, mat(C.metal), x, 1.16, z + 0.12));
     g.add(cyl(0.02, 0.02, 0.16, mat(0xe07a5f), x - 1.2, 1.23, z + 0.12, 8));
@@ -541,25 +620,23 @@ private tvMaterial: THREE.MeshStandardMaterial | null = null;
     g.add(box(0.07, 0.72, 0.86, mat(C.metal), x - 0.86, 0.36, z));
     g.add(box(0.07, 0.72, 0.86, mat(C.metal), x + 0.86, 0.36, z));
 
-    // Select monitor pattern per desk for variety (5 patterns)
-  const patternIndex = index % 5; // cycle through 5 patterns
-  const monitorMap = patternIndex === 0 ? monitorScreen()
-    : patternIndex === 1 ? monitorScreenDense()
-    : patternIndex === 2 ? monitorScreenWide()
-    : patternIndex === 3 ? monitorScreenVertical()
-    : monitorScreenDiagonal();
-  const screenMat = new THREE.MeshStandardMaterial({
-    map: monitorMap,
-    emissive: new THREE.Color(C.screenOn),
-    emissiveIntensity: 0.2,
-    roughness: 0.35,
-    metalness: 0,
-  });
-  screenMat.map = screenMat.map!; // ensure non-null for type safety
-  screenMat.map.needsUpdate = true;
-  // Stagger animation phase per pattern for visual variety
-  const phaseOffset = patternIndex * 0.2;
-  this.screens.push({ material: screenMat, spotId: `desk-${index + 1}`, phase: index * 1.7 + phaseOffset });
+    const idle = idleScreenTexture();
+    const screenMat = new THREE.MeshStandardMaterial({
+      map: idle,
+      emissiveMap: idle,
+      color: 0xffffff,
+      emissive: 0xffffff,
+      emissiveIntensity: 0.06,
+      roughness: 0.3,
+      metalness: 0,
+    });
+    this.screens.push({
+      material: screenMat,
+      spotId: `desk-${index + 1}`,
+      typing: new TypingScreen(index + 1),
+      idle,
+      active: false,
+    });
 
     g.add(box(0.36, 0.03, 0.2, mat(C.dark), x, 0.795, z - 0.34));
     g.add(box(0.06, 0.3, 0.06, mat(C.dark), x, 0.95, z - 0.34));
@@ -870,21 +947,27 @@ private tvMaterial: THREE.MeshStandardMaterial | null = null;
     }
     g.add(box(0.7, 0.6, 0.1, mat(0x2b3238), 21.4, 1.95, 10.7));
     g.add(rbox(3.2, 1.8, 0.09, 0.02, mat(0x20262b), 21.4, 1.95, 10.775));
-    this.tvMaterial = new THREE.MeshStandardMaterial({
-    map: tvScreen(),
-    transparent: true,
-    opacity: 0.95,
-    emissive: new THREE.Color(0x4477aa),
-    emissiveIntensity: 0.8,
-    roughness: 0.3,
-    metalness: 0,
-  });
-  g.add(this.tvContainer);
-  g.add(plane(3.02, 1.62, this.tvMaterial, 21.4, 1.95, 10.828));
-  g.add(box(0.46, 0.04, 0.05, mat(0x14181c), 21.4, 1.02, 10.755));
-  g.add(rbox(1.5, 0.13, 0.12, 0.02, mat(0x1c2126), 21.7, 0.62, 11.0));
 
-    this.tvLight = new THREE.PointLight(0x88ccff, 0.4, 14, 1.7);
+    this.tvChannels.push(...createTvSlides());
+    this.tvStatic.push(...tvStaticFrames());
+    const firstChannel = this.tvChannels[0];
+    const firstMap = firstChannel?.texture ?? null;
+    this.tvTexture = firstMap;
+    this.tvMaterial = new THREE.MeshStandardMaterial({
+      map: firstMap,
+      emissiveMap: firstMap,
+      color: 0xffffff,
+      emissive: 0xffffff,
+      emissiveIntensity: 0.9,
+      roughness: 0.28,
+      metalness: 0,
+    });
+    g.add(this.tvContainer);
+    g.add(plane(3.02, 1.62, this.tvMaterial, 21.4, 1.95, 10.828));
+    g.add(box(0.46, 0.04, 0.05, mat(0x14181c), 21.4, 1.02, 10.755));
+    g.add(rbox(1.5, 0.13, 0.12, 0.02, mat(0x1c2126), 21.7, 0.62, 11.0));
+
+    this.tvLight = new THREE.PointLight(firstChannel?.accent ?? 0x88ccff, 0.55, 14, 1.7);
     this.tvLight.position.set(21.4, 1.9, 12.7);
     g.add(this.tvLight);
 
@@ -1090,54 +1173,42 @@ private tvMaterial: THREE.MeshStandardMaterial | null = null;
   update(dt: number, workingSpots: ReadonlySet<string>, gaming: boolean): void {
     this.elapsed += dt;
     const t = this.elapsed;
-    const pulse = Math.sin(t * 4) * 0.1 + 0.9;
 
     for (const screen of this.screens) {
       const active = workingSpots.has(screen.spotId);
-      // Typing effect only on active monitors
-      if (active) {
-        // Visible texture shift to make blocks appear to scroll
-        if (screen.material.map) {
-          // Larger shift so the block pattern is clearly visible
-          screen.material.map.offset.x = Math.sin(t * 1.5 + screen.phase) * 0.1;
-          screen.material.map.offset.y = Math.cos(t * 1.5 + screen.phase) * 0.1;
-          screen.material.map.needsUpdate = true;
-        }
-        // Make the monitor glow distinctly brighter when actively worked
-        // with a clear cyan tint
-        screen.material.emissiveIntensity = 2.0 + Math.sin(t * 7 + screen.phase) * 0.2 * pulse;
-        screen.material.color.setHSL(0.55 + (Math.sin(t * 0.3 + screen.phase) + 1) / 2 * 0.15, 0.9, 0.5);
-      } else {
-        // Idle monitor - dim and static, clearly different from active
-        if (screen.material.map) {
-          screen.material.map.offset.x = 0;
-          screen.material.map.offset.y = 0;
-          screen.material.map.needsUpdate = true;
-        }
-        screen.material.emissiveIntensity = 0.15;
-        screen.material.color.setHSL(0.05, 0.1, 0.15);
+      if (active !== screen.active) {
+        screen.active = active;
+        const map = active ? screen.typing.texture : screen.idle;
+        screen.material.map = map;
+        screen.material.emissiveMap = map;
+        screen.material.emissiveIntensity = active ? 1.25 : 0.06;
       }
+      if (active) screen.typing.update(dt);
     }
 
-    if (this.tvMaterial) {
-      // TV: cycle through distinct 'channels' with strong visual changes
-      const channel = (t * 0.3) % 8;
-      const channelInt = Math.floor(channel);
-      const hues = [0.0, 0.08, 0.16, 0.27, 0.38, 0.52, 0.62, 0.0];
-      const hue = hues[channelInt];
-      // Animate the texture offset to make the static appear to move
-      if (this.tvMaterial.map) {
-      this.tvMaterial.map.offset.x = (t * 0.1) % 1;
-      this.tvMaterial.map.offset.y = (t * 0.05) % 1;
-      this.tvMaterial.map.needsUpdate = true;
-    }
-      // Apply the texture with scanlines
-      this.tvMaterial.color.setHSL(hue, 0.45, 0.5);
+    if (this.tvMaterial && this.tvChannels.length > 0) {
+      this.tvSlideAge += dt;
+      if (this.tvSlideAge >= 6.5) {
+        this.tvSlideAge = 0;
+        this.tvSlideIndex = (this.tvSlideIndex + 1) % this.tvChannels.length;
+        if (this.tvLight) this.tvLight.color.setHex(this.tvChannels[this.tvSlideIndex]!.accent);
+      }
+
+      const slide = this.tvChannels[this.tvSlideIndex]!;
+      const glitching = this.tvSlideAge < 0.2;
+      const map = glitching
+        ? (this.tvStatic[Math.floor(t * 38) % this.tvStatic.length] ?? slide.texture)
+        : slide.texture;
+      if (map !== this.tvTexture) {
+        this.tvTexture = map;
+        this.tvMaterial.map = map;
+        this.tvMaterial.emissiveMap = map;
+      }
+      this.tvMaterial.emissiveIntensity = glitching ? 1.35 : 0.9 + Math.sin(t * 2.2) * 0.04;
     }
     if (this.tvLight) {
-      const hue = (t * 0.05) % 1;
-      this.tvLight.color.setHSL(hue, 0.6, 0.6);
-      this.tvLight.intensity = 0.5 + (gaming ? 0.4 : 0) + Math.sin(t * 3.4) * 0.1 * pulse;
+      this.tvLight.intensity =
+        (gaming ? 0.95 : 0.55) + Math.sin(t * 3.4) * 0.06 + (this.tvSlideAge < 0.2 ? 0.45 : 0);
     }
 
     for (const puff of this.steam) {

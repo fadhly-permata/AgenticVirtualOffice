@@ -142,19 +142,50 @@ export function softShadow(): THREE.DataTexture {
   );
 }
 
-/** Simple terminal monitor pattern with scanlines and blocks of text. */
-export function monitorScreen(): THREE.DataTexture {
-  return cached('monitor-screen', () =>
+type Rgb = [number, number, number];
+
+function mixRgb(a: Rgb, b: Rgb, amount: number): Rgb {
+  const t = clamp01(amount);
+  return [a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t, a[2] + (b[2] - a[2]) * t];
+}
+
+function smooth(t: number): number {
+  const x = clamp01(t);
+  return x * x * (3 - 2 * x);
+}
+
+function rectTexture(width: number, height: number, paint: Painter): THREE.DataTexture {
+  const data = new Uint8Array(width * height * 4);
+  for (let y = 0; y < height; y += 1) {
+    for (let x = 0; x < width; x += 1) {
+      const [r, g, b] = paint(x / width, 1 - y / (height - 1), x, y);
+      const index = (y * width + x) * 4;
+      data[index] = clampByte(r);
+      data[index + 1] = clampByte(g);
+      data[index + 2] = clampByte(b);
+      data[index + 3] = 255;
+    }
+  }
+
+  const texture = new THREE.DataTexture(data, width, height, THREE.RGBAFormat);
+  texture.colorSpace = THREE.SRGBColorSpace;
+  texture.magFilter = THREE.LinearFilter;
+  texture.minFilter = THREE.LinearFilter;
+  texture.generateMipmaps = false;
+  texture.needsUpdate = true;
+  return texture;
+}
+
+/** Flat, near-black standby screen. No scanlines or block patterns. */
+export function idleScreenTexture(): THREE.DataTexture {
+  return cached('screen-idle', () =>
     dataTexture(
-      32,
-      (u, v, x, y) => {
-        const scanline = Math.floor(v * 32) % 2 === 0 ? 0.8 : 1;
-        const block = (Math.floor(u * 16) + Math.floor(v * 8)) % 8;
-        const isText = ((x + y * 32) % 7 !== 0) ? 0.1 : 0.9;
-        const r = scanline * (0.1 + block * 0.05) * isText;
-        const g = scanline * (0.2 + block * 0.07) * isText;
-        const b = scanline * (0.3 + block * 0.1) * isText;
-        return [r * 255, g * 255, b * 255];
+      48,
+      (u, v) => {
+        const dx = (u - 0.5) * 2;
+        const dy = (v - 0.5) * 2;
+        const vignette = Math.max(0.22, 1 - (dx * dx + dy * dy) * 0.5);
+        return [3 + 6 * vignette, 6 + 9 * vignette, 10 + 13 * vignette];
       },
       null,
       1,
@@ -163,115 +194,202 @@ export function monitorScreen(): THREE.DataTexture {
   );
 }
 
-/** Alternative monitor pattern with denser text blocks. */
-export function monitorScreenDense(): THREE.DataTexture {
-  return cached('monitor-screen-dense', () =>
-    dataTexture(
-      32,
-      (u, v, _x, _y) => {
-        const scanline = Math.floor(v * 32) % 2 === 0 ? 0.9 : 1;
-        // More blocks: 4x4 grid per character cell
-        const block = (Math.floor(u * 8) + Math.floor(v * 4)) % 4;
-        // Text appears on every other block for density
-        const isText = (Math.floor(u * 8) % 2 === 0) ? 0.8 : 0.3;
-        const r = scanline * (0.2 + block * 0.1) * isText;
-        const g = scanline * (0.3 + block * 0.15) * isText;
-        const b = scanline * (0.4 + block * 0.2) * isText;
-        return [r * 255, g * 255, b * 255];
-      },
-      null,
-      1,
-      1,
-    ),
-  );
+const TV_WIDTH = 168;
+const TV_HEIGHT = 90;
+
+export interface TvSlide {
+  texture: THREE.DataTexture;
+  /** Colour the TV throws into the room. */
+  accent: number;
 }
 
-/** Alternative monitor pattern with wider characters. */
-export function monitorScreenWide(): THREE.DataTexture {
-  return cached('monitor-screen-wide', () =>
-    dataTexture(
-      32,
-      (u, v, _x, _y) => {
-        const scanline = Math.floor(v * 32) % 2 === 0 ? 0.7 : 1;
-        // Wider blocks: 3 columns per character
-        const block = (Math.floor(u * 12) + Math.floor(v * 6)) % 12;
-        const isText = ((_x + _y * 32) % 5 !== 0) ? 0.2 : 0.9;
-        const r = scanline * (0.15 + block * 0.03) * isText;
-        const g = scanline * (0.25 + block * 0.05) * isText;
-        const b = scanline * (0.35 + block * 0.07) * isText;
-        return [r * 255, g * 255, b * 255];
-      },
-      null,
-      1,
-      1,
-    ),
-  );
+let slideCache: TvSlide[] | null = null;
+
+/** Eight procedurally drawn channels, cycled by the TV. */
+export function tvSlides(): TvSlide[] {
+  if (slideCache) return slideCache;
+
+  const bars: Rgb[] = [
+    [235, 235, 230],
+    [235, 210, 65],
+    [65, 205, 220],
+    [70, 200, 115],
+    [210, 80, 190],
+    [220, 70, 60],
+    [55, 75, 205],
+  ];
+
+  slideCache = [
+    {
+      accent: 0xbcd8ff,
+      texture: rectTexture(TV_WIDTH, TV_HEIGHT, (u, v) => {
+        if (v < 0.72) return bars[Math.min(bars.length - 1, Math.floor(u * bars.length))]!;
+        if (v < 0.83) return [16, 17, 20];
+        return Math.floor(u * 8) % 2 === 0 ? [210, 210, 205] : [18, 18, 20];
+      }),
+    },
+    {
+      accent: 0xff9d5c,
+      texture: rectTexture(TV_WIDTH, TV_HEIGHT, (u, v) => {
+        const horizon = 0.6;
+        if (v < horizon) {
+          const sky = mixRgb([38, 42, 92], [255, 154, 92], Math.pow(v / horizon, 0.8));
+          const sun = Math.hypot((u - 0.7) * 1.87, v - 0.36);
+          if (sun < 0.105) return [255, 228, 164];
+          if (sun < 0.18) return mixRgb([255, 188, 118], sky, (sun - 0.105) / 0.075 * 0.6);
+          const near = horizon - 0.05 - 0.035 * Math.sin(u * 9.5 + 0.6);
+          if (v > near) return mixRgb([58, 46, 92], [28, 24, 54], (v - near) / 0.05);
+          const far = horizon - 0.15 - 0.05 * Math.sin(u * 6.2 + 2.1);
+          if (v > far) return mixRgb([78, 62, 116], [52, 42, 88], (v - far) / 0.1);
+          return sky;
+        }
+        const t = (v - horizon) / (1 - horizon);
+        const water = mixRgb([238, 144, 104], [30, 34, 78], smooth(t));
+        const shimmer = Math.sin(u * 42 + t * 14) * 0.5 + 0.5;
+        const centre = Math.max(0, 1 - Math.abs(u - 0.7) * 5.2);
+        return shimmer > 0.64 && centre > 0.15 && t < 0.4
+          ? mixRgb(water, [255, 208, 148], centre * 0.6)
+          : water;
+      }),
+    },
+    {
+      accent: 0x6d84ff,
+      texture: rectTexture(TV_WIDTH, TV_HEIGHT, (u, v, x, y) => {
+        const sky = mixRgb([4, 7, 20], [30, 22, 58], smooth(v));
+        const moon = Math.hypot((u - 0.78) * 1.87, v - 0.2);
+        if (moon < 0.085) return [242, 242, 224];
+        if (moon < 0.13) return mixRgb([190, 198, 224], sky, (moon - 0.085) / 0.045);
+        if (v < 0.55 && hash(x * 3.1, y * 2.7) > 0.93) return [220, 230, 255];
+
+        const cell = u * 16;
+        const building = Math.floor(cell);
+        if (hash(building, 8.1) > 0.78) return sky;
+        const height = 0.14 + hash(building, 4.2) * 0.4;
+        const roof = 0.92 - height;
+        if (v < roof) return sky;
+
+        const fx = cell - building;
+        const wx = Math.floor(fx * 4);
+        const wy = Math.floor((v - roof) * 40);
+        const lit = fx > 0.18 && fx < 0.82 && wy % 2 === 0 && hash(building * 9 + wx, wy * 4) > 0.42;
+        return lit ? [255, 206, 120] : mixRgb([10, 14, 30], [18, 22, 42], (v - roof) / height);
+      }),
+    },
+    {
+      accent: 0x4fd1e0,
+      texture: rectTexture(TV_WIDTH, TV_HEIGHT, (u, v) => {
+        const horizon = 0.55;
+        if (v < horizon) {
+          const sky = mixRgb([112, 192, 236], [238, 246, 232], smooth(v / horizon));
+          const sun = Math.hypot((u - 0.3) * 1.87, v - 0.24);
+          if (sun < 0.075) return [255, 250, 214];
+          if (sun < 0.14) return mixRgb([255, 248, 200], sky, (sun - 0.075) / 0.065);
+          return sky;
+        }
+        const t = (v - horizon) / (1 - horizon);
+        const sea = mixRgb([38, 152, 170], [10, 52, 92], smooth(t));
+        const wave = Math.sin(u * 38 + t * 9) * Math.sin(u * 12 - t * 5);
+        return wave > 0.62 ? mixRgb(sea, [224, 250, 255], 0.32) : sea;
+      }),
+    },
+    {
+      accent: 0xff6b6b,
+      texture: rectTexture(TV_WIDTH, TV_HEIGHT, (u, v) => {
+        const backdrop = mixRgb([16, 30, 55], [8, 14, 30], smooth(v));
+        const glow = Math.max(0, 1 - Math.hypot((u - 0.5) * 1.87, v - 0.42) * 1.4);
+        let color = mixRgb(backdrop, [40, 80, 130], glow * 0.5);
+
+        if (v > 0.64) color = mixRgb([30, 55, 90], [14, 24, 44], (v - 0.64) / 0.36);
+        for (const anchor of [0.42, 0.58]) {
+          if (Math.hypot((u - anchor) * 1.87, v - 0.45) < 0.052) color = [232, 192, 162];
+          if (v > 0.52 && v < 0.7 && Math.abs(u - anchor) < 0.055) color = [36, 46, 68];
+        }
+
+        if (v > 0.72 && v < 0.84) {
+          color = u < 0.12 ? [200, 40, 45] : mixRgb([15, 40, 80], [30, 70, 130], u);
+          if (u > 0.12 && v > 0.765 && v < 0.795 && (u * 34) % 3 < 1.8) color = [235, 240, 248];
+        }
+        if (Math.hypot((u - 0.88) * 1.87, v - 0.12) < 0.042) color = [210, 40, 50];
+        return color;
+      }),
+    },
+    {
+      accent: 0x9a6bff,
+      texture: rectTexture(TV_WIDTH, TV_HEIGHT, (u, v, x, y) => {
+        let color = mixRgb([6, 5, 18], [20, 10, 38], v);
+        if (hash(x * 1.3, y * 2.1) > 0.92) color = [200, 215, 255];
+        const nebula = Math.hypot((u - 0.25) * 1.87, v - 0.72);
+        if (nebula < 0.35) color = mixRgb(color, [82, 32, 104], (1 - nebula / 0.35) * 0.35);
+
+        const px = (u - 0.62) * 1.87;
+        const py = v - 0.45;
+        const planet = Math.hypot(px, py);
+        const ring = Math.hypot(px / 0.38, py / 0.072);
+        if (ring > 0.84 && ring < 1.06 && planet > 0.22) {
+          return mixRgb([214, 184, 142], [148, 120, 92], (ring - 0.84) / 0.22);
+        }
+        if (planet < 0.22) {
+          const shade = 0.55 + 0.45 * Math.max(0, 1 - Math.hypot(px + 0.08, py + 0.06) / 0.22);
+          const band = Math.sin(py * 46) * 0.05;
+          return [212 * shade + band * 255, 154 * shade, 112 * shade];
+        }
+        return color;
+      }),
+    },
+    {
+      accent: 0xff4fa3,
+      texture: rectTexture(TV_WIDTH, TV_HEIGHT, (u, v) => {
+        let color = mixRgb([18, 4, 26], [8, 2, 12], v);
+        const bars = 18;
+        const cell = u * bars;
+        const index = Math.floor(cell);
+        const fx = cell - index;
+        const height = 0.18 + hash(index, 1.3) * 0.55;
+        const top = 0.88 - height;
+        if (fx > 0.18 && fx < 0.82 && v > top) {
+          color = mixRgb([255, 60, 160], [60, 200, 255], (v - top) / height);
+        }
+        if (v > 0.87 && v < 0.9) color = mixRgb(color, [255, 140, 210], 0.4);
+        return color;
+      }),
+    },
+    {
+      accent: 0x7fe0a0,
+      texture: rectTexture(TV_WIDTH, TV_HEIGHT, (u, v) => {
+        const horizon = 0.62;
+        if (v < horizon) {
+          const sky = mixRgb([178, 224, 240], [244, 238, 208], smooth(v / horizon));
+          const ridge = horizon - 0.06 - 0.05 * Math.sin(u * 7.3);
+          if (v > ridge) return [92, 132, 102];
+          return sky;
+        }
+
+        const cell = u * 9;
+        const tree = Math.floor(cell);
+        const fx = cell - tree;
+        const height = 0.2 + hash(tree, 7.2) * 0.28;
+        const apex = 0.92 - height;
+        if (v > apex && Math.abs(fx - 0.5) < (v - apex) * 0.55) return [22, 60, 45];
+        return mixRgb([40, 92, 60], [20, 48, 34], (v - horizon) / (1 - horizon));
+      }),
+    },
+  ];
+
+  return slideCache;
 }
 
-/** Monitor pattern with vertical text bars. */
-export function monitorScreenVertical(): THREE.DataTexture {
-  return cached('monitor-screen-vertical', () =>
-    dataTexture(
-      32,
-      (u, v, _x, _y) => {
-        const scanline = Math.floor(v * 32) % 2 === 0 ? 0.8 : 1;
-        // Vertical bars every 3 characters
-        const bar = Math.floor(u * 3) % 3;
-        // Text only on leftmost bar
-        const isText = bar === 0 ? 0.9 : 0.1;
-        const r = scanline * (0.2 + bar * 0.1) * isText;
-        const g = scanline * (0.3 + bar * 0.15) * isText;
-        const b = scanline * (0.4 + bar * 0.2) * isText;
-        return [r * 255, g * 255, b * 255];
-      },
-      null,
-      1,
-      1,
-    ),
-  );
-}
+let staticCache: THREE.DataTexture[] | null = null;
 
-/** Monitor pattern with diagonal text gradient. */
-export function monitorScreenDiagonal(): THREE.DataTexture {
-  return cached('monitor-screen-diagonal', () =>
-    dataTexture(
-      32,
-      (u, v, _x, _y) => {
-        const scanline = Math.floor(v * 32) % 2 === 0 ? 0.7 : 1;
-        // Diagonal gradient: bottom-left to top-right
-        const diag = (Math.floor(u * 4) + Math.floor(v * 4)) % 8;
-        const isText = diag !== 0 ? 0.3 : 0.9;
-        const r = scanline * (0.1 + diag * 0.05) * isText;
-        const g = scanline * (0.2 + diag * 0.07) * isText;
-        const b = scanline * (0.3 + diag * 0.1) * isText;
-        return [r * 255, g * 255, b * 255];
-      },
-      null,
-      1,
-      1,
-    ),
+/** Short noise frames used for the channel-change flicker. */
+export function tvStaticFrames(): THREE.DataTexture[] {
+  if (staticCache) return staticCache;
+  staticCache = [0, 1, 2].map((seed) =>
+    rectTexture(TV_WIDTH, TV_HEIGHT, (_u, v, x, y) => {
+      const noise = hash(x * 1.7 + seed * 13, y * 2.3 + seed * 7);
+      const band = Math.sin((v + seed * 0.13) * TV_HEIGHT * 0.8) * 0.12;
+      const value = 50 + noise * 160 + band * 90;
+      return [value * 0.82, value * 0.9, value];
+    }),
   );
-}
-
-/** TV screen static + logo pattern. */
-export function tvScreen(): THREE.DataTexture {
-  return cached('tv-screen', () =>
-    dataTexture(
-      64,
-      (u, v, x, y) => {
-        const staticNoise = hash(x * 7, y * 7) * 0.5;
-        const lowerLeft = u < 0.5 && v < 0.5 ? 0.3 : 1;
-        const centerOval = Math.exp(-((u - 0.5) * 4 + (v - 0.5) * 4) * 3);
-        const logo = (Math.sin(x * 15) * Math.cos(y * 15) + 1) / 4;
-        const value = 0.1 + staticNoise * 0.3 + lowerLeft * 0.2 + centerOval * 0.3 + logo * 0.2;
-        const r = value * 15 + staticNoise * 20;
-        const g = value * 25 + staticNoise * 10;
-        const b = value * 30 + staticNoise * 5;
-        return [r * 255, g * 255, b * 255];
-      },
-      null,
-      1,
-      1,
-    ),
-  );
+  return staticCache;
 }

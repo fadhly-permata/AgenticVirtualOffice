@@ -7,6 +7,7 @@ export interface AgentLook {
   pants: number;
   skin: number;
   hair: number;
+  longHair?: boolean;
 }
 
 export interface CharacterRig {
@@ -101,6 +102,12 @@ export function createCharacter(look: AgentLook): CharacterRig {
   head.add(box(0.34, 0.18, 0.1, hair, 0, 0.27, -0.11));
   head.add(box(0.042, 0.05, 0.02, mat(0x241f1c), -0.075, 0.22, 0.152));
   head.add(box(0.042, 0.05, 0.02, mat(0x241f1c), 0.075, 0.22, 0.152));
+
+  if (look.longHair) {
+    head.add(rbox(0.38, 0.46, 0.13, 0.05, hair, 0, 0.08, -0.14));
+    head.add(rbox(0.08, 0.4, 0.11, 0.035, hair, -0.17, 0.1, -0.02));
+    head.add(rbox(0.08, 0.4, 0.11, 0.035, hair, 0.17, 0.1, -0.02));
+  }
 
   const armL = buildArm(shirt, skin, -0.37);
   const armR = buildArm(shirt, skin, 0.37);
