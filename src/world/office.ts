@@ -848,6 +848,7 @@ export class OfficeWorld {
 
     g.add(this.plant(12.1, 20.2, 1.0, 2.2));
     g.add(cyl(0.22, 0.2, 0.4, mat(0x9aa3a8), 2.7, 0.2, 19.9, 12));
+    g.add(this.sofaRun(7.2, 20.3, 0, C.coral));
 
     this.buildSteam();
     g.add(this.steamGroup());
@@ -1005,6 +1006,7 @@ export class OfficeWorld {
 
     g.add(this.plant(25.2, 19.8, 1.05, 2.8));
     g.add(this.plant(14.3, 20.3, 0.9, 0.9));
+    g.add(this.sofaRun(14.55, 16.6, -Math.PI / 2));
     g.add(this.wallArt(13.12, 2.0, 13.6, Math.PI / 2, 1.2, 1.5, 0x8a6aa8));
 
     return g;
@@ -1094,6 +1096,28 @@ export class OfficeWorld {
     return g;
   }
 
+  /**
+   * A two-seat couch. Authored in local space with the backrest along +z, so
+   * the seats face -z and each seat centre sits at local x = +/- 0.95.
+   */
+  private sofaRun(x: number, z: number, rotation: number, accent: number = C.mustard): THREE.Group {
+    const w = 3.9;
+    const g = new THREE.Group();
+    g.add(this.contact(0, -0.2, w + 0.4, 1.6, 0.26));
+    g.add(rbox(w, 0.42, 1.4, 0.1, M.sage, 0, 0.32, 0));
+    g.add(rbox(w, 0.72, 0.3, 0.1, M.sageDeep, 0, 0.86, 0.57));
+    for (const dx of [-w / 2 + 0.18, w / 2 - 0.18]) {
+      g.add(rbox(0.36, 0.58, 1.4, 0.1, M.sage, dx, 0.58, 0));
+    }
+    for (const dx of [-0.95, 0.95]) {
+      g.add(rbox(1.62, 0.16, 1.1, 0.07, M.cushion, dx, 0.58, -0.05));
+    }
+    g.add(rbox(0.42, 0.42, 0.16, 0.06, mat(accent), -1.3, 0.78, 0.3));
+    g.position.set(x, 0, z);
+    g.rotation.y = rotation;
+    return g;
+  }
+
   /** Soft blob under a piece of furniture so it does not float. */
   private contact(x: number, z: number, w: number, d: number, opacity = 0.22): THREE.Mesh {
     let material = this.contactMaterials.get(opacity);
@@ -1138,9 +1162,6 @@ export class OfficeWorld {
     g.add(box(0.025, 0.06, 0.02, mat(color), 0.058, 0.055, 0));
     return g;
   }
-
-  // (moved to lines 119-122 for correct class structure)
-
 
   // ---------------------------------------------------------- day / night ---
 

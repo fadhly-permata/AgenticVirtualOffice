@@ -52,16 +52,6 @@ export function weightsFor(night: number): Record<ActivityId, number> {
 /** 'live' means a real tool drives the floor; 'demo' means the office is only a show. */
 export type FloorMode = 'demo' | 'live';
 
-/**
- * Where the autopilot may send an agent that has nothing to do. In live mode a
- * desk or the meeting table is reserved for sessions that are actually running,
- * so free hands only ever land on break spots.
- */
-export const FREE_TIME_POOL: Record<FloorMode, ActivityId[]> = {
-  demo: ACTIVITIES,
-  live: ['coffee', 'gaming', 'tv', 'chatting', 'idle'],
-};
-
 export function durationFor(activity: ActivityId, rng: () => number = Math.random): number {
   const [min, max] = ACTIVITY_DURATION[activity];
   return randRange(rng, min, max);

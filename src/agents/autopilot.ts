@@ -1,5 +1,5 @@
-import { type ActivityId, type Spot, spotsFor } from '../world/layout';
-import { ACTIVITIES, durationFor, FREE_TIME_POOL, type FloorMode, weightsFor } from './activities';
+import { type ActivityId, isBreakRoom, type Spot, spotsFor } from '../world/layout';
+import { ACTIVITIES, durationFor, type FloorMode, weightsFor } from './activities';
 
 export interface AutopilotAgent {
   id: string;
@@ -12,8 +12,9 @@ export interface AutopilotAgent {
 
 /**
  * Chooses a new activity for every agent whose stay expired. Activity
- * likelihood shifts with the simulated time of day. In live mode the pool is
- * limited to the common areas, so a free agent never pretends to work.
+ * likelihood shifts with the simulated time of day. In live mode the desks and
+ * the meeting table belong to running sessions, so free hands only ever land on
+ * a spot in a break room.
  */
 export class Autopilot {
   private mode: FloorMode = 'demo';
@@ -51,18 +52,21 @@ export class Autopilot {
 
   private pick(agent: AutopilotAgent, taken: Set<string>, night: number): Spot | null {
     const weights = weightsFor(night);
-    const allowed = new Set(FREE_TIME_POOL[this.mode]);
-    const candidates = ACTIVITIES.filter(
-      (activity) =>
-        allowed.has(activity) &&
-        activity !== agent.spot.activity &&
-        spotsFor(activity).some((spot) => !taken.has(spot.id)),
-    );
-    if (candidates.length === 0) return null;
+    const pools = new Map<ActivityId, Spot[]>();
+    for (const activity of ACTIVITIES) {
+      if (activity === agent.spot.activity) continue;
+      const free = spotsFor(activity).filter(
+        (candidate) =>
+          !taken.has(candidate.id) && (this.mode === 'demo' || isBreakRoom(candidate)),
+      );
+      if (free.length > 0) pools.set(activity, free);
+    }
+    if (pools.size === 0) return null;
 
+    const candidates = [...pools.keys()];
     const total = candidates.reduce((sum, activity) => sum + weights[activity], 0);
     let roll = this.rng() * total;
-    let chosen: ActivityId = candidates[candidates.length - 1];
+    let chosen = candidates[candidates.length - 1]!;
     for (const activity of candidates) {
       roll -= weights[activity];
       if (roll <= 0) {
@@ -71,8 +75,7 @@ export class Autopilot {
       }
     }
 
-    const pool = spotsFor(chosen).filter((spot) => !taken.has(spot.id));
-    const picked = pool[Math.floor(this.rng() * pool.length)];
-    return picked ?? pool[0] ?? null;
+    const pool = pools.get(chosen)!;
+    return pool[Math.floor(this.rng() * pool.length)] ?? null;
   }
 }

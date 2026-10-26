@@ -9,6 +9,12 @@ interface Edge {
 export class NavGraph {
   private readonly nodes = new Map<string, Vec2>();
   private readonly edges = new Map<string, Edge[]>();
+  private blocked: ReadonlySet<string> | null = null;
+
+  /** Route around these nodes, for as long as a room is in use. */
+  blockNodes(ids: ReadonlySet<string> | null): void {
+    this.blocked = ids;
+  }
 
   add(id: string, position: Vec2): void {
     if (this.nodes.has(id)) throw new Error(`Duplicate nav node "${id}"`);
@@ -64,6 +70,11 @@ export class NavGraph {
     if (!this.nodes.has(start) || !this.nodes.has(goal)) return [];
     if (start === goal) return [start];
 
+    // Orang yang berangkat atau tiba di dalam ruang yang dikunci tetap boleh
+    // lewat; hanya lalu-lintas pihak ketiga yang dialihkan.
+    const blocked =
+      this.blocked && !this.blocked.has(start) && !this.blocked.has(goal) ? this.blocked : null;
+
     const dist = new Map<string, number>([[start, 0]]);
     const previous = new Map<string, string>();
     const open = new Set<string>([start]);
@@ -82,6 +93,7 @@ export class NavGraph {
       open.delete(current);
 
       for (const edge of this.neighbors(current)) {
+        if (blocked?.has(edge.to)) continue;
         const next = best + edge.cost;
         if (next < (dist.get(edge.to) ?? Number.POSITIVE_INFINITY)) {
           dist.set(edge.to, next);

@@ -5,6 +5,7 @@ import {
   EDGES,
   NODES,
   PARTITIONS,
+  ROOM_NODES,
   SPOTS,
   spotsFor,
   type Partition,
@@ -94,5 +95,23 @@ describe('office layout', () => {
       expect(node.x).toBeCloseTo(spot.x, 5);
       expect(node.z).toBeCloseTo(spot.z, 5);
     }
+  });
+
+  it('routes around a meeting room that is in use', () => {
+    const graph = buildNavGraph();
+    const meeting = ROOM_NODES.get('meeting')!;
+    graph.blockNodes(meeting);
+
+    const path = graph.findPath('s:desk-1', 's:sofa-1');
+    expect(path.length).toBeGreaterThan(0);
+    expect(path.filter((id) => meeting.has(id))).toEqual([]);
+  });
+
+  it('still opens a blocked room for whoever leaves or enters it', () => {
+    const graph = buildNavGraph();
+    graph.blockNodes(ROOM_NODES.get('meeting')!);
+
+    expect(graph.findPath('s:meet-n1', 's:coffee-1').length).toBeGreaterThan(0);
+    expect(graph.findPath('s:desk-1', 's:meet-s1').length).toBeGreaterThan(0);
   });
 });

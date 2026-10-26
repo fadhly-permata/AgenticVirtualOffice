@@ -11,7 +11,7 @@ import { Autopilot } from './agents/autopilot';
 import { AGENT_SEEDS, MAX_AGENTS, parseAgentCount, startingState } from './agents/seeds';
 import type { CrewEntry } from './office/presence';
 import { DayCycle } from './core/dayNight';
-import { buildNavGraph, OFFICE_DEPTH, OFFICE_WIDTH, spot } from './world/layout';
+import { buildNavGraph, OFFICE_DEPTH, OFFICE_WIDTH, ROOM_NODES, spot } from './world/layout';
 import { OfficeWorld } from './world/office';
 
 const canvas = document.querySelector<HTMLCanvasElement>('#scene');
@@ -276,6 +276,24 @@ function boot(target: HTMLCanvasElement): void {
 
   // ----------------------------------------------------------------- loop ---
 
+  const workRoomNodes = new Set<string>([
+    ...(ROOM_NODES.get('workspace') ?? []),
+    ...(ROOM_NODES.get('meeting') ?? []),
+  ]);
+
+  /**
+   * Kerjaan asli yang menentukan siapa boleh duduk di mana: di lantai live hanya
+   * sesi yang jalan yang boleh masuk ruang kerja atau ruang meeting, dan di demo
+   * ruang meeting tetap tertutup selama ada yang duduk di dalamnya.
+   */
+  function blockedRooms(): ReadonlySet<string> | null {
+    if (autopilot.floorMode === 'live') return workRoomNodes;
+    const meetingInUse = agents.some(
+      (agent) => agent.mode === 'settled' && agent.spot.activity === 'meeting',
+    );
+    return meetingInUse ? (ROOM_NODES.get('meeting') ?? null) : null;
+  }
+
   let last = performance.now();
   let elapsed = 0;
   let hudTick = 0;
@@ -289,6 +307,7 @@ function boot(target: HTMLCanvasElement): void {
     controls.update(); // keep orbit controls in sync
 
     clock.update(dt);
+    nav.blockNodes(blockedRooms());
     autopilot.update(elapsed, clock.nightFactor);
     for (const agent of agents) agent.update(dt, elapsed);
 

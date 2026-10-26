@@ -231,6 +231,25 @@ const SPOT_DEFS: SpotDef[] = [
     facing: -HALF_PI,
     seatHeight: 0,
   },
+  // Sofa along the pantry's south wall, so a break does not always mean standing.
+  {
+    id: 'couch-pantry-1',
+    label: 'Sofa pantry',
+    activity: 'chatting',
+    x: 6.25,
+    z: 20.3,
+    facing: Math.PI - 0.35,
+    seatHeight: 0.58,
+  },
+  {
+    id: 'couch-pantry-2',
+    label: 'Sofa pantry',
+    activity: 'chatting',
+    x: 8.15,
+    z: 20.3,
+    facing: -(Math.PI - 0.35),
+    seatHeight: 0.58,
+  },
   {
     id: 'pantry-water',
     label: 'Dispenser',
@@ -279,6 +298,25 @@ const SPOT_DEFS: SpotDef[] = [
     facing: -HALF_PI,
     seatHeight: 0,
   },
+  // Sofa along the lounge's west wall, so a break does not always mean standing.
+  {
+    id: 'couch-lounge-1',
+    label: 'Sofa ruang santai',
+    activity: 'chatting',
+    x: 14.55,
+    z: 15.65,
+    facing: HALF_PI - 0.3,
+    seatHeight: 0.58,
+  },
+  {
+    id: 'couch-lounge-2',
+    label: 'Sofa ruang santai',
+    activity: 'chatting',
+    x: 14.55,
+    z: 17.55,
+    facing: HALF_PI + 0.3,
+    seatHeight: 0.58,
+  },
   {
     id: 'lounge-plant',
     label: 'Tanaman',
@@ -306,6 +344,11 @@ export function spot(id: string): Spot {
 
 export function spotsFor(activity: ActivityId): Spot[] {
   return SPOTS.filter((s) => s.activity === activity);
+}
+
+/** The rooms an off-the-clock employee is allowed to occupy. */
+export function isBreakRoom(spot: Spot): boolean {
+  return spot.room === 'pantry' || spot.room === 'lounge';
 }
 
 /** Aisle / junction nodes that are not seats themselves. */
@@ -346,6 +389,7 @@ const AISLES: AisleNode[] = [
   { id: 'pn-coffee', x: 2.5, z: 14.3 },
   { id: 'pn-water', x: 2.9, z: 17.6 },
   { id: 'pn-south', x: 6.6, z: 19.0 },
+  { id: 'pn-sofa', x: 8.4, z: 19.2 },
   { id: 'pn-east', x: 10.6, z: 16.0 },
   { id: 'pn-door-b', x: 11.9, z: 19.1 },
   // Lounge
@@ -357,7 +401,6 @@ const AISLES: AisleNode[] = [
   { id: 'lg-se', x: 24.2, z: 19.4 },
   { id: 'lg-south', x: 19.5, z: 19.4 },
   { id: 'lg-sw', x: 15.0, z: 19.4 },
-  { id: 'lg-west', x: 14.8, z: 15.8 },
   { id: 'lg-front-w', x: 17.6, z: 16.6 },
   { id: 'lg-front-e', x: 21.8, z: 16.6 },
 ];
@@ -370,6 +413,14 @@ export const NODES: NavNodeData[] = [
   ...AISLES,
   ...SPOTS.map((s) => ({ id: s.node, x: s.x, z: s.z })),
 ];
+
+/** Every nav node that lies inside a room, used to close a room off. */
+export const ROOM_NODES: ReadonlyMap<RoomId, ReadonlySet<string>> = new Map(
+  (Object.keys(ROOMS) as RoomId[]).map((room) => [
+    room,
+    new Set(NODES.filter((node) => roomAt(node.x, node.z) === room).map((node) => node.id)),
+  ]),
+);
 
 const s = (spotId: string) => `s:${spotId}`;
 
@@ -444,9 +495,13 @@ export const EDGES: [string, string][] = [
   ['pn-north', s('chat-pantry-4')],
   [s('chat-pantry-3'), s('chat-pantry-4')],
   [s('chat-pantry-3'), 'pn-west'],
+  ['pn-south', 'pn-sofa'],
+  ['pn-sofa', 'pn-door-b'],
+  ['pn-sofa', s('couch-pantry-1')],
+  ['pn-sofa', s('couch-pantry-2')],
   // Lounge
   ['lg-door-d', 'lg-north'],
-  ['lg-door-d', 'lg-west'],
+  ['lg-door-d', 'lg-front-w'],
   ['lg-north', 'lg-ne'],
   ['lg-ne', 'lg-east'],
   ['lg-east', s('beanbag')],
@@ -455,11 +510,12 @@ export const EDGES: [string, string][] = [
   ['lg-se', 'lg-south'],
   ['lg-south', 'lg-sw'],
   ['lg-sw', 'lg-door-b'],
-  ['lg-sw', 'lg-west'],
-  ['lg-west', 'lg-front-w'],
+  ['lg-sw', 'lg-front-w'],
   ['lg-front-w', 'lg-front-e'],
   ['lg-front-w', s('sofa-1')],
   ['lg-front-w', s('sofa-2')],
+  ['lg-front-w', s('couch-lounge-1')],
+  ['lg-front-w', s('couch-lounge-2')],
   ['lg-front-e', s('sofa-3')],
   ['lg-front-e', s('beanbag')],
   ['lg-door-d', s('chat-lounge-1')],

@@ -147,6 +147,8 @@ export class Agent {
     this.setSignal(null);
     this.pinned = false;
     this.busyUntil = 0;
+    // Lepas saat masih berjalan ke kursi sesi: jangan warisi durasi tak hingga.
+    if (this.stayFor === Number.POSITIVE_INFINITY) this.stayFor = 12;
   }
 
   /** The bubble floated over this agent's head while an OpenCode run holds it busy. */
@@ -401,7 +403,8 @@ export class Agent {
         t.armR = -0.2 - gesture * 0.9;
         t.armL = 0.02 + gesture * 0.1;
         t.armZL = 0.12;
-        t.bodyY = Math.abs(Math.sin(time * 0.9 + offset)) * 0.015;
+        // Add, not replace: a couch seat already owns the body height offset.
+        t.bodyY += Math.abs(Math.sin(time * 0.9 + offset)) * 0.015;
         t.lean = 0.04 + gesture * 0.05;
         t.headX = 0.03 + nod * 0.05;
         t.headY = gesture * 0.12 - nod * 0.06;

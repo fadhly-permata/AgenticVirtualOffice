@@ -1,8 +1,8 @@
 import { describe, expect, it } from 'vitest';
-import { ACTIVITY_DURATION, durationFor, FREE_TIME_POOL, weightsFor } from '../src/agents/activities';
+import { ACTIVITY_DURATION, durationFor, weightsFor } from '../src/agents/activities';
 import { Autopilot, type AutopilotAgent } from '../src/agents/autopilot';
 import { MAX_AGENTS, startingState } from '../src/agents/seeds';
-import { SPOT_MAP, spotsFor, spot, type Spot } from '../src/world/layout';
+import { isBreakRoom, SPOTS, SPOT_MAP, spot, type Spot } from '../src/world/layout';
 
 class FakeAgent implements AutopilotAgent {
   pinned = false;
@@ -131,7 +131,7 @@ describe('autopilot', () => {
     }
   });
 
-  it('keeps free agents out of the work areas in live mode', () => {
+  it('keeps free agents inside the break rooms in live mode', () => {
     const agents = startingState(15).map(
       (entry, index) => new FakeAgent(`agent-${index}`, spot(entry.spot)),
     );
@@ -146,14 +146,12 @@ describe('autopilot', () => {
       }
     }
 
-    const allowed = new Set(FREE_TIME_POOL.live);
     for (const agent of agents) {
-      expect(allowed.has(agent.spot.activity), `${agent.id} is left in a work area`).toBe(true);
+      expect(isBreakRoom(agent.spot), `${agent.id} is left in ${agent.spot.room}`).toBe(true);
     }
   });
 
   it('has a break spot for every agent the roster can hold', () => {
-    const breakSpots = FREE_TIME_POOL.live.reduce((sum, activity) => sum + spotsFor(activity).length, 0);
-    expect(breakSpots).toBeGreaterThanOrEqual(MAX_AGENTS);
+    expect(SPOTS.filter(isBreakRoom).length).toBeGreaterThanOrEqual(MAX_AGENTS);
   });
 });
