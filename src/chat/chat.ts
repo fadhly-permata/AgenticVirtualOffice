@@ -52,6 +52,7 @@ const chatWindow = byId<HTMLElement>('chat-window');
 const chatFolder = byId<HTMLElement>('chat-folder');
 const chatChangeFolder = byId<HTMLButtonElement>('chat-change-folder');
 const chatNew = byId<HTMLButtonElement>('chat-new');
+const chatMaximize = byId<HTMLButtonElement>('chat-maximize');
 const chatClose = byId<HTMLButtonElement>('chat-close');
 const sessionSelect = byId<HTMLSelectElement>('chat-session');
 const modelSelect = byId<HTMLSelectElement>('chat-model');
@@ -139,6 +140,20 @@ export function installChat(officeApi: VirtOfficeApi): void {
     closeChat();
     launcher.focus();
   });
+  chatMaximize.addEventListener('click', () => {
+    setMaximized(!maximized);
+    if (window.innerWidth > 760) input.focus();
+  });
+  // Klik atau pindah fokus ke luar popup berarti user sudah meninggalkan chat-nya.
+  const dismiss = (event: Event): void => {
+    if (chatWindow.hidden || folderPicker?.isOpen) return;
+    const target = event.target;
+    if (!(target instanceof Node)) return;
+    if (chatWindow.contains(target) || launcher.contains(target)) return;
+    closeChat();
+  };
+  document.addEventListener('pointerdown', dismiss);
+  document.addEventListener('focusin', dismiss);
   chatNew.addEventListener('click', () => startNewChat(true));
   chatChangeFolder.addEventListener('click', () => {
     if (isAnyRunning()) {
@@ -267,6 +282,18 @@ function updateLauncher(): void {
       : workspace
         ? 'ready'
         : 'idle';
+}
+
+let maximized = false;
+
+/** Tombol perbesar mengisi diorama, lalu mengembalikan jendela ke dock kanannya. */
+function setMaximized(next: boolean): void {
+  maximized = next;
+  chatWindow.classList.toggle('chat--max', next);
+  chatMaximize.setAttribute('aria-pressed', String(next));
+  const label = next ? 'Perkecil chat' : 'Perbesar chat';
+  chatMaximize.title = label;
+  chatMaximize.setAttribute('aria-label', label);
 }
 
 function openChat(): void {

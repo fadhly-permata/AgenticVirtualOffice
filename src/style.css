@@ -277,7 +277,7 @@ body.is-ready #scene {
 .launcher {
   position: absolute;
   right: 24px;
-  bottom: 66px;
+  bottom: 24px;
   z-index: 6;
   display: flex;
   align-items: center;
@@ -427,6 +427,27 @@ body.chat-open .launcher,
     opacity: 1;
     transform: none;
   }
+}
+
+/* Perbesar membuat chat mengisi diorama, jadi ikonnya ikut berganti. */
+.chat--max {
+  top: 14px;
+  right: 14px;
+  bottom: 14px;
+  left: 14px;
+  width: auto;
+}
+
+.icon-btn .icon-restore {
+  display: none;
+}
+
+.icon-btn[aria-pressed='true'] .icon-restore {
+  display: block;
+}
+
+.icon-btn[aria-pressed='true'] .icon-max {
+  display: none;
 }
 
 .chat__head {
@@ -1941,7 +1962,7 @@ body.chat-open .launcher,
 @media (max-width: 760px) {
   .launcher {
     right: 14px;
-    bottom: 54px;
+    bottom: 14px;
   }
 
   .chat {
