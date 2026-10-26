@@ -1,0 +1,38 @@
+<!doctype html>
+<html lang="id">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="theme-color" content="#0d1526" />
+    <title>VirtOffice — Kantor Isometrik</title>
+  </head>
+  <body>
+    <main id="app">
+      <canvas id="scene" aria-label="Diorama kantor isometrik 2.5D bergerak"></canvas>
+
+      <header class="panel panel--brand">
+        <span class="brand__mark" aria-hidden="true"></span>
+        <div>
+          <p class="brand__title">VIRTUAL OFFICE</p>
+          <p class="brand__sub">OpenCode Studio · 2.5D</p>
+        </div>
+      </header>
+
+      <section class="panel panel--clock" aria-label="Jam kantor">
+        <p class="panel__label">Waktu kantor</p>
+        <p class="clock__time"><span id="time">08:06</span><span class="clock__phase" id="phase">Pagi</span></p>
+        <div class="clock__track"><i id="progress"></i></div>
+      </section>
+
+      <section class="panel panel--legend" aria-label="Status agen">
+        <p class="panel__label">Agen</p>
+        <ul id="legend"></ul>
+      </section>
+
+      <p class="hint">AUTO-PLAY · <span id="agent-count">5</span> AGEN</p>
+
+      <p id="fatal" class="fatal" hidden></p>
+    </main>
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>
