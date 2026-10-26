@@ -3,6 +3,7 @@ import { HttpError } from './http.mjs';
 
 const START_TIMEOUT_MS = 30_000;
 const REQUEST_TIMEOUT_MS = 60_000;
+const EVENT_TIMEOUT_MS = 40_000;
 const HIDDEN_AGENTS = new Set(['compaction', 'summary', 'title']);
 
 export function readableError(text) {
@@ -255,7 +256,7 @@ export class OpenCodeBridge {
     url.searchParams.set('directory', directory);
 
     const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), 15_000);
+    const timer = setTimeout(() => controller.abort(), EVENT_TIMEOUT_MS);
     let response;
     try {
       response = await fetch(url, {

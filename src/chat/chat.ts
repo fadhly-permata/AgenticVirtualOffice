@@ -83,6 +83,9 @@ const questions = new Map<string, QuestionRequest>();
 let stream: EventSource | null = null;
 let streamReady = false;
 let streamErrorShown = false;
+let streamAttempts = 0;
+let streamRetryTimer = 0;
+let streamNoticeTimer = 0;
 const streamWaiters = new Set<() => void>();
 let fallbackTimer = 0;
 let reading = false;
@@ -213,7 +216,6 @@ function applyWorkspace(next: WorkspaceInfo | null): void {
   renderMessages({ forceBottom: true });
   updateComposer();
 
-  if (workspace) void ensureStream();
   if (!chatWindow.hidden && workspace) void loadBootstrap();
 }
 
@@ -557,45 +559,74 @@ async function stopResponse(): Promise<void> {
 
 function ensureStream(): Promise<void> {
   if (!workspace) return Promise.resolve();
-  if (!stream) {
-    const source = new EventSource('/api/chat/events');
-    stream = source;
-
-    source.onopen = () => {
-      streamReady = true;
-      stopFallbackPoll();
-      for (const resolve of streamWaiters) resolve();
-      streamWaiters.clear();
-
-      if (streamErrorShown) {
-        streamErrorShown = false;
-        if (noticeKind === 'disconnect') setNotice(null);
-        if (currentSession) void refreshCurrentSession();
-      }
-    };
-
-    source.onerror = () => {
-      streamReady = false;
-      streamErrorShown = true;
-      scheduleFallbackPoll();
-      if (!chatWindow.hidden) {
-        setNotice('disconnect', 'Koneksi event terputus. Mencoba menyambung ulang…');
-      }
-    };
-
-    source.onmessage = (raw) => {
-      if (!raw.data) return;
-      let event: ChatEvent;
-      try {
-        event = JSON.parse(raw.data) as ChatEvent;
-      } catch {
-        return;
-      }
-      handleEvent(event);
-    };
-  }
-
+  if (!stream) connectStream();
   return waitForStream();
+}
+
+function connectStream(): void {
+  if (!workspace || stream) return;
+  window.clearTimeout(streamRetryTimer);
+  streamRetryTimer = 0;
+
+  const source = new EventSource('/api/chat/events');
+  stream = source;
+
+  source.onopen = () => {
+    if (stream !== source) return;
+    streamReady = true;
+    streamAttempts = 0;
+    window.clearTimeout(streamRetryTimer);
+    streamRetryTimer = 0;
+    window.clearTimeout(streamNoticeTimer);
+    streamNoticeTimer = 0;
+    stopFallbackPoll();
+    for (const resolve of streamWaiters) resolve();
+    streamWaiters.clear();
+
+    if (streamErrorShown) {
+      streamErrorShown = false;
+      if (noticeKind === 'disconnect') setNotice(null);
+      if (currentSession) void refreshCurrentSession();
+    }
+  };
+
+  source.onerror = () => {
+    if (stream !== source) return;
+    // Chrome menutup EventSource permanen saat handshake gagal (mis. 502),
+    // jadi reconnect harus dibuat ulang manual.
+    streamReady = false;
+    streamErrorShown = true;
+    source.close();
+    stream = null;
+    scheduleFallbackPoll();
+
+    if (!streamNoticeTimer) {
+      streamNoticeTimer = window.setTimeout(() => {
+        streamNoticeTimer = 0;
+        if (!streamReady && !chatWindow.hidden) {
+          setNotice('disconnect', 'Koneksi event terputus. Mencoba menyambung ulang…');
+        }
+      }, 4_000);
+    }
+
+    const delay = Math.min(500 * 2 ** streamAttempts, 8_000);
+    streamAttempts += 1;
+    streamRetryTimer = window.setTimeout(() => {
+      streamRetryTimer = 0;
+      connectStream();
+    }, delay);
+  };
+
+  source.onmessage = (raw) => {
+    if (!raw.data) return;
+    let event: ChatEvent;
+    try {
+      event = JSON.parse(raw.data) as ChatEvent;
+    } catch {
+      return;
+    }
+    handleEvent(event);
+  };
 }
 
 function waitForStream(timeoutMs = 3_000): Promise<void> {
@@ -631,8 +662,14 @@ function stopFallbackPoll(): void {
 }
 
 function disconnectStream(): void {
-  stream?.close();
+  window.clearTimeout(streamRetryTimer);
+  window.clearTimeout(streamNoticeTimer);
+  streamRetryTimer = 0;
+  streamNoticeTimer = 0;
+  streamAttempts = 0;
+  const source = stream;
   stream = null;
+  source?.close();
   streamReady = false;
   streamErrorShown = false;
   stopFallbackPoll();
@@ -646,7 +683,10 @@ function handleEvent(event: ChatEvent): void {
 
   switch (event.type) {
     case 'bridge.error':
-      setNotice('error', typeof props.message === 'string' ? props.message : 'Koneksi ke server terputus.');
+      setNotice(
+        'disconnect',
+        typeof props.message === 'string' ? props.message : 'Koneksi ke server terputus.'
+      );
       return;
 
     case 'session.created':
