@@ -118,6 +118,123 @@ describe('chat reducer', () => {
     expect(messages[0].parts[0].text).toBe('Parsial');
   });
 
+  it('treats unannounced tokens as live reasoning until the part is finalised', () => {
+    let messages = applyChatEvent(
+      [],
+      event('message.updated', { info: { id: 'm1', role: 'assistant', sessionID: session } }),
+      session
+    );
+    // OpenCode mengirim token penalaran sebelum part-nya diumumkan.
+    messages = applyChatEvent(
+      messages,
+      event('message.part.delta', {
+        sessionID: session,
+        messageID: 'm1',
+        partID: 'r1',
+        field: 'text',
+        delta: 'Aku ',
+      }),
+      session
+    );
+    messages = applyChatEvent(
+      messages,
+      event('message.part.delta', {
+        sessionID: session,
+        messageID: 'm1',
+        partID: 'r1',
+        field: 'text',
+        delta: 'hitung',
+      }),
+      session
+    );
+    expect(messages[0].parts[0].type).toBe('reasoning');
+    expect(messages[0].parts[0].text).toBe('Aku hitung');
+    expect(messages[0].parts[0].time?.end).toBeUndefined();
+
+    messages = applyChatEvent(
+      messages,
+      event('message.part.updated', {
+        sessionID: session,
+        part: {
+          id: 'r1',
+          messageID: 'm1',
+          sessionID: session,
+          type: 'reasoning',
+          text: 'Aku hitung 1 sampai 5',
+          time: { start: 1, end: 2 },
+        },
+      }),
+      session
+    );
+    expect(messages[0].parts).toHaveLength(1);
+    expect(messages[0].parts[0].time?.end).toBe(2);
+
+    // Jawaban tetap masuk ke part text yang diumumkan lebih dulu.
+    messages = applyChatEvent(
+      messages,
+      event('message.part.updated', {
+        sessionID: session,
+        part: { id: 't1', messageID: 'm1', sessionID: session, type: 'text', text: '' },
+      }),
+      session
+    );
+    messages = applyChatEvent(
+      messages,
+      event('message.part.delta', {
+        sessionID: session,
+        messageID: 'm1',
+        partID: 't1',
+        field: 'text',
+        delta: '1 2 3',
+      }),
+      session
+    );
+    expect(messages[0].parts[1].type).toBe('text');
+    expect(messages[0].parts[1].text).toBe('1 2 3');
+  });
+
+  it('keeps streaming into a reasoning part after it is announced', () => {
+    let messages = applyChatEvent(
+      [],
+      event('message.updated', { info: { id: 'm1', role: 'assistant', sessionID: session } }),
+      session
+    );
+    messages = applyChatEvent(
+      messages,
+      event('message.part.updated', {
+        sessionID: session,
+        part: { id: 'r1', messageID: 'm1', sessionID: session, type: 'reasoning', text: 'Aku' },
+      }),
+      session
+    );
+    messages = applyChatEvent(
+      messages,
+      event('message.part.delta', {
+        sessionID: session,
+        messageID: 'm1',
+        partID: 'r1',
+        field: 'text',
+        delta: ' pikir',
+      }),
+      session
+    );
+    expect(messages[0].parts[0].text).toBe('Aku pikir');
+
+    const other = applyChatEvent(
+      messages,
+      event('message.part.delta', {
+        sessionID: session,
+        messageID: 'm1',
+        partID: 'r1',
+        field: 'reasoning',
+        delta: ' lagi',
+      }),
+      session
+    );
+    expect(other[0].parts[0].text).toBe('Aku pikir lagi');
+    expect(other[0].parts[0].type).toBe('reasoning');
+  });
+
   it('rejects parts without a message id or with a non-text delta', () => {
     const empty = applyChatEvent(
       [],

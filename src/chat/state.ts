@@ -59,14 +59,23 @@ function attachPart(messages: LiveMessage[], messageID: string, partial: Partial
   return next;
 }
 
-function appendDelta(messages: LiveMessage[], messageID: string, partID: string, delta: string): LiveMessage[] {
+function appendDelta(
+  messages: LiveMessage[],
+  messageID: string,
+  partID: string,
+  delta: string,
+  field: 'text' | 'reasoning'
+): LiveMessage[] {
   const message = messages.find((entry) => entry.id === messageID);
   const existing = message?.parts.find((part) => part.id === partID);
-  if (existing && existing.type !== 'text') return messages;
-  if (existing) {
-    return attachPart(messages, messageID, { id: partID, text: `${existing.text ?? ''}${delta}` });
+  if (existing && existing.type !== 'text' && existing.type !== 'reasoning') return messages;
+  if (!existing) {
+    // Part jawaban selalu diumumkan lebih dulu lewat message.part.updated, jadi token
+    // yang datang tanpa pengumuman adalah penalaran yang belum difinalkan.
+    return attachPart(messages, messageID, { id: partID, type: 'reasoning', text: delta });
   }
-  return attachPart(messages, messageID, { id: partID, type: 'text', text: delta });
+  const type = field === 'reasoning' ? 'reasoning' : existing.type;
+  return attachPart(messages, messageID, { id: partID, type, text: `${existing.text ?? ''}${delta}` });
 }
 
 export function applyChatEvent(messages: LiveMessage[], event: ChatEvent, sessionID: string): LiveMessage[] {
@@ -87,12 +96,13 @@ export function applyChatEvent(messages: LiveMessage[], event: ChatEvent, sessio
     }
     case 'message.part.delta': {
       if (props.sessionID !== sessionID) return messages;
-      if (props.field !== 'text') return messages;
+      const field = props.field === 'reasoning' ? 'reasoning' : props.field === 'text' ? 'text' : null;
+      if (!field) return messages;
       const messageID = typeof props.messageID === 'string' ? props.messageID : '';
       const partID = typeof props.partID === 'string' ? props.partID : '';
       const delta = typeof props.delta === 'string' ? props.delta : '';
       if (!messageID || !partID || !delta) return messages;
-      return appendDelta(messages, messageID, partID, delta);
+      return appendDelta(messages, messageID, partID, delta, field);
     }
     default:
       return messages;

@@ -100,6 +100,11 @@ let noticeKind: NoticeKind | '' = '';
 let renderQueued = false;
 let historyReloadTimer = 0;
 
+const reasoningToggled = new Map<string, boolean>();
+let workClockEl: HTMLElement | null = null;
+let workClockSince = 0;
+let workClockTimer = 0;
+
 let officeAgentId: string | null = null;
 
 export function installChat(officeApi: VirtOfficeApi): void {
@@ -937,6 +942,7 @@ function renderMessages(options: { forceBottom?: boolean } = {}): void {
   const nearBottom =
     messagesEl.scrollHeight - messagesEl.scrollTop - messagesEl.clientHeight < 96;
   messagesEl.replaceChildren();
+  workClockEl = null;
 
   if (!workspace) {
     messagesEl.append(renderEmptyState('Buka workspace', 'Pilih folder proyek untuk mulai menggunakan OpenCode.'));
@@ -957,7 +963,23 @@ function renderMessages(options: { forceBottom?: boolean } = {}): void {
       const node = renderMessage(message, running && index === messages.length - 1);
       if (node) messagesEl.append(node);
     });
+    // Balasan assistant belum terlihat sama sekali: tetap tunjankan gelembung kerja.
+    if (running && messages[messages.length - 1]?.role !== 'assistant') {
+      const content = el('div', 'msg__content');
+      const since = messages[messages.length - 1]?.created ?? Date.now();
+      content.append(renderWorkBar(WORK_LABEL.prepare, since));
+      messagesEl.append(wrapAssistant(content));
+    }
+    if (nearBottom || options.forceBottom) {
+      for (const node of Array.from(
+        messagesEl.querySelectorAll<HTMLElement>('.reasoning--live .reasoning__text')
+      )) {
+        node.scrollTop = node.scrollHeight;
+      }
+    }
   }
+
+  if (!workClockEl) stopWorkClock();
 
   if (options.forceBottom || nearBottom) {
     messagesEl.scrollTop = messagesEl.scrollHeight;
@@ -1025,6 +1047,8 @@ function renderMessage(message: LiveMessage, runningLast: boolean): HTMLElement 
   const content = el('div', 'msg__content');
   let hasContent = false;
   let lastTextBlock: HTMLElement | null = null;
+  const phase = runningLast ? workPhase(message) : null;
+  if (phase) content.append(renderWorkBar(WORK_LABEL[phase], message.created));
 
   for (const part of message.parts) {
     if (part.type === 'text' && typeof part.text === 'string' && part.text.trim()) {
@@ -1038,8 +1062,11 @@ function renderMessage(message: LiveMessage, runningLast: boolean): HTMLElement 
     } else if (part.type === 'tool') {
       content.append(renderTool(part));
       hasContent = true;
-    } else if (part.type === 'reasoning' && typeof part.text === 'string' && part.text.trim()) {
-      content.append(renderReasoning(part.text));
+    } else if (
+      part.type === 'reasoning' &&
+      (typeof part.text === 'string' ? part.text.trim() : true)
+    ) {
+      content.append(renderReasoning(part, runningLast && !isReasoningSettled(part)));
       hasContent = true;
     } else if (part.type === 'file' && typeof part.filename === 'string') {
       const chip = el('span', 'msg__file', part.filename);
@@ -1055,7 +1082,7 @@ function renderMessage(message: LiveMessage, runningLast: boolean): HTMLElement 
     hasContent = true;
   }
 
-  if (!hasContent) {
+  if (!hasContent && !phase) {
     if (!runningLast) return null;
     const typing = el('div', 'typing');
     typing.append(el('span'), el('span'), el('span'));
@@ -1066,6 +1093,10 @@ function renderMessage(message: LiveMessage, runningLast: boolean): HTMLElement 
     lastTextBlock.append(caret);
   }
 
+  return wrapAssistant(content);
+}
+
+function wrapAssistant(content: HTMLElement): HTMLElement {
   const article = el('article', 'msg msg--assistant');
   const head = el('header', 'msg__head');
   const avatar = el('span', 'msg__avatar', 'OC');
@@ -1073,6 +1104,68 @@ function renderMessage(message: LiveMessage, runningLast: boolean): HTMLElement 
   head.append(avatar, name);
   article.append(head, content);
   return article;
+}
+
+type WorkPhase = 'prepare' | 'think' | 'compose';
+
+const WORK_LABEL: Record<WorkPhase, string> = {
+  prepare: 'Menyiapkan…',
+  think: 'Menalar…',
+  compose: 'Menulis jawaban…',
+};
+
+function isReasoningSettled(part: Part): boolean {
+  return typeof part.time?.end === 'number';
+}
+
+function workPhase(message: LiveMessage): WorkPhase | null {
+  let thinking = false;
+  let settled = false;
+
+  for (const part of message.parts) {
+    if (part.type === 'text' && typeof part.text === 'string' && part.text.trim()) return null;
+    if (part.type === 'tool') {
+      const status = part.state?.status;
+      if (status === 'running' || status === 'pending') return null;
+    }
+    if (part.type === 'reasoning') {
+      if (isReasoningSettled(part)) settled = true;
+      else thinking = true;
+    }
+  }
+  if (thinking) return 'think';
+  return settled ? 'compose' : 'prepare';
+}
+
+function renderWorkBar(label: string, since: number): HTMLElement {
+  const bar = el('div', 'workbar');
+  const dots = el('span', 'typing');
+  dots.append(el('span'), el('span'), el('span'));
+  bar.append(dots, el('span', 'workbar__label', label), el('span', 'workbar__clock'));
+  showWorkClock(bar.querySelector<HTMLElement>('.workbar__clock')!, since);
+  return bar;
+}
+
+function showWorkClock(host: HTMLElement, since: number): void {
+  workClockEl = host;
+  workClockSince = since;
+  host.textContent = elapsedLabel(since);
+  if (workClockTimer) return;
+  workClockTimer = window.setInterval(() => {
+    if (workClockEl) workClockEl.textContent = elapsedLabel(workClockSince);
+  }, 1_000);
+}
+
+function stopWorkClock(): void {
+  window.clearInterval(workClockTimer);
+  workClockTimer = 0;
+}
+
+function elapsedLabel(since: number): string {
+  if (!since) return '';
+  const seconds = Math.max(0, Math.floor((Date.now() - since) / 1000));
+  if (seconds < 60) return `${seconds} dtk`;
+  return `${Math.floor(seconds / 60)} mnt ${seconds % 60} dtk`;
 }
 
 function renderTool(part: Part): HTMLElement {
@@ -1123,11 +1216,19 @@ function toolStatusLabel(status: string): string {
   return 'Menunggu';
 }
 
-function renderReasoning(text: string): HTMLElement {
+function renderReasoning(part: Part, live: boolean): HTMLElement {
+  const raw = typeof part.text === 'string' ? part.text : '';
   const details = el('details', 'reasoning');
-  const summary = el('summary', undefined, 'Penalaran');
+  if (live) details.classList.add('reasoning--live');
+  const summary = el('summary', undefined, live ? 'Penalaran…' : 'Penalaran');
   const pre = el('pre', 'reasoning__text');
-  pre.textContent = text;
+  // Saat masih menalar, yang paling penting adalah token terbaru, jadi potong dari depan.
+  pre.textContent = live && raw.length > 4_000 ? `…${raw.slice(-4_000)}` : truncate(raw, 6_000);
+  if (live) pre.append(el('span', 'stream-caret'));
+  summary.addEventListener('click', () => {
+    reasoningToggled.set(part.id, !details.open);
+  });
+  details.open = reasoningToggled.get(part.id) ?? live;
   details.append(summary, pre);
   return details;
 }

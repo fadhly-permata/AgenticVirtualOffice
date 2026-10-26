@@ -82,6 +82,7 @@ export interface Part {
   tool?: string;
   callID?: string;
   state?: ToolState;
+  time?: { start?: number; end?: number };
   [key: string]: unknown;
 }
 
