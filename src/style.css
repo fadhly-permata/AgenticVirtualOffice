@@ -165,11 +165,18 @@ body.is-ready #scene {
 }
 
 .panel--legend ul {
+  --legend-row: 17px;
+  --legend-gap: 7px;
   display: grid;
-  gap: 7px;
+  gap: var(--legend-gap);
   margin: 0;
-  padding: 0;
+  padding-right: 5px;
   list-style: none;
+  max-height: calc(5 * var(--legend-row) + 4 * var(--legend-gap));
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(255, 255, 255, 0.2) transparent;
 }
 
 .legend__row {
@@ -177,6 +184,7 @@ body.is-ready #scene {
   grid-template-columns: 10px 1fr auto;
   align-items: center;
   gap: 9px;
+  min-height: var(--legend-row);
   font-size: 12px;
 }
 

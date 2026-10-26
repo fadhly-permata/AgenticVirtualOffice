@@ -135,6 +135,13 @@ function boot(target: HTMLCanvasElement): void {
   const countEl = document.getElementById('agent-count');
   const legendEl = document.getElementById('legend');
   const stateEls = new Map<string, HTMLElement>();
+  const legendRankById = new Map<string, number>();
+
+  /** Meeting table first, then the desks, then whoever is free — the busiest rows stay on top. */
+  function legendRank(agent: Agent): number {
+    if (!agent.pinned) return 2;
+    return agent.activity === 'meeting' ? 0 : agent.activity === 'working' ? 1 : 2;
+  }
 
   function renderLegend(): void {
     if (countEl) countEl.textContent = String(agents.length);
@@ -142,10 +149,15 @@ function boot(target: HTMLCanvasElement): void {
 
     legendEl.replaceChildren();
     stateEls.clear();
+    legendRankById.clear();
 
-    for (const agent of agents) {
+    for (const agent of [...agents].sort((a, b) => legendRank(a) - legendRank(b))) {
+      const rank = legendRank(agent);
+      legendRankById.set(agent.id, rank);
+
       const row = document.createElement('li');
       row.className = 'legend__row';
+      row.dataset.rank = String(rank);
 
       const dot = document.createElement('span');
       dot.className = 'legend__dot';
@@ -178,6 +190,8 @@ function boot(target: HTMLCanvasElement): void {
     if (timeEl) timeEl.textContent = clock.timeLabel;
     if (phaseEl) phaseEl.textContent = clock.phaseLabel;
     if (progressEl) progressEl.style.width = `${(clock.progress * 100).toFixed(1)}%`;
+    // Orang pindah kursi = barisnya harus disusun ulang, bukan cuma labelnya diganti.
+    if (agents.some((agent) => legendRankById.get(agent.id) !== legendRank(agent))) legendDirty = true;
     if (legendDirty) {
       renderLegend();
       legendDirty = false;
