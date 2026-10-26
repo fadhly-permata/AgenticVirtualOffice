@@ -2,6 +2,7 @@ import type { VirtOfficeApi } from '../api';
 import { chatApi } from './client';
 import { el, ICON, icon } from './dom';
 import { FolderPicker } from './folder';
+import { SearchSelect } from './select';
 import {
   applyChatEvent,
   describeError,
@@ -96,6 +97,9 @@ let officeAgentId: string | null = null;
 
 export function installChat(officeApi: VirtOfficeApi): void {
   office = officeApi;
+  new SearchSelect(sessionSelect, { searchable: true, searchPlaceholder: 'Cari sesi…' });
+  new SearchSelect(modelSelect, { searchable: true, searchPlaceholder: 'Cari model…' });
+  new SearchSelect(agentSelect);
   folderPicker = new FolderPicker((selected) => {
     applyWorkspace(selected);
     openChat();

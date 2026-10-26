@@ -105,8 +105,8 @@ Setelah menambah spot, tambahkan juga edge ke aisle terdekat, lalu jalankan `npm
 Klik pill **OpenCode** di kanan bawah untuk membuka chat. Kalau belum ada workspace, modal folder langsung muncul; kalau sudah ada, chat memakai workspace terakhir.
 
 - **Buka folder** — telusuri drive/folder, tempel path langsung (`C:\...` atau `~/...`), atau pilih dari recents. Folder harus sudah ada dan bisa dibaca.
-- **Sesi** — dropdown sesi memuat riwayat OpenCode untuk folder tersebut; tombol `＋` membuat chat baru.
-- **Model & agent** — daftar model diambil dari provider yang terhubung di OpenCode; pilihan terakhir disimpan di browser. Default mengikuti `model` di config OpenCode.
+- **Sesi** — dropdown sesi bisa dicari dan memuat riwayat OpenCode untuk folder tersebut; tombol `＋` membuat chat baru.
+- **Model & agent** — dropdown model bisa dicari berdasarkan nama model atau provider; daftarnya diambil dari provider yang terhubung di OpenCode. Pilihan terakhir disimpan di browser, default mengikuti `model` di config OpenCode.
 - **Streaming** — teks, tool call, status busy/retry, error, dan hasil tool tampil real-time lewat SSE. Tool call yang butuh izin memunculkan kartu **Izinkan / Selalu izinkan / Tolak**; pertanyaan agent memunculkan pilihan jawaban.
 - **Stop** — tombol stop memanggil abort pada sesi yang sedang berjalan.
 - **Kantor** — selama satu sesi bekerja, satu karyawan dipin ke aktivitas `working` (chip “X bekerja di kantor”); saat idle ia dilepas kembali ke autopilot.
