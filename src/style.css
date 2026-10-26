@@ -160,7 +160,8 @@ body.is-ready #scene {
 .panel--legend {
   left: 24px;
   bottom: 24px;
-  min-width: 214px;
+  /* Lebar dikunci: teks status yang panjang-pendek tidak boleh mengubah ukuran panel. */
+  width: 278px;
   padding-bottom: 12px;
 }
 
@@ -177,11 +178,12 @@ body.is-ready #scene {
   overscroll-behavior: contain;
   scrollbar-width: thin;
   scrollbar-color: rgba(255, 255, 255, 0.2) transparent;
+  scrollbar-gutter: stable;
 }
 
 .legend__row {
   display: grid;
-  grid-template-columns: 10px 1fr auto;
+  grid-template-columns: 10px minmax(0, 1fr) 84px;
   align-items: center;
   gap: 9px;
   min-height: var(--legend-row);
@@ -198,6 +200,9 @@ body.is-ready #scene {
 .legend__name {
   font-weight: 550;
   letter-spacing: 0.01em;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
 }
 
 .legend__state {
@@ -205,6 +210,9 @@ body.is-ready #scene {
   letter-spacing: 0.1em;
   text-transform: uppercase;
   color: var(--ink-dim);
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
 }
 
 .legend__state[data-state='walking'] {

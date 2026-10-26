@@ -80,6 +80,7 @@ function boot(target: HTMLCanvasElement): void {
   const plan = startingState(MAX_AGENTS);
   const requestedAgents = parseAgentCount(new URLSearchParams(window.location.search).get('agents'));
   let legendDirty = true;
+  let legendBusyIds = '';
 
   const crew: CrewFactory = {
     add(entry, index) {
@@ -140,13 +141,22 @@ function boot(target: HTMLCanvasElement): void {
 
   /** Meeting table first, then the desks, then whoever is free — the busiest rows stay on top. */
   function legendRank(agent: Agent): number {
-    if (!agent.pinned) return 2;
-    return agent.activity === 'meeting' ? 0 : agent.activity === 'working' ? 1 : 2;
+    // Sinyal = sesi nyata yang memegang orang ini, bahkan kalau semua kursi penuh.
+    if (!agent.pinned && !agent.signal) return 2;
+    return agent.activity === 'meeting' ? 0 : 1;
   }
 
   function renderLegend(): void {
     if (countEl) countEl.textContent = String(agents.length);
     if (!legendEl) return;
+
+    // Susunan baru memindahkan baris, jadi posisi scroll hanya dipertahankan
+    // selama tidak ada sesi yang mengambil atau melepas kursi.
+    const keptTop = legendEl.scrollTop;
+    const busyIds = agents
+      .filter((agent) => agent.pinned || agent.signal)
+      .map((agent) => agent.id)
+      .join(',');
 
     legendEl.replaceChildren();
     stateEls.clear();
@@ -167,6 +177,7 @@ function boot(target: HTMLCanvasElement): void {
       const name = document.createElement('span');
       name.className = 'legend__name';
       name.textContent = agent.name;
+      name.title = agent.name;
 
       const state = document.createElement('span');
       state.className = 'legend__state';
@@ -176,6 +187,9 @@ function boot(target: HTMLCanvasElement): void {
       legendEl.append(row);
       stateEls.set(agent.id, state);
     }
+
+    legendEl.scrollTop = busyIds === legendBusyIds ? keptTop : 0;
+    legendBusyIds = busyIds;
   }
 
   // Without a workspace to read agents from, the floor keeps its demo staff.
@@ -207,7 +221,7 @@ function boot(target: HTMLCanvasElement): void {
       el.textContent = agent.mode === 'walking' ? `→ ${label}` : label;
       el.dataset.state = agent.mode;
       // 'real' = kursi dipegang sesi OpenCode yang jalan, bukan jatah autopilot.
-      el.dataset.live = agent.pinned ? 'real' : 'auto';
+      el.dataset.live = agent.pinned || agent.signal ? 'real' : 'auto';
     }
   }
 
