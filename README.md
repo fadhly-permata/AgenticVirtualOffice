@@ -1,6 +1,6 @@
 # VirtOffice — Kantor Isometrik 2.5D
 
-Diorama kantor bergaya isometrik yang dibangun penuh dengan Three.js, tanpa aset 3D eksternal. Empat ruangan — **Ruang Kerja**, **Ruang Meeting**, **Pantry**, dan **Ruang Santai** — dihuni lima karyawan low-poly yang bekerja, ngopi, meeting, main game, dan menonton TV. Pencahayaan bergerak mengikuti siklus pagi–siang–sore–malam.
+Diorama kantor bergaya isometrik yang dibangun penuh dengan Three.js, tanpa aset 3D eksternal. Empat ruangan — **Ruang Kerja**, **Ruang Meeting**, **Pantry**, dan **Ruang Santai** — dihuni 2–15 karyawan low-poly (default 5) yang bekerja, ngopi, meeting, main game, dan menonton TV. Pencahayaan bergerak mengikuti siklus pagi–siang–sore–malam.
 
 Tujuan akhirnya: setiap karyawan mewakili satu agent OpenCode. Saat ini animasinya berjalan sendiri (auto-play), tetapi sudah ada API siap pakai untuk mengendalikan tiap agent dari luar.
 
@@ -11,10 +11,19 @@ npm install
 npm run dev      # http://localhost:5173
 npm run build    # typecheck + production build ke dist/
 npm run preview  # menyajikan hasil build
-npm test         # 26 test: layout, navigasi, autopilot, siklus waktu, agen, layar, scene
+npm test         # 31 test: layout, navigasi, autopilot, siklus waktu, agen, layar, scene
 ```
 
-Kamera isometrik memakai `OrthographicCamera` dengan sudut 45°/35.26° dan tidak bisa di-rotate — scene dibuat sebagai diorama statis.
+Jumlah agent diatur lewat query `?agents=N` (dibatasi ke 2–15, default 5):
+
+```bash
+http://localhost:5173/?agents=2
+http://localhost:5173/?agents=15
+```
+
+Roster berisi 15 agent dengan spot awal unik. Ruang kerja tetap punya lima meja, jadi maksimal lima agent bisa `working` pada saat yang sama; sisanya dibagikan autopilot ke meeting, pantry, dan lounge.
+
+Kamera isometrik memakai `OrthographicCamera` dan bisa di-orbit terbatas di sekitar diorama.
 
 ## Yang ada di scene
 
@@ -46,7 +55,7 @@ src/
     agent.ts        state machine, path following, pose prosedural
     autopilot.ts    penjadwal aktivitas berbobot
     activities.ts   label, durasi, bobot aktivitas per waktu
-    seeds.ts        data lima karyawan dan posisi awal
+    seeds.ts        roster 15 karyawan, batas jumlah agent, dan posisi awal unik
   api.ts            jembatan window.virtOffice
   main.ts           renderer, kamera, HUD, loop
 tests/              vitest

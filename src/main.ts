@@ -6,7 +6,7 @@ import { installApi } from './api';
 import { ACTIVITY_LABEL } from './agents/activities';
 import { Agent } from './agents/agent';
 import { Autopilot } from './agents/autopilot';
-import { AGENT_SEEDS, STARTING_STATE } from './agents/seeds';
+import { AGENT_SEEDS, parseAgentCount, startingState } from './agents/seeds';
 import { DayCycle } from './core/dayNight';
 import { buildNavGraph, OFFICE_DEPTH, OFFICE_WIDTH, spot } from './world/layout';
 import { OfficeWorld } from './world/office';
@@ -73,7 +73,8 @@ function boot(target: HTMLCanvasElement): void {
   scene.add(world.root);
 
   const nav = buildNavGraph();
-  const agents = STARTING_STATE.map((entry) => {
+  const requestedAgents = parseAgentCount(new URLSearchParams(window.location.search).get('agents'));
+  const agents = startingState(requestedAgents).map((entry) => {
     const seed = AGENT_SEEDS[entry.seedIndex];
     return new Agent(seed, nav, spot(entry.spot), entry.holdFor);
   });

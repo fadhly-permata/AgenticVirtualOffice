@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { ACTIVITY_DURATION, durationFor, weightsFor } from '../src/agents/activities';
 import { Autopilot, type AutopilotAgent } from '../src/agents/autopilot';
+import { startingState } from '../src/agents/seeds';
 import { SPOT_MAP, spot, type Spot } from '../src/world/layout';
 
 class FakeAgent implements AutopilotAgent {
@@ -110,6 +111,23 @@ describe('autopilot', () => {
       }
       const targets = agents.map((agent) => agent.spot.id);
       expect(new Set(targets).size).toBe(targets.length);
+    }
+  });
+
+  it('keeps fifteen agents on distinct spots', () => {
+    const agents = startingState(15).map(
+      (entry, index) => new FakeAgent(`agent-${index}`, spot(entry.spot)),
+    );
+    const autopilot = new Autopilot(agents, makeRng(17));
+
+    for (let tick = 0; tick < 30; tick += 1) {
+      autopilot.update(tick * 10, 0.15);
+      for (const agent of agents) {
+        agent.mode = 'settled';
+        agent.busyUntil = 0;
+      }
+      const targets = agents.map((agent) => agent.spot.id);
+      expect(new Set(targets).size).toBe(15);
     }
   });
 });
