@@ -95,18 +95,53 @@ export function buildAgentList(agents) {
     });
 }
 
+/**
+ * Every agent the workspace declares, primary and subagent alike — the office
+ * floor puts one employee per entry here. `hidden` flags OpenCode's own
+ * housekeeping agents, which have no business being people.
+ */
+export function buildAgentRoster(agents) {
+  if (!Array.isArray(agents)) return [];
+  return agents
+    .filter((agent) => typeof agent?.name === 'string' && !agent.hidden && !HIDDEN_AGENTS.has(agent.name))
+    .map((agent) => ({
+      name: agent.name,
+      mode: agent.mode === 'subagent' ? 'subagent' : 'primary',
+      description: typeof agent.description === 'string' ? agent.description.trim() : '',
+    }))
+    .sort((a, b) => {
+      if (a.mode !== b.mode) return a.mode === 'primary' ? -1 : 1;
+      const rank = (name) => (name === 'build' ? 0 : name === 'plan' ? 1 : 2);
+      return rank(a.name) - rank(b.name) || a.name.localeCompare(b.name);
+    });
+}
+
 export function buildSessionList(sessions) {
   if (!Array.isArray(sessions)) return [];
-  return sessions
+  const mapped = sessions
     .filter((session) => session && typeof session.id === 'string')
     .map((session) => ({
       id: session.id,
       title: typeof session.title === 'string' && session.title.trim() ? session.title : 'Sesi tanpa judul',
       created: session.time?.created ?? 0,
       updated: session.time?.updated ?? session.time?.created ?? 0,
+      agent: typeof session.agent === 'string' ? session.agent : null,
+      parentID: typeof session.parentID === 'string' && session.parentID ? session.parentID : null,
     }))
-    .sort((a, b) => b.updated - a.updated)
-    .slice(0, 40);
+    .sort((a, b) => b.updated - a.updated);
+
+  const kept = mapped.slice(0, 40);
+  // Sesi induk sering tidak di-update selama subagent bekerja, jadi jangan sampai
+  // ia terpotong: presence butuh relasi induk-anak untuk tahu siapa mendelegasi.
+  const seen = new Set(kept.map((session) => session.id));
+  const parents = new Set(kept.map((session) => session.parentID).filter(Boolean));
+  for (const session of mapped) {
+    if (parents.delete(session.id) && !seen.has(session.id)) {
+      seen.add(session.id);
+      kept.push(session);
+    }
+  }
+  return kept.sort((a, b) => b.updated - a.updated);
 }
 
 export class OpenCodeBridge {

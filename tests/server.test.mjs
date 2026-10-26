@@ -2,7 +2,7 @@ import fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
-import { buildAgentList, buildModelCatalog, buildSessionList, readableError } from '../server/opencode.mjs';
+import { buildAgentList, buildAgentRoster, buildModelCatalog, buildSessionList, readableError } from '../server/opencode.mjs';
 import { WorkspaceStore, browseDirectory, workspaceName } from '../server/workspace.mjs';
 
 const temps = [];
@@ -96,6 +96,45 @@ describe('agent and session lists', () => {
       time: { created: index, updated: index },
     }));
     expect(buildSessionList(many)).toHaveLength(40);
+  });
+
+  it('keeps the parent of a listed session so delegation stays visible', () => {
+    const parent = { id: 'p', agent: 'build', time: { created: 1, updated: 1 } };
+    const children = Array.from({ length: 45 }, (_, index) => ({
+      id: `c${index}`,
+      agent: 'technical-writer',
+      parentID: 'p',
+      time: { created: index + 10, updated: index + 10 },
+    }));
+    const sessions = buildSessionList([parent, ...children]);
+
+    expect(sessions).toHaveLength(41);
+    expect(sessions.find((session) => session.id === 'p')?.parentID).toBeNull();
+    expect(sessions.find((session) => session.id === 'c44')?.agent).toBe('technical-writer');
+    expect(sessions.some((session) => session.id === 'c0')).toBe(false);
+  });
+
+  it('lists every visible agent for the office floor, primary first', () => {
+    const roster = buildAgentRoster([
+      { name: 'explore', mode: 'subagent', description: 'Cari cepat' },
+      { name: 'plan', mode: 'primary', description: '' },
+      { name: 'build', mode: 'primary', description: '' },
+      { name: 'general', mode: 'subagent', hidden: false },
+      { name: 'compaction', mode: 'primary', hidden: true },
+      { name: 'summary', mode: 'primary' },
+      { name: 'title', mode: 'primary' },
+      { name: 'qa-engineer', mode: 'subagent' },
+    ]);
+    expect(roster.map((agent) => agent.name)).toEqual([
+      'build',
+      'plan',
+      'explore',
+      'general',
+      'qa-engineer',
+    ]);
+    expect(roster[0].mode).toBe('primary');
+    expect(roster[2].mode).toBe('subagent');
+    expect(roster[3].description).toBe('');
   });
 });
 

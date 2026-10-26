@@ -407,6 +407,7 @@ function renderSessionSelect(): void {
 
 function upsertSession(info: Record<string, unknown>): void {
   if (typeof info.id !== 'string') return;
+  const previous = sessions.find((entry) => entry.id === info.id);
   const summary: SessionSummary = {
     id: info.id,
     title: typeof info.title === 'string' && info.title.trim() ? info.title : 'Sesi tanpa judul',
@@ -416,6 +417,10 @@ function upsertSession(info: Record<string, unknown>): void {
     updated: typeof (info.time as { updated?: number } | undefined)?.updated === 'number'
       ? (info.time as { updated: number }).updated
       : Date.now(),
+    // Event sesi tidak selalu membawa lineage, jadi jangan hapus yang sudah diketahui.
+    agent: typeof info.agent === 'string' ? info.agent : previous?.agent ?? null,
+    parentID:
+      typeof info.parentID === 'string' && info.parentID ? info.parentID : previous?.parentID ?? null,
   };
 
   const index = sessions.findIndex((session) => session.id === summary.id);

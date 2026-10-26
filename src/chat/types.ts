@@ -47,11 +47,20 @@ export interface AgentChoice {
   description: string;
 }
 
+/** One agent declared by the workspace — the office floor staffs a person per entry. */
+export interface AgentRosterEntry {
+  name: string;
+  mode: 'primary' | 'subagent';
+  description: string;
+}
+
 export interface SessionSummary {
   id: string;
   title: string;
   created: number;
   updated: number;
+  agent: string | null;
+  parentID: string | null;
 }
 
 export interface Bootstrap {
@@ -59,6 +68,7 @@ export interface Bootstrap {
   models: ModelGroup[];
   defaultModel: ModelKey | null;
   agents: AgentChoice[];
+  roster: AgentRosterEntry[];
   sessions: SessionSummary[];
 }
 

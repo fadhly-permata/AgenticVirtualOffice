@@ -6,6 +6,7 @@ import { fileURLToPath } from 'node:url';
 import { HttpError, readJson, sendError, sendJson } from './http.mjs';
 import {
   buildAgentList,
+  buildAgentRoster,
   buildModelCatalog,
   buildSessionList,
   OpenCodeBridge,
@@ -173,8 +174,15 @@ async function handleApi(req, res, url) {
       models: catalog.groups,
       defaultModel: catalog.defaultModel,
       agents: buildAgentList(agents),
+      roster: buildAgentRoster(agents),
       sessions: buildSessionList(sessions),
     });
+  }
+
+  if (pathname === '/api/chat/status' && method === 'GET') {
+    const directory = workspaceOrThrow();
+    const statuses = await bridge.request('/session/status', { query: { directory } }).catch(() => ({}));
+    return sendJson(res, 200, { statuses });
   }
 
   if (pathname === '/api/chat/sessions' && method === 'POST') {
