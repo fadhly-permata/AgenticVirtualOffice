@@ -24,3 +24,12 @@ Setiap perubahan kode diuji sungguhan di kedua sisi, bukan cuma type-check dan t
 - Unit yang sudah terverifikasi di-commit segera; jangan pernah `push` atau merge tanpa diminta.
 - Jangan pakai `confirm()`/`prompt()` browser di UI chat — konfirmasi ada di dalam panel.
 - Kalau user melaporkan perilaku yang bertentangan dengan kesimpulanmu, penjelasan pertamamu kemungkinan salah: cari mekanisme yang mereproduksi pengamatannya persis.
+
+<!-- virtoffice:rules:start -->
+## VirtOffice: jeda delegasi
+
+Blok ini diatur otomatis oleh VirtOffice (jeda 2 detik) supaya animasi kantor tidak melihat subagent berdiri terlalu cepat.
+
+- Tugas yang datang dari delegasi (`task` subagent): jalankan `sleep 2` sebelum mulai bekerja, lalu `sleep 2` lagi setelah pekerjaan selesai sebelum mengirim laporan akhir.
+- Saat mendelegasikan lewat `task`, sertakan aturan jeda ini di prompt subagent.
+<!-- virtoffice:rules:end -->
