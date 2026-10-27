@@ -10,6 +10,7 @@ import {
 import { chatApi } from './client';
 import { el, ICON, icon } from './dom';
 import { FolderPicker } from './folder';
+import { cancelPendingDiagrams, renderMarkdown } from './markdown';
 import { SearchSelect } from './select';
 import {
   applyChatEvent,
@@ -1171,6 +1172,7 @@ function scheduleRender(): void {
 function renderMessages(options: { forceBottom?: boolean } = {}): void {
   const nearBottom =
     messagesEl.scrollHeight - messagesEl.scrollTop - messagesEl.clientHeight < 96;
+  cancelPendingDiagrams();
   messagesEl.replaceChildren();
   clockHosts.length = 0;
 
@@ -1245,6 +1247,7 @@ function renderSuggestions(): HTMLElement {
     'Jelaskan struktur proyek ini',
     'Cari bug atau masalah yang perlu diperbaiki',
     'Ringkas apa yang bisa ditingkatkan',
+    'Buat contoh jawaban lengkap: markdown, tabel, diagram alur mermaid, dan chart xychart',
   ];
   for (const prompt of prompts) {
     const button = el('button', 'chat__suggestion', prompt);
@@ -1269,7 +1272,7 @@ function renderMessage(message: LiveMessage, runningLast: boolean): HTMLElement 
       .map((part) => part.text as string)
       .join('\n')
       .trim();
-    if (text) renderRichText(bubble, text);
+    if (text) renderMarkdown(bubble, text);
     if (!bubble.childElementCount) return null;
     article.append(bubble);
     return article;
@@ -1284,7 +1287,7 @@ function renderMessage(message: LiveMessage, runningLast: boolean): HTMLElement 
   for (const part of message.parts) {
     if (part.type === 'text' && typeof part.text === 'string' && part.text.trim()) {
       const block = el('div', 'msg__text');
-      renderRichText(block, part.text);
+      renderMarkdown(block, part.text);
       if (block.childElementCount) {
         content.append(block);
         lastTextBlock = block;
@@ -1485,74 +1488,6 @@ function renderReasoning(part: Part, live: boolean): HTMLElement {
   details.open = reasoningToggled.get(part.id) ?? live;
   details.append(summary, pre);
   return details;
-}
-
-function renderRichText(container: HTMLElement, text: string): void {
-  const fence = /```([^\n`]*)\n?([\s\S]*?)```/g;
-  let last = 0;
-  let match: RegExpExecArray | null;
-
-  while ((match = fence.exec(text)) !== null) {
-    appendProse(container, text.slice(last, match.index));
-    const block = el('div', 'md-code');
-    const language = match[1].trim();
-    if (language) block.append(el('span', 'md-code__lang', language));
-    const pre = el('pre');
-    pre.append(el('code', undefined, match[2].replace(/\n$/, '')));
-    block.append(pre);
-    container.append(block);
-    last = fence.lastIndex;
-  }
-  appendProse(container, text.slice(last));
-  if (!container.childElementCount && text.trim()) {
-    container.append(el('p', 'md-p', text));
-  }
-}
-
-function appendProse(container: HTMLElement, prose: string): void {
-  const chunks = prose.split(/\n{2,}/).filter((chunk) => chunk.trim());
-  for (const chunk of chunks) {
-    const lines = chunk.split('\n');
-    let buffer: string[] = [];
-
-    const flush = () => {
-      if (!buffer.length) return;
-      const paragraph = el('p', 'md-p');
-      appendInline(paragraph, buffer.join('\n'));
-      container.append(paragraph);
-      buffer = [];
-    };
-
-    for (const line of lines) {
-      const heading = line.match(/^(#{1,4})\s+(.*)$/);
-      if (heading) {
-        flush();
-        const node = el('p', `md-head md-head--${heading[1].length}`);
-        appendInline(node, heading[2]);
-        container.append(node);
-      } else {
-        buffer.push(line);
-      }
-    }
-    flush();
-  }
-}
-
-function appendInline(parent: HTMLElement, text: string): void {
-  const inline = /(`[^`\n]+`|\*\*[^*\n]+\*\*)/g;
-  let last = 0;
-  let match: RegExpExecArray | null;
-  while ((match = inline.exec(text)) !== null) {
-    if (match.index > last) parent.append(document.createTextNode(text.slice(last, match.index)));
-    const token = match[0];
-    if (token.startsWith('`')) {
-      parent.append(el('code', 'md-inline', token.slice(1, -1)));
-    } else {
-      parent.append(el('strong', undefined, token.slice(2, -2)));
-    }
-    last = inline.lastIndex;
-  }
-  if (last < text.length) parent.append(document.createTextNode(text.slice(last)));
 }
 
 function renderPrompts(): void {

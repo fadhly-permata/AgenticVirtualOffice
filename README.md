@@ -67,6 +67,7 @@ src/
     folder.ts       modal pemilih folder workspace
     types.ts        tipe payload chat
     dom.ts          helper elemen + ikon SVG
+    markdown.ts     render markdown jawaban + diagram mermaid
   core/
     dayNight.ts     jam simulasi, faktor siang/malam, warna langit
     math.ts         clamp, smoothstep, damping sudut
@@ -111,6 +112,7 @@ Klik pill **OpenCode** di kanan bawah untuk membuka chat. Kalau belum ada worksp
 - **Sesi** — dropdown sesi bisa dicari dan memuat riwayat OpenCode untuk folder tersebut; tombol `＋` membuat chat baru.
 - **Model & agent** — dropdown model bisa dicari berdasarkan nama model atau provider; daftarnya diambil dari provider yang terhubung di OpenCode. Pilihan terakhir disimpan di browser, default mengikuti `model` di config OpenCode.
 - **Streaming** — teks, tool call, status busy/retry, error, dan hasil tool tampil real-time lewat SSE. Tool call yang butuh izin memunculkan kartu **Izinkan / Selalu izinkan / Tolak**; pertanyaan agent memunculkan pilihan jawaban.
+- **Render jawaban** — teks agent dan user dilewatkan parser markdown (heading, daftar bersarang, task list, tabel, kutipan, `kode` inline, blok kode) yang disanitasi DOMPurify. Blok ` ```mermaid ` digambar menjadi diagram atau chart (flowchart, sequence, gantt, pie, xychart, dan tipe lain) lengkap dengan tombol perbesar — panel zoom bisa ditutup lewat `Esc` atau klik latar — plus tombol salin kode. Mesin mermaid dipecah sebagai chunk terpisah dan baru dimuat saat blok diagram benar-benar muncul.
 - **Stop** — tombol stop memanggil abort pada sesi yang sedang berjalan.
 - **Kantor** — jumlah karyawan mengikuti `roster` agent OpenCode di workspace. Setiap ~3 detik (dan setiap ada event sesi) server ditanya sesi mana yang busy, lalu `presence` menentukan kursinya: sesi biasa → meja kerja, sesi yang punya anak busy → ruang meeting bersama anak yang didelegasi. Di atas kepalanya muncul bubble berisi potongan aktivitas aslinya (`Mikir: …`, `Nulis: …`, `Membaca file: README.md`) yang diambil dari `/api/chat/activity`; kalau belum ada yang bisa dikutip, bubble berubah jadi pil titik-titik. Chip header menampilkan fase run sesi yang sedang dibuka beserta hitungan waktu. Saat sesi selesai, karyawan dilepas kembali ke autopilot.
 

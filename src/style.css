@@ -1082,41 +1082,152 @@ body.chat-open .launcher,
   margin-top: 9px;
 }
 
-.md-p {
-  margin: 0 0 8px;
-  white-space: pre-wrap;
+/* Keluaran markdown sudah disanitasi, jadi tag HTML nyata boleh langsung dipakai. */
+.md {
   overflow-wrap: anywhere;
 }
 
-.md-p:last-child {
+.md > :first-child {
+  margin-top: 0;
+}
+
+.md > :last-child {
   margin-bottom: 0;
 }
 
-.md-head {
-  margin: 11px 0 5px;
-  font-size: 12.5px;
+.md p {
+  margin: 0 0 8px;
+}
+
+.md h1,
+.md h2,
+.md h3,
+.md h4,
+.md h5,
+.md h6 {
+  margin: 12px 0 5px;
   font-weight: 650;
   letter-spacing: 0.01em;
   color: var(--ink);
 }
 
-.md-head:first-child {
-  margin-top: 0;
+.md h1 {
+  font-size: 14.5px;
 }
 
-.md-head--3,
-.md-head--4 {
+.md h2 {
+  font-size: 13.5px;
+}
+
+.md h3 {
+  font-size: 12.5px;
+}
+
+.md h4,
+.md h5,
+.md h6 {
   font-size: 11.5px;
   color: rgba(244, 239, 230, 0.86);
 }
 
-.md-inline {
+.md ul,
+.md ol {
+  margin: 0 0 8px;
+  padding-left: 19px;
+}
+
+.md li {
+  margin: 2px 0;
+}
+
+.md li > ul,
+.md li > ol {
+  margin: 2px 0 0;
+}
+
+.md li::marker {
+  color: var(--ink-dim);
+}
+
+.md li input[type='checkbox'] {
+  margin: 0 5px 0 0;
+  accent-color: var(--accent);
+  vertical-align: -1px;
+}
+
+.md a {
+  color: #f0d9a4;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.md a:hover {
+  color: var(--accent);
+}
+
+.md strong {
+  font-weight: 700;
+  color: var(--ink);
+}
+
+.md del {
+  color: var(--ink-dim);
+}
+
+.md :not(pre) > code {
   padding: 1px 4px;
   border-radius: 4px;
   background: rgba(255, 255, 255, 0.08);
   font-family: ui-monospace, 'SF Mono', 'Cascadia Mono', monospace;
   font-size: 10.5px;
   color: #f0d9a4;
+}
+
+.md blockquote {
+  margin: 8px 0;
+  padding: 2px 0 2px 10px;
+  border-left: 2px solid rgba(226, 180, 74, 0.5);
+  color: var(--ink-dim);
+}
+
+.md hr {
+  margin: 11px 0;
+  border: 0;
+  border-top: 1px solid rgba(255, 255, 255, 0.12);
+}
+
+.md img {
+  max-width: 100%;
+  border-radius: 9px;
+}
+
+.md-table {
+  margin: 8px 0;
+  overflow-x: auto;
+}
+
+.md table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 11px;
+}
+
+.md th,
+.md td {
+  padding: 4px 7px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  text-align: left;
+  vertical-align: top;
+}
+
+.md th {
+  background: rgba(255, 255, 255, 0.06);
+  font-weight: 650;
+  color: var(--ink);
+}
+
+.md tbody tr:nth-child(even) td {
+  background: rgba(255, 255, 255, 0.02);
 }
 
 .md-code {
@@ -1147,6 +1258,185 @@ body.chat-open .launcher,
   font-size: 10.5px;
   line-height: 1.55;
   color: #e8e1d4;
+}
+
+/* ----------------------------------------------------------- diagram --- */
+
+.md-diagram {
+  margin: 9px 0;
+  overflow: hidden;
+  border: 1px solid rgba(255, 255, 255, 0.11);
+  border-radius: 11px;
+  background: rgba(9, 15, 21, 0.45);
+}
+
+.md-diagram__view {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 44px;
+  padding: 10px;
+  color: var(--ink-dim);
+  font-size: 10.5px;
+}
+
+.md-diagram[data-status='ready'] .md-diagram__view {
+  display: block;
+  overflow-x: auto;
+  text-align: center;
+}
+
+.md-diagram__view svg {
+  display: inline-block;
+  width: 100%;
+  height: auto;
+  max-height: 60vh;
+}
+
+.md-diagram__error {
+  margin: 0;
+  color: #ffd9d1;
+}
+
+/* Label diagram bisa berupa HTML di dalam foreignObject: jangan kenai gaya markdown. */
+.md-diagram p {
+  margin: 0;
+}
+
+.md-diagram__bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 3px 5px 3px 9px;
+  border-top: 1px solid rgba(255, 255, 255, 0.07);
+  background: rgba(255, 255, 255, 0.03);
+}
+
+.md-diagram__kind {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  font-size: 8.5px;
+  font-weight: 600;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--ink-dim);
+}
+
+.md-diagram__actions {
+  display: flex;
+  flex: none;
+  gap: 2px;
+}
+
+.md-diagram__actions .icon-btn {
+  width: 23px;
+  height: 23px;
+}
+
+.md-diagram__actions .icon-btn svg {
+  width: 13px;
+  height: 13px;
+}
+
+.md-diagram__source {
+  border-top: 1px solid rgba(255, 255, 255, 0.07);
+}
+
+.md-diagram__source summary {
+  padding: 5px 9px;
+  font-size: 8.5px;
+  font-weight: 600;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--ink-dim);
+  cursor: pointer;
+}
+
+.md-diagram__source .md-code {
+  margin: 0;
+  border: 0;
+  border-radius: 0;
+  border-top: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+/* -------------------------------------------------------- diagram view --- */
+
+.diagram-view {
+  position: fixed;
+  inset: 0;
+  z-index: 50;
+  display: grid;
+  place-items: center;
+  padding: 20px;
+}
+
+.diagram-view__backdrop {
+  position: absolute;
+  inset: 0;
+  background: rgba(4, 9, 14, 0.72);
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
+}
+
+.diagram-view__card {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  width: min(1080px, 100%);
+  max-height: 92vh;
+  padding: 14px 16px;
+  overflow: hidden;
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  border-radius: 18px;
+  background: rgba(13, 20, 27, 0.97);
+  box-shadow: 0 30px 80px rgba(0, 0, 0, 0.55);
+  animation: chat-in 220ms cubic-bezier(0.2, 0.8, 0.25, 1);
+}
+
+.diagram-view__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.diagram-view__title {
+  margin: 0;
+  font-size: 10px;
+  font-weight: 650;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--ink-dim);
+}
+
+.diagram-view__tools {
+  display: flex;
+  gap: 2px;
+}
+
+.diagram-view__stage {
+  flex: 1;
+  min-height: 0;
+  padding: 14px;
+  overflow: auto;
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.03);
+}
+
+.diagram-view__inner {
+  display: inline-block;
+  min-width: 100%;
+  transform-origin: top left;
+}
+
+.diagram-view__inner svg {
+  display: block;
+  width: 100%;
+  height: auto;
 }
 
 .msg__file {

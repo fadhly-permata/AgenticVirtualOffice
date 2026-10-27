@@ -9,6 +9,10 @@ export const ICON = {
   close: 'm6 6 12 12M18 6 6 18',
   terminal: 'm5 7 4 5-4 5M12 17h7',
   file: 'M7 3h7l4 4v14H7ZM14 3v5h5',
+  expand: 'M9 4H4v5M15 20h5v-5M20 9V4h-5M4 15v5h5',
+  copy: 'M9 9h11v11H9zM4 15V4h11',
+  plus: 'M12 5v14M5 12h14',
+  minus: 'M5 12h14',
 };
 
 export function icon(d: string, size = 16): SVGSVGElement {
