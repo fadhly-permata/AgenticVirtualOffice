@@ -7,6 +7,7 @@ import {
   buildTranscriptMessages,
   claudeProjectSlug,
   claudeProviderPayload,
+  claudeSpawnArgs,
   parseAgentDoc,
   readRoster,
   titleFromPrompt,
@@ -162,5 +163,29 @@ describe('model katalog', () => {
     expect(catalog.groups[0].providerID).toBe('claude');
     expect(catalog.groups[0].models.map((model) => model.id).sort()).toEqual(['fable', 'haiku', 'opus', 'sonnet']);
     expect(catalog.defaultModel).toEqual({ providerID: 'claude', modelID: 'haiku' });
+  });
+});
+
+describe('claudeSpawnArgs', () => {
+  const base = { sessionID: 'd1907560-7a6c-4cbd-96cf-0a25593ee819', model: 'opus', agent: 'claude' };
+
+  it('memakai --session-id untuk sesi baru dan --resume untuk transkrip yang sudah ada', () => {
+    expect(claudeSpawnArgs({ ...base, exists: false })).toContain('--session-id');
+    expect(claudeSpawnArgs({ ...base, exists: false })).not.toContain('--resume');
+    expect(claudeSpawnArgs({ ...base, exists: true })).toContain('--resume');
+  });
+
+  it('meneruskan model, effort, dan agent non-default', () => {
+    const args = claudeSpawnArgs({ ...base, exists: true, agent: 'probe-helper', effort: 'low' });
+    expect(args.slice(args.indexOf('--model'), args.indexOf('--model') + 2)).toEqual(['--model', 'opus']);
+    expect(args.slice(args.indexOf('--effort'), args.indexOf('--effort') + 2)).toEqual(['--effort', 'low']);
+    expect(args).toContain('--agent');
+    expect(args[args.indexOf('--agent') + 1]).toBe('probe-helper');
+  });
+
+  it('mengabaikan effort yang tidak dikenal dan agent default', () => {
+    const args = claudeSpawnArgs({ ...base, exists: false, effort: 'extreme' });
+    expect(args).not.toContain('--effort');
+    expect(args).not.toContain('--agent');
   });
 });

@@ -10,7 +10,31 @@ const TITLE_LIMIT = 64;
 const VERSION_TIMEOUT_MS = 10_000;
 const ABORT_TIMEOUT_MS = 6_000;
 const SUBAGENT_LINGER_MS = 8_000;
+const EFFORTS = new Set(['low', 'medium', 'high', 'xhigh', 'max']);
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+/** Argumen satu sesi Claude; dipisah dari spawn agar bisa diuji tanpa CLI. */
+export function claudeSpawnArgs({ exists, sessionID, model, agent, effort }) {
+  const args = [
+    '-p',
+    '--input-format',
+    'stream-json',
+    '--output-format',
+    'stream-json',
+    '--verbose',
+    '--permission-mode',
+    'manual',
+    '--permission-prompt-tool',
+    'stdio',
+    exists ? '--resume' : '--session-id',
+    sessionID,
+    '--model',
+    model,
+  ];
+  if (agent && agent !== 'claude') args.push('--agent', agent);
+  if (EFFORTS.has(effort)) args.push('--effort', effort);
+  return args;
+}
 
 export const CLAUDE_MODELS = [
   { id: 'sonnet', name: 'Sonnet' },
@@ -674,23 +698,13 @@ export class ClaudeBridge {
   async #spawn(session) {
     const file = path.join(projectDirectory(session.directory), `${session.id}.jsonl`);
     const exists = await fs.stat(file).then(() => true).catch(() => false);
-    const args = [
-      '-p',
-      '--input-format',
-      'stream-json',
-      '--output-format',
-      'stream-json',
-      '--verbose',
-      '--permission-mode',
-      'manual',
-      '--permission-prompt-tool',
-      'stdio',
-      exists ? '--resume' : '--session-id',
-      session.id,
-      '--model',
-      session.model,
-    ];
-    if (session.agent && session.agent !== 'claude') args.push('--agent', session.agent);
+    const args = claudeSpawnArgs({
+      exists,
+      sessionID: session.id,
+      model: session.model,
+      agent: session.agent,
+      effort: process.env.VIRTOFFICE_CLAUDE_EFFORT,
+    });
 
     const child = spawn(CLI, args, {
       cwd: session.directory,
