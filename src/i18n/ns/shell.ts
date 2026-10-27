@@ -48,8 +48,8 @@ export const shell: Catalog = {
   fieldModel: ['Model', 'Model'],
   fieldAgent: ['Agent', 'Agent'],
 
-  composerPlaceholder: ['Minta OpenCode mengerjakan sesuatu…', 'Ask OpenCode to work on something…'],
-  composerAria: ['Pesan untuk OpenCode', 'Message for OpenCode'],
+  composerPlaceholder: ['Minta {tool} mengerjakan sesuatu…', 'Ask {tool} to work on something…'],
+  composerAria: ['Pesan untuk {tool}', 'Message for {tool}'],
 
   folderEyebrow: ['Ruang kerja', 'Workspace'],
   folderTitle: ['Buka folder proyek', 'Open a project folder'],

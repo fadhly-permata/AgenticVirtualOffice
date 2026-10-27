@@ -3,6 +3,7 @@ import fs from 'node:fs/promises';
 import http from 'node:http';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { ClaudeBridge } from './claude.mjs';
 import { createEntry, deleteEntry, readFileAt, readRawAt, renameEntry, resolveInside, searchIn, treeAt } from './files.mjs';
 import { HttpError, readJson, sendError, sendJson } from './http.mjs';
 import { lanInfo } from './network.mjs';
@@ -61,7 +62,9 @@ const MIME = {
 };
 
 const store = new WorkspaceStore(APP_DIR);
-const bridge = new OpenCodeBridge({ cwd: APP_DIR });
+const TOOL = process.env.VIRTOFFICE_TOOL === 'claude' ? 'claude' : 'opencode';
+const bridge =
+  TOOL === 'claude' ? new ClaudeBridge({ cwd: APP_DIR }) : new OpenCodeBridge({ cwd: APP_DIR });
 const terminals = new TerminalHub();
 
 function workspaceOrThrow() {
@@ -71,12 +74,12 @@ function workspaceOrThrow() {
 }
 
 function sessionId(value) {
-  if (!/^[A-Za-z0-9_]+$/.test(value)) throw new HttpError(400, 'ID sesi tidak valid.');
+  if (!/^[A-Za-z0-9_-]+$/.test(value)) throw new HttpError(400, 'ID sesi tidak valid.');
   return value;
 }
 
 function requestId(value) {
-  if (!/^[A-Za-z0-9_]+$/.test(value)) throw new HttpError(400, 'ID permintaan tidak valid.');
+  if (!/^[A-Za-z0-9_-]+$/.test(value)) throw new HttpError(400, 'ID permintaan tidak valid.');
   return value;
 }
 
@@ -99,9 +102,9 @@ function ruleDelay(value) {
 /** Workspace read-only bukan alasan bootstrap gagal; laporkan saja ke UI. */
 async function applyRules(directory, delayMs) {
   try {
-    return await upsertToolRules('opencode', directory, { delayMs });
+    return await upsertToolRules(TOOL, directory, { delayMs });
   } catch {
-    return { tool: 'opencode', file: 'AGENTS.md', delayMs, ok: false, supported: true, changed: false };
+    return { tool: TOOL, file: TOOL === 'claude' ? 'CLAUDE.md' : 'AGENTS.md', delayMs, ok: false, supported: true, changed: false };
   }
 }
 
@@ -242,7 +245,13 @@ async function handleApi(req, res, url) {
   const method = req.method ?? 'GET';
 
   if (pathname === '/api/health' && method === 'GET') {
-    return sendJson(res, 200, { ok: true, opencode: bridge.running ? 'running' : 'stopped', url: bridge.url ?? null, dev: isDev });
+    return sendJson(res, 200, {
+      ok: true,
+      tool: TOOL,
+      opencode: bridge.running ? 'running' : 'stopped',
+      url: bridge.url ?? null,
+      dev: isDev,
+    });
   }
 
   if (pathname === '/api/lan' && method === 'GET') {
@@ -448,6 +457,8 @@ async function handleApi(req, res, url) {
     ]);
     return sendJson(res, 200, {
       workspace: store.snapshot().workspace,
+      tool: TOOL,
+      toolName: TOOL === 'claude' ? 'Claude' : 'OpenCode',
       models: catalog.groups,
       defaultModel: catalog.defaultModel,
       agents: buildAgentList(agents),

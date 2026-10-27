@@ -75,10 +75,23 @@ export function locale(): Locale {
   return current;
 }
 
+/** Nama tool agentik yang sedang dipakai server; default OpenCode. */
+let brand = 'OpenCode';
+
+export function toolName(): string {
+  return brand;
+}
+
+export function setToolName(name: string): void {
+  const next = name.trim();
+  if (!next || next === brand) return;
+  brand = next;
+}
+
 export function t(key: string, params?: Params): string {
   const pair = ENTRIES.get(key);
   const text = pair ? pair[current === 'en' ? 1 : 0] : key;
-  return params ? interpolate(text, params) : text;
+  return interpolate(text, { tool: brand, ...params });
 }
 
 /** Label yang tidak ikut berubah saat bahasa diganti (nama bahasa, nama tema). */

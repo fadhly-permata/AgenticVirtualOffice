@@ -14,8 +14,8 @@ export const chat: Catalog = {
   // Peluncur & judul jendela
   launcherEyebrow: ['Virtual Command Room', 'Virtual Command Room'],
   openWorkspace: ['Buka workspace', 'Open workspace'],
-  launcherTitle: ['Chat OpenCode di {path}', 'OpenCode chat in {path}'],
-  launcherTitleIdle: ['Pilih folder workspace untuk OpenCode', 'Pick a workspace folder for OpenCode'],
+  launcherTitle: ['Chat {tool} di {path}', '{tool} chat in {path}'],
+  launcherTitleIdle: ['Pilih folder workspace untuk {tool}', 'Pick a workspace folder for {tool}'],
   shrinkChat: ['Perkecil chat', 'Shrink chat'],
   growChat: ['Perbesar chat', 'Maximize chat'],
 
@@ -23,24 +23,24 @@ export const chat: Catalog = {
   statusChooseWorkspace: ['Pilih workspace', 'Choose a workspace'],
   statusReady: ['Siap', 'Ready'],
   statusSending: ['Mengirim…', 'Sending…'],
-  statusWorking: ['OpenCode sedang bekerja…', 'OpenCode is working…'],
+  statusWorking: ['{tool} sedang bekerja…', '{tool} is working…'],
   statusWaitRetry: ['Menunggu percobaan ulang…', 'Waiting to retry…'],
 
   // Tombol kirim
   sendStop: ['Hentikan', 'Stop'],
   sendSend: ['Kirim', 'Send'],
-  sendStopAria: ['Hentikan respons OpenCode', 'Stop OpenCode response'],
+  sendStopAria: ['Hentikan respons {tool}', 'Stop {tool} response'],
   sendSendAria: ['Kirim pesan', 'Send message'],
 
   // Muat awal & sesi
-  booting: ['Menyiapkan OpenCode…', 'Preparing OpenCode…'],
+  booting: ['Menyiapkan {tool}…', 'Preparing {tool}…'],
   bootingBody: ['Menghubungkan CLI dan membaca konfigurasi workspace.', 'Connecting the CLI and reading workspace configuration.'],
   loadingSession: ['Memuat sesi…', 'Loading session…'],
   loadingSessionBody: ['Mengambil riwayat percakapan.', 'Fetching conversation history.'],
   noModels: ['Tidak ada model', 'No models'],
   newChat: ['＋ Chat baru', '＋ New chat'],
   untitledSession: ['Sesi tanpa judul', 'Untitled session'],
-  chooseModelFirst: ['Pilih model OpenCode terlebih dahulu.', 'Choose an OpenCode model first.'],
+  chooseModelFirst: ['Pilih model {tool} terlebih dahulu.', 'Choose a {tool} model first.'],
   sendingPrompt: ['Mengirim permintaan…', 'Sending request…'],
   creatingSession: ['Membuat sesi…', 'Creating session…'],
 
@@ -59,7 +59,7 @@ export const chat: Catalog = {
     "Delegation-pause rules can't be written to this workspace.",
   ],
   rulesWriteError: ['Aturan jeda delegasi gagal ditulis.', 'Failed to write the delegation-pause rules.'],
-  retryNotice: ['OpenCode mencoba ulang…', 'OpenCode is retrying…'],
+  retryNotice: ['{tool} mencoba ulang…', '{tool} is retrying…'],
   streamLost: ['Koneksi event terputus. Mencoba menyambung ulang…', 'Event connection dropped. Reconnecting…'],
   bridgeDown: ['Koneksi ke server terputus.', 'Connection to the server dropped.'],
   sessionDeleted: ['Sesi dihapus.', 'Session deleted.'],
@@ -70,17 +70,17 @@ export const chat: Catalog = {
   ],
 
   // Keadaan kosong
-  openCodeError: ['OpenCode error', 'OpenCode error'],
-  emptyTitleNotReady: ['OpenCode belum siap', 'OpenCode is not ready yet'],
+  openCodeError: ['{tool} error', '{tool} error'],
+  emptyTitleNotReady: ['{tool} belum siap', '{tool} is not ready yet'],
   emptyTitleStart: ['Mulai percakapan', 'Start a conversation'],
   emptyCheckError: ['Periksa pesan error di atas, lalu coba lagi.', 'Check the error message above, then try again.'],
   emptyWorkspaceBody: [
-    'Pilih folder proyek untuk mulai menggunakan OpenCode.',
-    'Pick a project folder to start using OpenCode.',
+    'Pilih folder proyek untuk mulai menggunakan {tool}.',
+    'Pick a project folder to start using {tool}.',
   ],
   emptyReadyBody: [
-    'OpenCode akan bekerja langsung di folder {name}. Ia bisa membaca, menulis, dan menjalankan perintah — setiap aksi sensitif meminta izin.',
-    'OpenCode works directly in the {name} folder. It can read, write, and run commands — every sensitive action asks for permission.',
+    '{tool} akan bekerja langsung di folder {name}. Ia bisa membaca, menulis, dan menjalankan perintah — setiap aksi sensitif meminta izin.',
+    '{tool} works directly in the {name} folder. It can read, write, and run commands — every sensitive action asks for permission.',
   ],
 
   // Penalaran & alat
@@ -89,14 +89,14 @@ export const chat: Catalog = {
 
   // Panel izin
   permissionNeeded: ['Izin diperlukan', 'Permission needed'],
-  permissionText: ['OpenCode ingin menggunakan tool ini di workspace.', 'OpenCode wants to use this tool in the workspace.'],
+  permissionText: ['{tool} ingin menggunakan tool ini di workspace.', '{tool} wants to use this tool in the workspace.'],
   moreTargets: ['+{count} lainnya', '+{count} more'],
   reject: ['Tolak', 'Reject'],
   allow: ['Izinkan', 'Allow'],
   allowAlways: ['Selalu izinkan', 'Always allow'],
 
   // Panel pertanyaan
-  askQuestion: ['OpenCode bertanya', 'OpenCode is asking'],
+  askQuestion: ['{tool} bertanya', '{tool} is asking'],
   questionDefault: ['Pertanyaan', 'Question'],
   customAnswer: ['Jawaban lain…', 'Another answer…'],
   customAnswerAria: ['Jawaban lain untuk {header}', 'Another answer for {header}'],

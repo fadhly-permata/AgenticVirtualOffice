@@ -12,21 +12,27 @@ export const RULE_END = '<!-- virtoffice:rules:end -->';
 const ADAPTERS = {
   opencode: {
     file: 'AGENTS.md',
-    render: (delayMs) => {
-      const seconds = String(delayMs / 1000);
-      return [
-        RULE_START,
-        '## VirtOffice: jeda delegasi',
-        '',
-        `Blok ini diatur otomatis oleh VirtOffice (jeda ${seconds} detik) supaya animasi kantor tidak melihat subagent berdiri terlalu cepat.`,
-        '',
-        `- Tugas yang datang dari delegasi (\`task\` subagent): jalankan \`sleep ${seconds}\` sebelum mulai bekerja, lalu \`sleep ${seconds}\` lagi setelah pekerjaan selesai sebelum mengirim laporan akhir.`,
-        '- Saat mendelegasikan lewat `task`, sertakan aturan jeda ini di prompt subagent.',
-        RULE_END,
-      ].join('\n');
-    },
+    render: (delayMs) => renderRule('task', delayMs),
+  },
+  claude: {
+    file: 'CLAUDE.md',
+    render: (delayMs) => renderRule('Agent', delayMs),
   },
 };
+
+function renderRule(tool, delayMs) {
+  const seconds = String(delayMs / 1000);
+  return [
+    RULE_START,
+    '## VirtOffice: jeda delegasi',
+    '',
+    `Blok ini diatur otomatis oleh VirtOffice (jeda ${seconds} detik) supaya animasi kantor tidak melihat subagent berdiri terlalu cepat.`,
+    '',
+    `- Tugas yang datang dari delegasi (\`${tool}\` subagent): jalankan \`sleep ${seconds}\` sebelum mulai bekerja, lalu \`sleep ${seconds}\` lagi setelah pekerjaan selesai sebelum mengirim laporan akhir.`,
+    `- Saat mendelegasikan lewat \`${tool}\`, sertakan aturan jeda ini di prompt subagent.`,
+    RULE_END,
+  ].join('\n');
+}
 
 export function ruleAdapter(tool) {
   return ADAPTERS[tool] ?? null;

@@ -82,6 +82,8 @@ export interface RuleState {
 
 export interface Bootstrap {
   workspace: WorkspaceInfo;
+  tool?: string;
+  toolName?: string;
   models: ModelGroup[];
   defaultModel: ModelKey | null;
   agents: AgentChoice[];

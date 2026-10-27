@@ -1,5 +1,5 @@
 import type { VirtOfficeApi } from '../api';
-import { applyStatic, subscribeLocale, t } from '../i18n';
+import { applyStatic, setToolName, subscribeLocale, t, toolName } from '../i18n';
 import {
   type Presence,
   type RosterAgent,
@@ -677,6 +677,8 @@ async function loadBootstrap(): Promise<void> {
     if (generation !== workspaceGeneration) return;
 
     bootstrap = data;
+    setToolName(data.toolName ?? 'OpenCode');
+    applyStatic();
     workspace = data.workspace;
     models = data.models;
     agents = data.agents;
@@ -1509,8 +1511,8 @@ function renderMessage(message: LiveMessage, runningLast: boolean): HTMLElement 
 function wrapAssistant(content: HTMLElement): HTMLElement {
   const article = el('article', 'msg msg--assistant');
   const head = el('header', 'msg__head');
-  const avatar = el('span', 'msg__avatar', 'OC');
-  const name = el('span', 'msg__name', 'OpenCode');
+  const avatar = el('span', 'msg__avatar', toolName() === 'OpenCode' ? 'OC' : toolName().slice(0, 1).toUpperCase());
+  const name = el('span', 'msg__name', toolName());
   head.append(avatar, name);
   article.append(head, content);
   return article;
@@ -1957,12 +1959,12 @@ async function activityCopy(presence: Presence[]): Promise<Record<string, string
 
 /** The employee the header chip follows: the agent that owns the open session. */
 function watchedEmployee(): string {
-  if (!office) return 'OpenCode';
+  if (!office) return toolName();
   const id = slugify(currentSession?.agent ?? selectedAgent);
   for (const agent of office.agents()) {
     if (agent.id === id) return agent.name;
   }
-  return 'OpenCode';
+  return toolName();
 }
 
 /** Header chip: the phase of the session being watched, plus its elapsed clock. */
