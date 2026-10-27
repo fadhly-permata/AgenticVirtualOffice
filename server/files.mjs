@@ -160,6 +160,67 @@ function decodeWindow(rel, size, window, truncated) {
   return { ...base, binary: true };
 }
 
+const RAW_TYPES = new Map([
+  ['.html', 'text/html; charset=utf-8'],
+  ['.htm', 'text/html; charset=utf-8'],
+  ['.xhtml', 'text/html; charset=utf-8'],
+  ['.css', 'text/css; charset=utf-8'],
+  ['.js', 'text/javascript; charset=utf-8'],
+  ['.mjs', 'text/javascript; charset=utf-8'],
+  ['.cjs', 'text/javascript; charset=utf-8'],
+  ['.json', 'application/json; charset=utf-8'],
+  ['.map', 'application/json; charset=utf-8'],
+  ['.txt', 'text/plain; charset=utf-8'],
+  ['.md', 'text/plain; charset=utf-8'],
+  ['.ts', 'text/plain; charset=utf-8'],
+  ['.tsx', 'text/plain; charset=utf-8'],
+  ['.jsx', 'text/plain; charset=utf-8'],
+  ['.yml', 'text/plain; charset=utf-8'],
+  ['.yaml', 'text/plain; charset=utf-8'],
+  ['.toml', 'text/plain; charset=utf-8'],
+  ['.svg', 'image/svg+xml'],
+  ['.png', 'image/png'],
+  ['.jpg', 'image/jpeg'],
+  ['.jpeg', 'image/jpeg'],
+  ['.gif', 'image/gif'],
+  ['.webp', 'image/webp'],
+  ['.avif', 'image/avif'],
+  ['.bmp', 'image/bmp'],
+  ['.ico', 'image/x-icon'],
+  ['.woff', 'font/woff'],
+  ['.woff2', 'font/woff2'],
+  ['.ttf', 'font/ttf'],
+  ['.otf', 'font/otf'],
+  ['.mp3', 'audio/mpeg'],
+  ['.wav', 'audio/wav'],
+  ['.mp4', 'video/mp4'],
+  ['.webm', 'video/webm'],
+  ['.pdf', 'application/pdf'],
+]);
+
+const RAW_MAX_BYTES = 20_000_000;
+
+/**
+ * Bytes mentah untuk aset yang direferensikan pratinjau HTML. Path-nya lewat mekanisme
+ * resolveInside yang sama dengan endpoint JSON, jadi tidak bisa keluar dari workspace.
+ */
+export async function readRawAt(root, input) {
+  const { rel, abs } = resolveInside(root, input);
+  if (!rel) throw new HttpError(400, 'Path aset kosong.');
+
+  let stat;
+  try {
+    stat = await fs.stat(abs);
+  } catch (error) {
+    if (error?.code === 'ENOENT') throw new HttpError(404, 'Aset tidak ditemukan.');
+    throw new HttpError(403, `Tidak bisa membaca aset: ${error.message}`);
+  }
+  if (stat.isDirectory()) throw new HttpError(404, 'Aset tidak ditemukan.');
+  if (stat.size > RAW_MAX_BYTES) throw new HttpError(413, 'Aset terlalu besar.');
+
+  return { rel, abs, size: stat.size, mime: RAW_TYPES.get(path.extname(rel).toLowerCase()) ?? 'application/octet-stream' };
+}
+
 export async function createEntry(root, input, kind, text) {
   if (kind !== 'file' && kind !== 'folder') throw new HttpError(400, "kind harus 'file' atau 'folder'.");
   const { rel, abs } = resolveInside(root, input);

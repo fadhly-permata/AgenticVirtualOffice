@@ -3,7 +3,7 @@ import fs from 'node:fs/promises';
 import http from 'node:http';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { createEntry, deleteEntry, readFileAt, renameEntry, resolveInside, searchIn, treeAt } from './files.mjs';
+import { createEntry, deleteEntry, readFileAt, readRawAt, renameEntry, resolveInside, searchIn, treeAt } from './files.mjs';
 import { HttpError, readJson, sendError, sendJson } from './http.mjs';
 import {
   buildAgentList,
@@ -225,6 +225,16 @@ async function streamTerminal(req, res, id) {
   res.on('close', stop);
 }
 
+/** '/api/chat/raw/a/b%20c.md' -> 'a/b c.md'; segmen mentah tetap divalidasi resolveInside. */
+function decodeRawPath(pathname) {
+  const raw = pathname.slice('/api/chat/raw/'.length);
+  try {
+    return decodeURIComponent(raw);
+  } catch {
+    throw new HttpError(400, 'Path aset tidak valid.');
+  }
+}
+
 async function handleApi(req, res, url) {
   const { pathname, searchParams } = url;
   const method = req.method ?? 'GET';
@@ -263,6 +273,23 @@ async function handleApi(req, res, url) {
         searchParams.get('maxBytes') ?? undefined
       )
     );
+  }
+
+  if (pathname.startsWith('/api/chat/raw/') && method === 'GET') {
+    const { abs, size, mime } = await readRawAt(workspaceOrThrow(), decodeRawPath(pathname));
+    res.writeHead(200, {
+      'content-type': mime,
+      'content-length': String(size),
+      'cache-control': 'no-store',
+      'x-content-type-options': 'nosniff',
+      'content-security-policy': 'sandbox',
+    });
+    const stream = createReadStream(abs);
+    stream.on('error', () => {
+      if (!res.writableEnded) res.end();
+    });
+    stream.pipe(res);
+    return;
   }
 
   if (pathname === '/api/chat/search' && method === 'GET') {

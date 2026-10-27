@@ -1,9 +1,17 @@
+import { subscribeLocale, t } from '../i18n';
 import { chatApi } from './client';
 import { ICON, el, icon, iconButton } from './dom';
+import { openContextMenu } from './context-menu';
+import type { MenuEntry } from './context-menu';
+import { highlightLines, languageForPath } from './highlight';
+import { renderMarkdown } from './markdown';
+import { prefs, subscribePrefs } from './prefs';
 import type { FileContent, FileKind, SearchResult, SearchMode, TreeEntry, WorkspaceInfo } from './types';
 
 const KB = 1024;
 const SEARCH_DEBOUNCE_MS = 320;
+/** File raksasa dibuat baris per baris, jadi dibatasi supaya DOM tidak meledak. */
+const ROW_LIMIT = 8_000;
 
 export interface FilesHooks {
   /** Dipakai untuk menyisipkan path ke composer chat. */
@@ -30,6 +38,22 @@ function describeError(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
 }
 
+type PreviewKind = 'markdown' | 'html' | null;
+
+function previewKind(path: string): PreviewKind {
+  const ext = path.slice(path.lastIndexOf('.') + 1).toLowerCase();
+  if (ext === 'md' || ext === 'markdown' || ext === 'mdx') return 'markdown';
+  if (ext === 'html' || ext === 'htm' || ext === 'xhtml') return 'html';
+  return null;
+}
+
+/** URL asset workspace supaya gambar/CSS relatif di pratinjau HTML bisa dimuat. */
+function assetBase(path: string): string {
+  const dir = parentOf(path);
+  const prefix = dir ? `${dir.split('/').map(encodeURIComponent).join('/')}/` : '';
+  return `/api/chat/raw/${prefix}`;
+}
+
 interface Prompt {
   label: string;
   hint: string;
@@ -47,6 +71,9 @@ export function mountFiles(container: HTMLElement, hooks: FilesHooks = {}): File
   let selected = '';
   let viewed: FileContent | null = null;
   let viewLine = 0;
+  let viewMode: 'raw' | 'preview' = 'raw';
+  let wrap = prefs().wrap;
+  let zoom = 1;
   let results: SearchResult | null = null;
   let prompt: Prompt | null = null;
   let busy = false;
@@ -60,13 +87,12 @@ export function mountFiles(container: HTMLElement, hooks: FilesHooks = {}): File
   searchForm.setAttribute('role', 'search');
   const searchInput = el('input', 'files__search');
   searchInput.type = 'search';
-  searchInput.placeholder = 'Cari di workspace…';
-  searchInput.setAttribute('aria-label', 'Cari file atau isi file');
+  searchInput.setAttribute('aria-label', t('files.searchAria'));
   const modeButton = el('button', 'files__mode');
   modeButton.type = 'button';
-  modeButton.title = 'Ganti mode pencarian';
+  modeButton.title = t('files.modeSwitch');
   let mode: SearchMode = 'name';
-  const clearButton = iconButton('Bersihkan pencarian', ICON.close, () => {
+  const clearButton = iconButton(t('files.clearSearch'), ICON.close, () => {
     searchInput.value = '';
     void runSearch('');
   });
@@ -79,23 +105,19 @@ export function mountFiles(container: HTMLElement, hooks: FilesHooks = {}): File
   });
 
   const toolRow = el('div', 'files__tools');
-  let modeLabel = '';
   const setMode = (next: SearchMode): void => {
     mode = next;
-    if (modeLabel !== next) {
-      modeLabel = next;
-      modeButton.textContent = next === 'name' ? 'Nama' : 'Isi';
-      modeButton.setAttribute('aria-pressed', String(next === 'content'));
-      searchInput.placeholder = next === 'name' ? 'Cari nama file…' : 'Cari di dalam file…';
-    }
+    modeButton.textContent = next === 'name' ? t('files.modeName') : t('files.modeContent');
+    modeButton.setAttribute('aria-pressed', String(next === 'content'));
+    searchInput.placeholder = next === 'name' ? t('files.searchNames') : t('files.searchContent');
   };
   modeButton.addEventListener('click', () => {
     setMode(mode === 'name' ? 'content' : 'name');
     if (searchInput.value.trim()) void runSearch(searchInput.value);
   });
-  const refreshButton = iconButton('Muat ulang', ICON.refresh, () => refresh());
-  const newFileButton = iconButton('File baru', ICON.filePlus, () => askCreate('file'));
-  const newFolderButton = iconButton('Folder baru', ICON.folderPlus, () => askCreate('folder'));
+  const refreshButton = iconButton(t('files.refresh'), ICON.refresh, () => refresh());
+  const newFileButton = iconButton(t('files.newFile'), ICON.filePlus, () => askCreate('file'));
+  const newFolderButton = iconButton(t('files.newFolder'), ICON.folderPlus, () => askCreate('folder'));
   toolRow.append(refreshButton, newFileButton, newFolderButton);
 
   const bar = el('div', 'files__bar');
@@ -109,7 +131,7 @@ export function mountFiles(container: HTMLElement, hooks: FilesHooks = {}): File
 
   const list = el('div', 'files__list');
   list.setAttribute('role', 'tree');
-  list.setAttribute('aria-label', 'Isi workspace');
+  list.setAttribute('aria-label', t('files.treeAria'));
 
   const viewer = el('section', 'files__viewer');
   viewer.hidden = true;
@@ -119,14 +141,15 @@ export function mountFiles(container: HTMLElement, hooks: FilesHooks = {}): File
   setMode('name');
 
   function note(text: string): HTMLElement {
-    const line = el('p', 'files__note', text);
-    return line;
+    return el('p', 'files__note', text);
   }
 
   function paintMessage(): void {
     messageEl.textContent = message;
     messageEl.hidden = !message;
   }
+
+  /* ---------------------------------- prompt inline ---------------------------------- */
 
   function renderPrompt(): void {
     promptEl.textContent = '';
@@ -158,7 +181,7 @@ export function mountFiles(container: HTMLElement, hooks: FilesHooks = {}): File
     const ok = el('button', 'files__prompt-ok', prompt.ok);
     ok.type = 'button';
     ok.addEventListener('click', () => void submitPrompt(field?.value ?? ''));
-    const cancel = el('button', 'files__prompt-cancel', 'Batal');
+    const cancel = el('button', 'files__prompt-cancel', t('files.cancel'));
     cancel.type = 'button';
     cancel.addEventListener('click', closePrompt);
     promptEl.append(ok, cancel);
@@ -193,23 +216,22 @@ export function mountFiles(container: HTMLElement, hooks: FilesHooks = {}): File
     return entry.dir ? entry.path : parentOf(entry.path);
   }
 
-  function askCreate(kind: FileKind): void {
+  function askCreate(kind: FileKind, dir = targetDir()): void {
     if (!workspace) {
-      message = 'Buka workspace dulu.';
+      message = t('files.needWorkspace');
       paintMessage();
       return;
     }
-    const dir = targetDir();
     prompt = {
-      label: kind === 'file' ? 'Nama file baru' : 'Nama folder baru',
-      hint: dir ? `di ${dir}/` : 'di akar workspace',
+      label: kind === 'file' ? t('files.newFileLabel') : t('files.newFolderLabel'),
+      hint: dir ? t('files.inFolder', { path: dir }) : t('files.atRoot'),
       value: '',
-      ok: 'Buat',
+      ok: t('files.create'),
       danger: false,
       editable: true,
       submit: async (value) => {
         const name = value.trim().replace(/^\/+/, '');
-        if (!name) throw new Error('Nama tidak boleh kosong.');
+        if (!name) throw new Error(t('files.emptyName'));
         const path = dir ? `${dir}/${name}` : name;
         await chatApi.createFile(path, kind);
         closePrompt();
@@ -218,7 +240,7 @@ export function mountFiles(container: HTMLElement, hooks: FilesHooks = {}): File
         invalidate();
         await redraw();
         // Ditulis setelah redraw karena redraw sendiri membersihkan pesan lama.
-        message = `Dibuat: ${path}`;
+        message = t('files.created', { path });
       },
     };
     renderPrompt();
@@ -226,15 +248,15 @@ export function mountFiles(container: HTMLElement, hooks: FilesHooks = {}): File
 
   function askRename(entry: TreeEntry): void {
     prompt = {
-      label: 'Nama ulang',
-      hint: 'Path relatif terhadap akar workspace.',
+      label: t('files.renameLabel'),
+      hint: t('files.renameHint'),
       value: entry.path,
-      ok: 'Simpan',
+      ok: t('files.save'),
       danger: false,
       editable: true,
       submit: async (value) => {
         const to = value.trim().replace(/^\/+/, '');
-        if (!to) throw new Error('Nama tidak boleh kosong.');
+        if (!to) throw new Error(t('files.emptyName'));
         if (to === entry.path) {
           closePrompt();
           return;
@@ -244,7 +266,7 @@ export function mountFiles(container: HTMLElement, hooks: FilesHooks = {}): File
         if (viewed?.path === entry.path) closeViewer();
         invalidate();
         await redraw();
-        message = `Diganti: ${entry.path} → ${to}`;
+        message = t('files.renamed', { from: entry.path, to });
       },
     };
     renderPrompt();
@@ -252,10 +274,10 @@ export function mountFiles(container: HTMLElement, hooks: FilesHooks = {}): File
 
   function askDelete(entry: TreeEntry): void {
     prompt = {
-      label: `Hapus ${entry.name}?`,
-      hint: entry.dir ? `Folder ${entry.path} dan isinya ikut terhapus.` : entry.path,
+      label: t('files.deleteLabel', { name: entry.name }),
+      hint: entry.dir ? t('files.deleteFolderHint', { path: entry.path }) : entry.path,
       value: entry.path,
-      ok: 'Hapus',
+      ok: t('files.remove'),
       danger: true,
       editable: false,
       submit: async () => {
@@ -265,11 +287,13 @@ export function mountFiles(container: HTMLElement, hooks: FilesHooks = {}): File
         if (viewed?.path === entry.path || viewed?.path.startsWith(`${entry.path}/`)) closeViewer();
         invalidate();
         await redraw();
-        message = `Dihapus: ${entry.path}`;
+        message = t('files.deleted', { path: entry.path });
       },
     };
     renderPrompt();
   }
+
+  /* ------------------------------------ pohon file ------------------------------------ */
 
   function invalidate(): void {
     children.clear();
@@ -286,6 +310,8 @@ export function mountFiles(container: HTMLElement, hooks: FilesHooks = {}): File
   function row(entry: TreeEntry, depth: number): HTMLElement {
     const line = el('div', entry.path === selected ? 'files__row files__row--active' : 'files__row');
     line.setAttribute('role', 'treeitem');
+    line.dataset.path = entry.path;
+    line.dataset.dir = String(entry.dir);
     line.style.setProperty('--depth', String(depth));
     if (entry.dir) {
       line.setAttribute('aria-expanded', String(expanded.has(entry.path)));
@@ -304,8 +330,8 @@ export function mountFiles(container: HTMLElement, hooks: FilesHooks = {}): File
 
     const actions = el('span', 'files__actions');
     actions.append(
-      iconButton('Ganti nama', ICON.pencil, () => askRename(entry)),
-      iconButton('Hapus', ICON.trash, () => askDelete(entry))
+      iconButton(t('files.rename'), ICON.pencil, () => askRename(entry)),
+      iconButton(t('files.remove'), ICON.trash, () => askDelete(entry))
     );
     line.append(actions);
 
@@ -317,39 +343,357 @@ export function mountFiles(container: HTMLElement, hooks: FilesHooks = {}): File
         else expanded.add(entry.path);
         void redraw();
       } else {
-        void openFile(entry.path);
+        void openFile(entry.path, { mode: prefs().defaultView });
       }
     });
     return line;
   }
+
+  function buildMenu(entry: TreeEntry | null): MenuEntry[] {
+    const items: MenuEntry[] = [];
+    if (entry && !entry.dir) {
+      items.push({
+        label: t('menu.openRaw'),
+        glyph: ICON.file,
+        run: () => void openFile(entry.path, { mode: 'raw' }),
+      });
+      if (previewKind(entry.path)) {
+        items.push({
+          label: t('menu.openPreview'),
+          glyph: ICON.expand,
+          run: () => void openFile(entry.path, { mode: 'preview' }),
+        });
+      }
+      items.push({
+        label: t('menu.copyPath'),
+        glyph: ICON.copy,
+        run: () => void copyPath(entry.path),
+      });
+      if (hooks.onReference) {
+        items.push({
+          label: t('menu.reference'),
+          glyph: ICON.plus,
+          run: () => hooks.onReference?.(entry.path),
+        });
+      }
+      items.push({ separator: true });
+    }
+    if (entry?.dir) {
+      items.push({
+        label: t('menu.newFile'),
+        glyph: ICON.filePlus,
+        run: () => askCreate('file', entry.path),
+      });
+      items.push({
+        label: t('menu.newFolder'),
+        glyph: ICON.folderPlus,
+        run: () => askCreate('folder', entry.path),
+      });
+      items.push({ separator: true });
+    } else if (!entry) {
+      items.push({
+        label: t('menu.newFile'),
+        glyph: ICON.filePlus,
+        run: () => askCreate('file', ''),
+      });
+      items.push({
+        label: t('menu.newFolder'),
+        glyph: ICON.folderPlus,
+        run: () => askCreate('folder', ''),
+      });
+      items.push({ separator: true });
+    }
+    if (entry) {
+      items.push({
+        label: t('menu.rename'),
+        glyph: ICON.pencil,
+        run: () => askRename(entry),
+      });
+      items.push({
+        label: t('menu.delete'),
+        glyph: ICON.trash,
+        danger: true,
+        run: () => askDelete(entry),
+      });
+    } else {
+      items.push({
+        label: t('menu.refresh'),
+        glyph: ICON.refresh,
+        run: () => refresh(),
+      });
+    }
+    return items;
+  }
+
+  function entryAt(path: string): TreeEntry | null {
+    for (const entries of children.values()) {
+      const found = entries.find((item) => item.path === path);
+      if (found) return found;
+    }
+    return null;
+  }
+
+  async function copyPath(path: string): Promise<void> {
+    try {
+      await navigator.clipboard.writeText(path);
+      message = t('files.copiedPath');
+    } catch {
+      message = t('viewer.copyFailed');
+    }
+    paintMessage();
+  }
+
+  function bindContextMenu(): void {
+    list.addEventListener('contextmenu', (event) => {
+      const rowEl = event.target instanceof Element ? event.target.closest<HTMLElement>('.files__row') : null;
+      const path = rowEl?.dataset.path ?? '';
+      const entry = path ? entryAt(path) : null;
+      event.preventDefault();
+      openContextMenu(
+        { clientX: event.clientX, clientY: event.clientY },
+        buildMenu(entry),
+        entry?.path ?? workspace?.name ?? t('files.treeAria')
+      );
+      if (path) {
+        selected = path;
+        void redraw();
+      }
+    });
+  }
+
+  /* -------------------------------------- pratinjau -------------------------------------- */
+
+  function closeViewer(): void {
+    viewed = null;
+    viewLine = 0;
+    renderViewer();
+  }
+
+  function setViewMode(next: 'raw' | 'preview'): void {
+    viewMode = next;
+    renderViewer();
+  }
+
+  function toolbar(): HTMLElement {
+    const barEl = el('div', 'viewer__bar');
+    const kind = viewed ? previewKind(viewed.path) : null;
+
+    if (kind && viewed && !viewed.binary) {
+      const seg = el('div', 'viewer__seg');
+      for (const option of ['raw', 'preview'] as const) {
+        const button = el('button', 'viewer__seg-btn', t(option === 'raw' ? 'viewer.raw' : 'viewer.preview'));
+        button.type = 'button';
+        button.setAttribute('aria-pressed', String(viewMode === option));
+        button.addEventListener('click', () => setViewMode(option));
+        seg.append(button);
+      }
+      barEl.append(seg);
+    }
+
+    const actions = el('span', 'viewer__actions');
+    if (viewed && !viewed.binary) {
+      const wrapButton = el('button', 'viewer__icon');
+      wrapButton.type = 'button';
+      wrapButton.title = t(wrap ? 'viewer.wrapOn' : 'viewer.wrapOff');
+      wrapButton.setAttribute('aria-label', wrapButton.title);
+      wrapButton.setAttribute('aria-pressed', String(wrap));
+      wrapButton.append(icon(ICON.wrap, 15));
+      wrapButton.addEventListener('click', () => {
+        wrap = !wrap;
+        renderViewer();
+      });
+
+      const zoomOut = el('button', 'viewer__icon');
+      zoomOut.type = 'button';
+      zoomOut.title = t('viewer.zoomOut');
+      zoomOut.setAttribute('aria-label', zoomOut.title);
+      zoomOut.append(icon(ICON.minus, 15));
+      zoomOut.addEventListener('click', () => {
+        zoom = Math.max(0.7, Number((zoom - 0.1).toFixed(2)));
+        renderViewer();
+      });
+
+      const zoomIn = el('button', 'viewer__icon');
+      zoomIn.type = 'button';
+      zoomIn.title = t('viewer.zoomIn');
+      zoomIn.setAttribute('aria-label', zoomIn.title);
+      zoomIn.append(icon(ICON.plus, 15));
+      zoomIn.addEventListener('click', () => {
+        zoom = Math.min(1.8, Number((zoom + 0.1).toFixed(2)));
+        renderViewer();
+      });
+
+      const copy = el('button', 'viewer__icon');
+      copy.type = 'button';
+      copy.title = t('viewer.copy');
+      copy.setAttribute('aria-label', copy.title);
+      copy.append(icon(ICON.copy, 15));
+      copy.addEventListener('click', () => {
+        const text = viewed?.text ?? '';
+        void navigator.clipboard
+          ?.writeText(text)
+          .then(() => {
+            message = t('viewer.copied');
+            paintMessage();
+          })
+          .catch(() => {
+            message = t('viewer.copyFailed');
+            paintMessage();
+          });
+      });
+
+      if (hooks.onReference) {
+        actions.append(
+          iconButton(t('menu.reference'), ICON.plus, () => hooks.onReference?.(viewed?.path ?? ''))
+        );
+      }
+      actions.append(wrapButton, zoomOut, zoomIn, copy);
+    }
+    actions.append(iconButton(t('viewer.close'), ICON.close, closeViewer));
+    barEl.append(el('span', 'viewer__spacer'), actions);
+    return barEl;
+  }
+
+  function renderViewer(): void {
+    viewer.textContent = '';
+    viewer.hidden = !viewed;
+    if (!viewed) return;
+
+    const head = el('header', 'files__viewer-head');
+    head.append(el('span', 'files__viewer-path', viewed.path));
+    const info = [humanSize(viewed.size)];
+    if (viewed.truncated) info.push(t('viewer.truncated'));
+    if (viewed.binary) info.push(t('viewer.binary'));
+    const lines = viewed.binary ? 0 : viewed.text.split('\n').length;
+    if (lines) info.push(t('viewer.lines', { count: lines }));
+    head.append(el('span', 'files__viewer-info', info.join(' · ')));
+    viewer.append(head, toolbar());
+
+    if (viewed.binary) {
+      viewer.append(el('p', 'viewer__note', t('viewer.binaryBody')));
+      return;
+    }
+
+    const kind = previewKind(viewed.path);
+    if (viewMode === 'preview' && kind === 'markdown') {
+      const box = el('div', 'viewer__md');
+      box.setAttribute('tabindex', '-1');
+      viewer.append(box);
+      renderMarkdown(box, viewed.text);
+      return;
+    }
+    if (viewMode === 'preview' && kind === 'html') {
+      viewer.append(htmlFrame(viewed.text, viewed.path));
+      return;
+    }
+
+    viewer.append(codeBody(viewed.text, viewed.path));
+    if (viewLine > 1) scrollToOneLine(viewLine);
+  }
+
+  function htmlFrame(source: string, path: string): HTMLIFrameElement {
+    const frame = el('iframe', 'viewer__frame');
+    frame.setAttribute('title', path);
+    // Tanpa allow-scripts default: halaman workspace tidak boleh menjalankan kode.
+    frame.setAttribute('sandbox', prefs().scriptedPreview ? 'allow-scripts' : '');
+    const guard = previewKind(path) === 'html' && !prefs().scriptedPreview ? scriptNotice() : '';
+    frame.setAttribute('srcdoc', `<base href="${assetBase(path)}">${guard}${source}`);
+    return frame;
+  }
+
+  function scriptNotice(): string {
+    return `<div style="font:12px system-ui;padding:8px 10px;background:#fff3cd;color:#665">
+      ${t('viewer.scriptBlocked')}</div>`;
+  }
+
+  function codeBody(text: string, path: string): HTMLElement {
+    const lines = text.split('\n');
+    const body = el('div', 'code');
+    body.dataset.view = 'code';
+    body.style.fontSize = `${(11.5 * zoom).toFixed(2)}px`;
+    body.classList.toggle('code--wrap', wrap);
+    body.classList.toggle('code--plain', !prefs().lineNumbers);
+
+    const shown = Math.min(lines.length, ROW_LIMIT);
+    for (let index = 0; index < shown; index += 1) {
+      const line = el('div', 'code__row');
+      line.append(el('span', 'code__ln', String(index + 1)));
+      const content = el('code', 'code__text');
+      content.textContent = lines[index];
+      line.append(content);
+      body.append(line);
+    }
+    if (lines.length > ROW_LIMIT) {
+      body.append(
+        el('p', 'viewer__note', `… ${t('viewer.moreLines', { count: lines.length - ROW_LIMIT })}`)
+      );
+    }
+
+    if (prefs().syntax) {
+      const language = languageForPath(path);
+      const token = renderToken;
+      void highlightLines(lines.slice(0, ROW_LIMIT).join('\n'), language).then((html) => {
+        if (token !== renderToken) return;
+        const rows = Array.from(body.querySelectorAll<HTMLElement>('.code__row'));
+        html.forEach((lineHtml, index) => {
+          const cell = rows[index]?.querySelector('.code__text');
+          if (cell) cell.innerHTML = lineHtml;
+        });
+      });
+    }
+    return body;
+  }
+
+  function scrollToOneLine(line: number): void {
+    const body = viewer.querySelector<HTMLElement>('[data-view="code"]');
+    const rowEl = body?.children[line - 1] as HTMLElement | undefined;
+    if (rowEl) {
+      rowEl.classList.add('code__row--active');
+      body?.scrollTo({ top: Math.max(0, rowEl.offsetTop - 40) });
+    }
+  }
+
+  /* ---------------------------------------- daftar ---------------------------------------- */
 
   async function collect(dirPath: string, depth: number): Promise<HTMLElement[]> {
     let entries: TreeEntry[];
     try {
       entries = await loadDir(dirPath);
     } catch (error) {
-      return [note(`Gagal membaca ${dirPath || 'akar workspace'}: ${describeError(error)}`)];
+      return [
+        note(
+          t('files.readFailed', {
+            path: dirPath || t('files.rootLabel'),
+            error: describeError(error),
+          })
+        ),
+      ];
     }
     const rows: HTMLElement[] = [];
     for (const entry of entries) {
       rows.push(row(entry, depth));
       if (entry.dir && expanded.has(entry.path)) rows.push(...(await collect(entry.path, depth + 1)));
     }
-    if (entries.length === 0 && dirPath) rows.push(el('p', 'files__note', 'Kosong'));
+    if (entries.length === 0 && dirPath) rows.push(el('p', 'files__note', t('files.emptyDir')));
     return rows;
   }
 
   function renderResults(): void {
     if (!results) return;
-    const head = el('p', 'files__result-head', `${results.matches.length} hasil untuk “${results.query}”`);
+    const head = el(
+      'p',
+      'files__result-head',
+      t('files.results', { count: results.matches.length, query: results.query })
+    );
     list.append(head);
     if (results.stopped === 'limit') {
-      list.append(el('p', 'files__note', `Baru ${results.scanned} entri diperiksa — persempit kata kuncinya.`));
+      list.append(el('p', 'files__note', t('files.scannedLimit', { count: results.scanned })));
     }
-    if (results.matches.length === 0) list.append(note('Tidak ada yang cocok.'));
+    if (results.matches.length === 0) list.append(note(t('files.noMatch')));
     for (const match of results.matches) {
       const line = el('div', 'files__row files__row--hit');
       line.setAttribute('role', 'treeitem');
+      line.dataset.path = match.path;
       const glyph = icon(match.dir ? ICON.folder : ICON.file, 14);
       glyph.classList.add('files__glyph');
       line.append(glyph, el('span', 'files__name', match.path));
@@ -362,7 +706,7 @@ export function mountFiles(container: HTMLElement, hooks: FilesHooks = {}): File
           reveal(match.path);
           void redraw();
         } else {
-          void openFile(match.path, match.line ?? 0);
+          void openFile(match.path, { mode: prefs().defaultView, line: match.line ?? 0 });
         }
       });
       list.append(line);
@@ -400,14 +744,20 @@ export function mountFiles(container: HTMLElement, hooks: FilesHooks = {}): File
     }
   }
 
-  async function openFile(path: string, line = 0): Promise<void> {
+  async function openFile(
+    path: string,
+    options: { mode?: 'raw' | 'preview'; line?: number } = {}
+  ): Promise<void> {
     const token = (renderToken += 1);
     message = '';
     try {
       const content = await chatApi.file(path);
       if (token !== renderToken) return;
       viewed = content;
-      viewLine = line;
+      viewLine = options.line ?? 0;
+      viewMode = options.mode ?? 'raw';
+      wrap = prefs().wrap;
+      zoom = 1;
       selected = path;
       renderViewer();
       paintMessage();
@@ -418,56 +768,16 @@ export function mountFiles(container: HTMLElement, hooks: FilesHooks = {}): File
     }
   }
 
-  function closeViewer(): void {
-    viewed = null;
-    viewLine = 0;
-    renderViewer();
-  }
-
-  function renderViewer(): void {
-    viewer.textContent = '';
-    viewer.hidden = !viewed;
-    if (!viewed) return;
-
-    const head = el('header', 'files__viewer-head');
-    head.append(el('span', 'files__viewer-path', viewed.path));
-    const info = [humanSize(viewed.size)];
-    if (viewed.truncated) info.push('dipotong');
-    if (viewed.binary) info.push('file biner');
-    head.append(el('span', 'files__viewer-info', info.join(' · ')));
-
-    const buttons = el('span', 'files__viewer-actions');
-    if (hooks.onReference && !viewed.binary) {
-      buttons.append(
-        iconButton('Sisipkan ke pesan', ICON.plus, () => hooks.onReference?.(viewed?.path ?? ''))
-      );
-    }
-    buttons.append(iconButton('Tutup pratinjau', ICON.close, closeViewer));
-    head.append(buttons);
-
-    viewer.append(head);
-    if (viewed.binary) {
-      viewer.append(el('p', 'files__note', 'Isinya bukan teks, jadi tidak ditampilkan.'));
-      return;
-    }
-    const body = el('pre', 'files__code');
-    body.textContent = viewed.text;
-    viewer.append(body);
-    if (viewLine > 1) {
-      const lineHeight = Number.parseFloat(window.getComputedStyle(body).lineHeight) || 19;
-      body.scrollTop = Math.max(0, (viewLine - 4) * lineHeight);
-    }
-  }
-
   async function redraw(): Promise<void> {
     const token = (renderToken += 1);
     list.textContent = '';
     message = '';
     paintMessage();
     renderPrompt();
+    paintSearchLabels();
 
     if (!workspace) {
-      list.append(note('Buka workspace untuk melihat daftarnya.'));
+      list.append(note(t('files.openWorkspaceHint')));
       viewer.hidden = true;
       return;
     }
@@ -480,6 +790,21 @@ export function mountFiles(container: HTMLElement, hooks: FilesHooks = {}): File
     list.append(...rows);
   }
 
+  function paintSearchLabels(): void {
+    setMode(mode);
+    searchInput.setAttribute('aria-label', t('files.searchAria'));
+    list.setAttribute('aria-label', t('files.treeAria'));
+    modeButton.title = t('files.modeSwitch');
+    clearButton.title = t('files.clearSearch');
+    clearButton.setAttribute('aria-label', t('files.clearSearch'));
+    refreshButton.title = t('files.refresh');
+    refreshButton.setAttribute('aria-label', t('files.refresh'));
+    newFileButton.title = t('files.newFile');
+    newFileButton.setAttribute('aria-label', t('files.newFile'));
+    newFolderButton.title = t('files.newFolder');
+    newFolderButton.setAttribute('aria-label', t('files.newFolder'));
+  }
+
   function refresh(): void {
     invalidate();
     void redraw();
@@ -490,6 +815,19 @@ export function mountFiles(container: HTMLElement, hooks: FilesHooks = {}): File
     window.clearTimeout(searchTimer);
     const value = searchInput.value;
     searchTimer = window.setTimeout(() => void runSearch(value), SEARCH_DEBOUNCE_MS);
+  });
+
+  bindContextMenu();
+
+  subscribePrefs(() => {
+    wrap = prefs().wrap;
+    if (viewed) renderViewer();
+    void redraw();
+  });
+
+  subscribeLocale(() => {
+    if (viewed) renderViewer();
+    void redraw();
   });
 
   return {

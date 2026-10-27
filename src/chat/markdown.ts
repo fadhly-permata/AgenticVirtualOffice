@@ -1,6 +1,11 @@
 import DOMPurify from 'dompurify';
 import { Marked } from 'marked';
-import { el, ICON, icon, iconButton } from './dom';
+import { THEMES, subscribeTheme, theme, themeById, withAlpha } from '../theme';
+import type { ThemeDef } from '../theme';
+import { t } from '../i18n';
+import { ICON, el, icon, iconButton } from './dom';
+import { highlightBlock } from './highlight';
+import { prefs } from './prefs';
 
 const parser = new Marked({ gfm: true, breaks: true });
 
@@ -119,7 +124,16 @@ function decorate(root: HTMLElement): void {
     if (lang) block.append(el('span', 'md-code__lang', lang));
     pre.replaceWith(block);
     block.append(pre);
+    if (lang && prefs().syntax && text.length) void paintCode(pre, code, text, lang);
   }
+}
+
+/** Chat membangun ulang DOM tiap frame streaming, jadi hasil lama dibuang lewat dua cek ini. */
+async function paintCode(pre: HTMLElement, code: HTMLElement | null, text: string, lang: string): Promise<void> {
+  const html = await highlightBlock(text, lang);
+  if (!html || !code || !pre.isConnected) return;
+  if ((code.textContent ?? '').replace(/\n+$/, '') !== text) return;
+  code.innerHTML = html;
 }
 
 function withHeader(lang: string, source: string): string {
@@ -194,9 +208,9 @@ function paint(figure: HTMLElement, result: Diagram | null): void {
 
   const view = el('div', 'md-diagram__view');
   if (result === null) {
-    view.append(el('span', 'spinner'), el('span', 'md-diagram__hint', 'Menggambar diagram…'));
+    view.append(el('span', 'spinner'), el('span', 'md-diagram__hint', t('md.diagramLoading')));
   } else if ('error' in result) {
-    view.append(el('p', 'md-diagram__error', `Diagram gagal digambar: ${result.error}`));
+    view.append(el('p', 'md-diagram__error', t('md.diagramError', { message: result.error })));
   } else {
     view.append(templateFor(result.svg).content.cloneNode(true));
   }
@@ -207,12 +221,10 @@ function paint(figure: HTMLElement, result: Diagram | null): void {
   const actions = el('span', 'md-diagram__actions');
   if (result && 'svg' in result) {
     const svg = result.svg;
-    actions.append(
-      iconButton('Perbesar diagram', ICON.expand, () => openViewer(svg, kindOf(result)))
-    );
+    actions.append(iconButton(t('md.expandDiagram'), ICON.expand, () => openViewer(svg, kindOf(result))));
   }
   if (source) {
-    const copy: HTMLButtonElement = iconButton('Salin kode diagram', ICON.copy, () =>
+    const copy: HTMLButtonElement = iconButton(t('md.copyDiagramSource'), ICON.copy, () =>
       copySource(copy, source)
     );
     actions.append(copy);
@@ -227,7 +239,7 @@ function paint(figure: HTMLElement, result: Diagram | null): void {
     pre.append(el('code', undefined, source));
     block.append(pre);
     const details = el('details', 'md-diagram__source');
-    details.append(el('summary', undefined, 'Lihat kode'), block);
+    details.append(el('summary', undefined, t('md.showSource')), block);
     figure.append(details);
   }
 }
@@ -285,14 +297,14 @@ function openViewer(svg: string, kind: string): void {
   };
   const fit: HTMLButtonElement = el('button', 'icon-btn');
   fit.type = 'button';
-  fit.title = 'Ukuran semula';
+  fit.title = t('md.zoomReset');
   fit.textContent = '1:1';
   fit.addEventListener('click', () => setScale(1));
 
   tools.append(
-    iconButton('Perkecil', ICON.minus, () => setScale(current(inner) - 0.25)),
+    iconButton(t('md.zoomOut'), ICON.minus, () => setScale(current(inner) - 0.25)),
     fit,
-    iconButton('Perbesar', ICON.plus, () => setScale(current(inner) + 0.25))
+    iconButton(t('md.zoomIn'), ICON.plus, () => setScale(current(inner) + 0.25))
   );
   head.append(el('h2', 'diagram-view__title', kind), tools);
   card.append(head, stage);
@@ -329,62 +341,78 @@ function copySource(button: HTMLButtonElement, source: string): void {
   );
 }
 
+let mermaidInstance: MermaidApi | null = null;
+
+function activeTheme(): ThemeDef {
+  return themeById(theme()) ?? THEMES[0];
+}
+
+/** Warna diagram mengikuti palet tema aktif supaya tidak menyala di tema terang. */
+function mermaidVars(def: ThemeDef) {
+  return {
+    activationBkgColor: withAlpha(def.ink, 0.08),
+    activationBorderColor: withAlpha(def.accent, 0.5),
+    actorBkg: withAlpha(def.accent, 0.14),
+    actorBorder: withAlpha(def.accent, 0.6),
+    actorLineColor: withAlpha(def.ink, 0.35),
+    actorTextColor: def.ink,
+    background: 'transparent',
+    clusterBkg: withAlpha(def.ink, 0.05),
+    clusterBorder: withAlpha(def.ink, 0.22),
+    critBkgColor: withAlpha(def.del, 0.8),
+    doneTaskBkgColor: withAlpha(def.add, 0.7),
+    edgeLabelBackground: def.panel,
+    fill0: def.accent,
+    fill1: def.del,
+    fill2: def.type,
+    fill3: def.add,
+    fill4: def.attr,
+    labelBoxBkgColor: withAlpha(def.accent, 0.14),
+    labelBoxBorderColor: withAlpha(def.accent, 0.5),
+    labelTextColor: def.ink,
+    lineColor: withAlpha(def.ink, 0.55),
+    noteBkgColor: withAlpha(def.ink, 0.07),
+    noteBorderColor: withAlpha(def.accent, 0.45),
+    noteTextColor: def.ink,
+    pieOpacity: '1',
+    pieStrokeColor: withAlpha(def.bg, 0.9),
+    primaryColor: withAlpha(def.accent, 0.16),
+    primaryBorderColor: withAlpha(def.accent, 0.6),
+    primaryTextColor: def.ink,
+    secondaryColor: withAlpha(def.del, 0.18),
+    sequenceNumberColor: def.bg,
+    signalColor: withAlpha(def.ink, 0.6),
+    signalTextColor: def.ink,
+    tertiaryColor: withAlpha(def.type, 0.16),
+    titleColor: def.ink,
+    xyChart: {
+      backgroundColor: 'transparent',
+      plotColorPalette: [def.accent, def.del, def.type, def.add].join(', '),
+      titleColor: def.ink,
+      xLabelColor: withAlpha(def.ink, 0.7),
+      yLabelColor: withAlpha(def.ink, 0.7),
+    },
+  };
+}
+
+function applyMermaidTheme(mermaid: MermaidApi): void {
+  mermaid.initialize({
+    securityLevel: 'strict',
+    startOnLoad: false,
+    suppressErrorRendering: true,
+    theme: 'base',
+    fontFamily: "'Inter', 'Segoe UI', system-ui, sans-serif",
+    themeVariables: mermaidVars(activeTheme()),
+    flowchart: { htmlLabels: false, useMaxWidth: true },
+  });
+}
+
 function loadMermaid(): Promise<MermaidApi> {
   if (!mermaidLoader) {
     mermaidLoader = import('mermaid').then((module) => {
       const mermaid = module.default;
-      mermaid.initialize({
-        securityLevel: 'strict',
-        startOnLoad: false,
-        suppressErrorRendering: true,
-        theme: 'base',
-        fontFamily: "'Inter', 'Segoe UI', system-ui, sans-serif",
-        themeVariables: {
-          activationBkgColor: 'rgba(255, 255, 255, 0.08)',
-          activationBorderColor: 'rgba(226, 180, 74, 0.5)',
-          actorBkg: 'rgba(226, 180, 74, 0.14)',
-          actorBorder: 'rgba(226, 180, 74, 0.6)',
-          actorLineColor: 'rgba(244, 239, 230, 0.35)',
-          actorTextColor: '#f4efe6',
-          background: 'transparent',
-          clusterBkg: 'rgba(255, 255, 255, 0.04)',
-          clusterBorder: 'rgba(255, 255, 255, 0.2)',
-          critBkgColor: 'rgba(224, 122, 95, 0.8)',
-          doneTaskBkgColor: 'rgba(159, 214, 176, 0.7)',
-          edgeLabelBackground: '#18222c',
-          fill0: '#e2b44a',
-          fill1: '#e07a5f',
-          fill2: '#7fb2d8',
-          fill3: '#9fd6b0',
-          fill4: '#c99ae0',
-          labelBoxBkgColor: 'rgba(226, 180, 74, 0.14)',
-          labelBoxBorderColor: 'rgba(226, 180, 74, 0.5)',
-          labelTextColor: '#f4efe6',
-          lineColor: 'rgba(244, 239, 230, 0.55)',
-          noteBkgColor: 'rgba(255, 255, 255, 0.06)',
-          noteBorderColor: 'rgba(226, 180, 74, 0.45)',
-          noteTextColor: '#f4efe6',
-          pieOpacity: '1',
-          pieStrokeColor: 'rgba(13, 20, 27, 0.9)',
-          primaryColor: 'rgba(226, 180, 74, 0.16)',
-          primaryBorderColor: 'rgba(226, 180, 74, 0.6)',
-          primaryTextColor: '#f4efe6',
-          secondaryColor: 'rgba(224, 122, 95, 0.18)',
-          sequenceNumberColor: '#241c0c',
-          signalColor: 'rgba(244, 239, 230, 0.6)',
-          signalTextColor: '#f4efe6',
-          tertiaryColor: 'rgba(127, 178, 216, 0.16)',
-          titleColor: '#f4efe6',
-          xyChart: {
-            backgroundColor: 'transparent',
-            plotColorPalette: '#e2b44a, #e07a5f, #7fb2d8, #9fd6b0',
-            titleColor: '#f4efe6',
-            xLabelColor: 'rgba(244, 239, 230, 0.7)',
-            yLabelColor: 'rgba(244, 239, 230, 0.7)',
-          },
-        },
-        flowchart: { htmlLabels: false, useMaxWidth: true },
-      });
+      mermaidInstance = mermaid;
+      applyMermaidTheme(mermaid);
       return mermaid;
     });
   }
@@ -393,6 +421,23 @@ function loadMermaid(): Promise<MermaidApi> {
     throw error;
   });
 }
+
+// Diagram lama sudah terbake sebagai SVG dengan warna tema sebelumnya, jadi cache dan
+// setiap figure yang masih di DOM harus dihapus ulang saat user pindah tema.
+subscribeTheme(() => {
+  if (mermaidInstance) applyMermaidTheme(mermaidInstance);
+  diagramCache.clear();
+  templateCache.clear();
+  for (const figure of Array.from(document.querySelectorAll<HTMLElement>('.md-diagram'))) {
+    const source = diagramSources.get(figure);
+    if (!source) continue;
+    const timer = pendingDiagrams.get(figure);
+    if (timer) window.clearTimeout(timer);
+    pendingDiagrams.delete(figure);
+    paint(figure, null);
+    void draw(figure, source);
+  }
+});
 
 function remember<K, V>(cache: Map<K, V>, limit: number, key: K, value: V): void {
   cache.set(key, value);
