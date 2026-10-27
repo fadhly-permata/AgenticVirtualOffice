@@ -3620,10 +3620,6 @@ body.chat-open .launcher,
     left: 8px;
   }
 
-  .chat__selects {
-    grid-template-columns: minmax(0, 1fr) 72px 80px;
-  }
-
   .chat__composer {
     margin: 0 8px calc(8px + env(safe-area-inset-bottom));
   }
