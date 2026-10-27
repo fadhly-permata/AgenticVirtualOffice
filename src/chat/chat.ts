@@ -37,6 +37,8 @@ import type {
 const STORAGE_MODEL = 'virtoOffice.chatModel';
 const STORAGE_AGENT = 'virtoOffice.chatAgent';
 const STORAGE_DELAY = 'virtoOffice.ruleDelay';
+const STORAGE_BOX = 'virtoOffice.chatBox';
+const EDGE = 8;
 
 /** Jeda sebelum & sesudah kerja delegasi, ditulis ke aturan workspace. */
 const DEFAULT_RULE_DELAY = 2000;
@@ -69,6 +71,7 @@ const chatFolder = byId<HTMLElement>('chat-folder');
 const chatChangeFolder = byId<HTMLButtonElement>('chat-change-folder');
 const chatNew = byId<HTMLButtonElement>('chat-new');
 const chatMaximize = byId<HTMLButtonElement>('chat-maximize');
+const chatHead = byId<HTMLElement>('chat-head');
 const chatClose = byId<HTMLButtonElement>('chat-close');
 const sessionSelect = byId<HTMLSelectElement>('chat-session');
 const modelSelect = byId<HTMLSelectElement>('chat-model');
@@ -159,9 +162,36 @@ export function installChat(officeApi: VirtOfficeApi): void {
     launcher.focus();
   });
   chatMaximize.addEventListener('click', () => {
-    setMaximized(!maximized);
+    const next = !maximized;
+    // Perbesar selalu mulai dari dock kanan, bukan dari posisi hasil seretan.
+    if (next) setBox(null);
+    setMaximized(next);
     if (window.innerWidth > 760) input.focus();
   });
+  chatHead.addEventListener('pointerdown', dragChat);
+  chatHead.addEventListener('dblclick', () => setBox(null));
+  chatHead.addEventListener('keydown', (event) => {
+    const step = event.shiftKey ? 64 : 16;
+    const deltas: Record<string, [number, number]> = {
+      ArrowLeft: [-step, 0],
+      ArrowRight: [step, 0],
+      ArrowUp: [0, -step],
+      ArrowDown: [0, step],
+    };
+    const delta = deltas[event.key];
+    if (delta) {
+      const at = box ?? chatWindow.getBoundingClientRect();
+      setBox({ left: at.left + delta[0], top: at.top + delta[1], width: at.width, height: at.height });
+      event.preventDefault();
+      return;
+    }
+    if (event.key === 'Home') {
+      setBox(null);
+      event.preventDefault();
+    }
+  });
+  window.addEventListener('resize', keepBoxOnScreen);
+  setBox(readStoredBox());
   // Klik atau pindah fokus ke luar popup berarti user sudah meninggalkan chat-nya.
   const dismiss = (event: Event): void => {
     if (chatWindow.hidden || folderPicker?.isOpen) return;
@@ -309,9 +339,75 @@ function updateLauncher(): void {
         : 'idle';
 }
 
-let maximized = false;
+interface ChatBox {
+  left: number;
+  top: number;
+  width: number;
+  height: number;
+}
 
-/** Tombol perbesar mengisi diorama, lalu mengembalikan jendela ke dock kanannya. */
+let maximized = false;
+let box: ChatBox | null = null;
+
+function readStoredBox(): ChatBox | null {
+  const raw = localStorage.getItem(STORAGE_BOX);
+  if (!raw) return null;
+  let parsed: Partial<ChatBox>;
+  try {
+    parsed = JSON.parse(raw) as Partial<ChatBox>;
+  } catch {
+    return null;
+  }
+  if (
+    typeof parsed.left !== 'number' ||
+    typeof parsed.top !== 'number' ||
+    typeof parsed.width !== 'number' ||
+    typeof parsed.height !== 'number' ||
+    !Number.isFinite(parsed.left) ||
+    !Number.isFinite(parsed.top) ||
+    parsed.width < 80 ||
+    parsed.height < 80
+  ) {
+    return null;
+  }
+  return { left: parsed.left, top: parsed.top, width: parsed.width, height: parsed.height };
+}
+
+function insideViewport(next: ChatBox): ChatBox {
+  const width = Math.min(next.width, window.innerWidth - EDGE * 2);
+  const height = Math.min(next.height, window.innerHeight - EDGE * 2);
+  return {
+    width,
+    height,
+    left: Math.min(Math.max(next.left, EDGE), Math.max(EDGE, window.innerWidth - width - EDGE)),
+    top: Math.min(Math.max(next.top, EDGE), Math.max(EDGE, window.innerHeight - height - EDGE)),
+  };
+}
+
+/** Posisi hasil seret mengalahkan dock CSS, jadi setiap sisinya ditulis inline. */
+function setBox(next: ChatBox | null): void {
+  box = next ? insideViewport(next) : null;
+  for (const side of ['left', 'top', 'width', 'height', 'right', 'bottom'] as const) {
+    chatWindow.style[side] = '';
+  }
+
+  if (!box) {
+    chatWindow.classList.remove('chat--moved');
+    localStorage.removeItem(STORAGE_BOX);
+    return;
+  }
+
+  chatWindow.style.left = `${box.left}px`;
+  chatWindow.style.top = `${box.top}px`;
+  chatWindow.style.width = `${box.width}px`;
+  chatWindow.style.height = `${box.height}px`;
+  chatWindow.style.right = 'auto';
+  chatWindow.style.bottom = 'auto';
+  chatWindow.classList.add('chat--moved');
+  localStorage.setItem(STORAGE_BOX, JSON.stringify(box));
+}
+
+/** Perbesar mengisi separuh kanan layar; seret bebas mengembalikan kendali ke user. */
 function setMaximized(next: boolean): void {
   maximized = next;
   chatWindow.classList.toggle('chat--max', next);
@@ -319,6 +415,41 @@ function setMaximized(next: boolean): void {
   const label = next ? 'Perkecil chat' : 'Perbesar chat';
   chatMaximize.title = label;
   chatMaximize.setAttribute('aria-label', label);
+}
+
+function dragChat(event: PointerEvent): void {
+  if (event.button !== 0) return;
+  if (event.target instanceof Element && event.target.closest('button')) return;
+
+  const start = chatWindow.getBoundingClientRect();
+  const grab = { x: event.clientX - start.left, y: event.clientY - start.top };
+  let moved = false;
+
+  const onMove = (move: PointerEvent): void => {
+    if (!moved) {
+      moved = true;
+      setMaximized(false);
+      chatWindow.classList.add('chat--dragging');
+    }
+    setBox({ left: move.clientX - grab.x, top: move.clientY - grab.y, width: start.width, height: start.height });
+  };
+
+  const onUp = (): void => {
+    chatWindow.classList.remove('chat--dragging');
+    window.removeEventListener('pointermove', onMove);
+    window.removeEventListener('pointerup', onUp);
+    window.removeEventListener('pointercancel', onUp);
+  };
+
+  window.addEventListener('pointermove', onMove);
+  window.addEventListener('pointerup', onUp);
+  window.addEventListener('pointercancel', onUp);
+  event.preventDefault();
+}
+
+/** Jendela yang sedang mengambang jangan sampai tertinggal di luar layar. */
+function keepBoxOnScreen(): void {
+  if (box) setBox(box);
 }
 
 /** Setiap perubahan jeda langsung ditulis ulang ke aturan tool di workspace. */

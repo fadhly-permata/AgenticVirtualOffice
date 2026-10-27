@@ -429,13 +429,32 @@ body.chat-open .launcher,
   }
 }
 
-/* Perbesar membuat chat mengisi diorama, jadi ikonnya ikut berganti. */
+/* Perbesar = separuh layar di sisi kanan, jadi diorama tetap terlihat. */
 .chat--max {
   top: 14px;
   right: 14px;
   bottom: 14px;
-  left: 14px;
-  width: auto;
+  left: auto;
+  width: min(50vw, 760px);
+}
+
+/* Setelah diseret, jendela hidup dari koordinat sendiri, bukan dari sudut layar. */
+.chat--moved {
+  right: auto;
+  bottom: auto;
+}
+
+.chat--dragging .chat__head {
+  cursor: grabbing;
+}
+
+.chat__grip {
+  flex: none;
+  width: 8px;
+  height: 18px;
+  background-image: radial-gradient(currentColor 1.1px, transparent 1.1px);
+  background-size: 4px 4px;
+  opacity: 0.34;
 }
 
 .icon-btn .icon-restore {
@@ -457,6 +476,14 @@ body.chat-open .launcher,
   padding: 12px 12px 11px 14px;
   border-bottom: 1px solid rgba(255, 255, 255, 0.08);
   background: rgba(255, 255, 255, 0.025);
+  cursor: grab;
+  touch-action: none;
+  user-select: none;
+}
+
+.chat__head:focus-visible {
+  outline: 1px solid var(--accent);
+  outline-offset: -2px;
 }
 
 .chat__identity {

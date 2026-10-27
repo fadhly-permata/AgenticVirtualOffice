@@ -47,7 +47,15 @@
       </button>
 
       <section id="chat-window" class="chat" aria-label="Chat OpenCode" hidden>
-        <header class="chat__head">
+        <header
+          class="chat__head"
+          id="chat-head"
+          tabindex="0"
+          role="group"
+          aria-label="Batang judul chat. Seret, atau pakai tombol panah, untuk memindahkan jendela."
+          title="Seret untuk memindahkan jendela chat"
+        >
+          <span class="chat__grip" aria-hidden="true"></span>
           <div class="chat__identity">
             <span class="chat__folder-mark" aria-hidden="true">
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">
