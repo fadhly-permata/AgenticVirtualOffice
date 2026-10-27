@@ -1,7 +1,10 @@
 import './style.css';
+import './ui.css';
 import * as THREE from 'three';
 import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+import { applyStatic, followBrowserLocale, t } from './i18n';
+import { initTheme } from './theme';
 import { installApi } from './api';
 import type { CrewFactory } from './api';
 import { installChat } from './chat/chat';
@@ -17,6 +20,10 @@ import { OfficeWorld } from './world/office';
 const canvas = document.querySelector<HTMLCanvasElement>('#scene');
 const fatal = document.getElementById('fatal');
 
+initTheme();
+followBrowserLocale();
+applyStatic();
+
 function fail(message: string): void {
   if (!fatal) return;
   fatal.hidden = false;
@@ -24,7 +31,7 @@ function fail(message: string): void {
 }
 
 if (!canvas) {
-  fail('Canvas #scene tidak ditemukan.');
+  fail(t('shell.canvasMissing'));
 } else {
   try {
     boot(canvas);
@@ -207,7 +214,8 @@ function boot(target: HTMLCanvasElement): void {
     if (progressEl) progressEl.style.width = `${(clock.progress * 100).toFixed(1)}%`;
     // Lantai 'live' berarti bangku kerja hanya diisi sesi OpenCode yang benar-benar jalan.
     if (floorModeEl) {
-      floorModeEl.textContent = autopilot.floorMode === 'live' ? 'LIVE' : 'AUTO-PLAY';
+      floorModeEl.textContent =
+        autopilot.floorMode === 'live' ? t('shell.floorLive') : t('shell.floorAutoPlay');
       floorModeEl.dataset.mode = autopilot.floorMode;
     }
     // Orang pindah kursi = barisnya harus disusun ulang, bukan cuma labelnya diganti.
@@ -349,6 +357,6 @@ function boot(target: HTMLCanvasElement): void {
   installChat(office);
 
   window.addEventListener('error', (event) => {
-    fail(`Render error: ${event.message}`);
+    fail(t('shell.renderError', { message: event.message }));
   });
 }

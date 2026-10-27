@@ -1,3 +1,4 @@
+import { subscribeLocale, t } from '../i18n';
 import { chatApi } from './client';
 import { ICON, el, icon, iconButton } from './dom';
 import type { ScmBranch, ScmBranches, ScmDiff, ScmFile, ScmLogEntry, ScmStatus, WorkspaceInfo } from './types';
@@ -14,23 +15,30 @@ export interface ScmPanel {
 
 type GroupKey = 'staged' | 'unstaged' | 'untracked';
 
-const LETTER_LABEL: Record<string, string> = {
-  M: 'diubah',
-  A: 'baru',
-  D: 'hapus',
-  R: 'ganti nama',
-  C: 'disalin',
-  U: 'konflik',
-  '?': 'belum dilacak',
+/** Key i18n per huruf status git; dibaca lewat t() supaya tidak beku saat init. */
+const LETTER_KEYS: Record<string, string> = {
+  M: 'scm.letterM',
+  A: 'scm.letterA',
+  D: 'scm.letterD',
+  R: 'scm.letterR',
+  C: 'scm.letterC',
+  U: 'scm.letterU',
+  '?': 'scm.untracked',
 };
 
-const GROUPS: { key: GroupKey; title: string }[] = [
-  { key: 'staged', title: 'Disiapkan' },
-  { key: 'unstaged', title: 'Perubahan kerja' },
-  { key: 'untracked', title: 'Belum dilacak' },
+const GROUPS: { key: GroupKey; titleId: string }[] = [
+  { key: 'staged', titleId: 'scm.groupStaged' },
+  { key: 'unstaged', titleId: 'scm.groupUnstaged' },
+  { key: 'untracked', titleId: 'scm.groupUntracked' },
 ];
 
 const HISTORY_LIMIT = 30;
+
+/** Title + aria-label untuk tombol ikon; dipasang ulang saat bahasa diganti. */
+function labelButton(button: HTMLButtonElement, label: string): void {
+  button.title = label;
+  button.setAttribute('aria-label', label);
+}
 
 function describeError(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
@@ -65,7 +73,7 @@ function noteOf(body: unknown): string {
 
 function trackOf(branch: ScmBranch): string {
   const gap = branch.ahead || branch.behind ? ` ↑${branch.ahead} ↓${branch.behind}` : '';
-  return `${branch.upstream || 'tanpa upstream'}${gap}`;
+  return `${branch.upstream || t('scm.noUpstream')}${gap}`;
 }
 
 export function mountScm(container: HTMLElement, hooks: ScmHooks = {}): ScmPanel {
@@ -95,15 +103,15 @@ export function mountScm(container: HTMLElement, hooks: ScmHooks = {}): ScmPanel
   const branchGlyph = icon(ICON.branch, 13);
   const branchName = el('span', 'scm__branch-name', '—');
   branchButton.append(branchGlyph, branchName, icon(ICON.chevronDown, 12));
-  branchButton.title = 'Pilih, buat, atau hapus branch';
+  branchButton.title = t('scm.branchPicker');
   branchButton.addEventListener('click', () => togglePicker());
   const syncEl = el('span', 'scm__sync');
   const lastEl = el('span', 'scm__last');
-  const pushButton = iconButton('Kirim commit ke remote (push)', ICON.up, () => void push('push'));
-  const pullButton = iconButton('Ambil commit dari remote (pull)', ICON.down, () => void push('pull'));
-  const historyButton = iconButton('Tampilkan riwayat commit', ICON.clock, () => void toggleHistory());
+  const pushButton = iconButton(t('scm.push'), ICON.up, () => void push('push'));
+  const pullButton = iconButton(t('scm.pull'), ICON.down, () => void push('pull'));
+  const historyButton = iconButton(t('scm.historyBtn'), ICON.clock, () => void toggleHistory());
   historyButton.setAttribute('aria-pressed', 'false');
-  const refreshButton = iconButton('Muat ulang status git', ICON.refresh, () => void load(true));
+  const refreshButton = iconButton(t('scm.refresh'), ICON.refresh, () => void load(true));
   head.append(branchButton, syncEl, lastEl, pushButton, pullButton, historyButton, refreshButton);
 
   const picker = el('div', 'scm__picker');
@@ -113,21 +121,21 @@ export function mountScm(container: HTMLElement, hooks: ScmHooks = {}): ScmPanel
      isian tidak hilang setiap kali daftar di-render. */
   const branchInput = el('input', 'scm__picker-input');
   branchInput.type = 'text';
-  branchInput.placeholder = 'nama branch baru';
-  branchInput.setAttribute('aria-label', 'Nama branch baru');
+  branchInput.placeholder = t('scm.newBranchPh');
+  branchInput.setAttribute('aria-label', t('scm.newBranchAria'));
   branchInput.addEventListener('keydown', (event) => {
     if (event.key === 'Enter') void createBranch();
   });
   const makeBranch = el('button', 'scm__chip');
   makeBranch.type = 'button';
-  makeBranch.textContent = 'Buat + pindah';
+  makeBranch.textContent = t('scm.createSwitch');
   makeBranch.addEventListener('click', () => void createBranch());
   const branchNew = el('div', 'scm__picker-new');
   branchNew.append(branchInput, makeBranch);
 
   const compose = el('div', 'scm__compose');
   const draftArea = el('textarea', 'scm__draft');
-  draftArea.placeholder = 'Pesan commit untuk perubahan yang disiapkan…';
+  draftArea.placeholder = t('scm.draftPh');
   draftArea.rows = 3;
   draftArea.addEventListener('input', () => paintCompose());
   draftArea.addEventListener('keydown', (event) => {
@@ -138,25 +146,25 @@ export function mountScm(container: HTMLElement, hooks: ScmHooks = {}): ScmPanel
   });
   const commitButton = el('button', 'scm__run');
   commitButton.type = 'button';
-  commitButton.textContent = 'Commit';
+  commitButton.textContent = t('scm.commit');
   commitButton.addEventListener('click', () => void commit());
   const amendButton = el('button', 'scm__chip');
   amendButton.type = 'button';
-  amendButton.textContent = 'Amend';
-  amendButton.title = 'Timpa commit terakhir alih-alih menambah commit baru';
+  amendButton.textContent = t('scm.amend');
+  amendButton.title = t('scm.amendTitle');
   amendButton.addEventListener('click', () => {
     amend = !amend;
     paintCompose();
   });
   const undoButton = el('button', 'scm__chip');
   undoButton.type = 'button';
-  undoButton.textContent = 'Urungkan commit';
-  undoButton.title = 'Batalkan commit terakhir; perubahannya kembali ke daftar siap commit';
+  undoButton.textContent = t('scm.undo');
+  undoButton.title = t('scm.undoTitle');
   undoButton.addEventListener('click', () => {
     armed = 'undo';
     paintCompose();
   });
-  const composeHint = el('span', 'scm__compose-hint', 'Ctrl+Enter untuk commit');
+  const composeHint = el('span', 'scm__compose-hint', t('scm.hint'));
   const composeRow = el('div', 'scm__compose-row');
   compose.append(draftArea, composeRow);
 
@@ -182,6 +190,23 @@ export function mountScm(container: HTMLElement, hooks: ScmHooks = {}): ScmPanel
     paintMessage();
   }
 
+  /** Teks yang dipasang saat konstruksi: dipasang ulang tiap kali bahasa diganti. */
+  function paintLabels(): void {
+    labelButton(pushButton, t('scm.push'));
+    labelButton(pullButton, t('scm.pull'));
+    labelButton(historyButton, t('scm.historyBtn'));
+    labelButton(refreshButton, t('scm.refresh'));
+    branchInput.placeholder = t('scm.newBranchPh');
+    branchInput.setAttribute('aria-label', t('scm.newBranchAria'));
+    makeBranch.textContent = t('scm.createSwitch');
+    draftArea.placeholder = t('scm.draftPh');
+    amendButton.textContent = t('scm.amend');
+    amendButton.title = t('scm.amendTitle');
+    undoButton.textContent = t('scm.undo');
+    undoButton.title = t('scm.undoTitle');
+    composeHint.textContent = t('scm.hint');
+  }
+
   function paintMessage(): void {
     messageEl.textContent = message;
     messageEl.hidden = !message;
@@ -201,7 +226,7 @@ export function mountScm(container: HTMLElement, hooks: ScmHooks = {}): ScmPanel
 
   function confirmButtons(yesLabel: string, onYes: () => void): HTMLElement {
     const box = el('span', 'scm__confirm');
-    box.append(el('span', 'scm__ask', 'Yakin?'));
+    box.append(el('span', 'scm__ask', t('scm.sure')));
     const yes = el('button', 'scm__yes');
     yes.type = 'button';
     yes.textContent = yesLabel;
@@ -212,7 +237,7 @@ export function mountScm(container: HTMLElement, hooks: ScmHooks = {}): ScmPanel
     });
     const no = el('button', 'scm__no');
     no.type = 'button';
-    no.textContent = 'Batal';
+    no.textContent = t('scm.cancel');
     no.addEventListener('click', (event) => {
       event.stopPropagation();
       armed = '';
@@ -225,23 +250,24 @@ export function mountScm(container: HTMLElement, hooks: ScmHooks = {}): ScmPanel
   }
 
   function paintHead(): void {
-    const branchLabel = !workspace ? 'tidak ada workspace' : state ? state.branch || `HEAD ${state.detached}` : loading ? 'membaca git…' : '—';
+    const branchLabel = !workspace ? t('scm.noWorkspace') : state ? state.branch || `HEAD ${state.detached}` : loading ? t('scm.readingGit') : '—';
     branchName.textContent = branchLabel;
     branchButton.disabled = !workspace;
     if (!state) {
+      branchButton.title = t('scm.branchPicker');
       syncEl.textContent = '';
       lastEl.textContent = '';
       return;
     }
-    branchButton.title = state.detached && !state.branch ? 'commit terpisah (detached HEAD)' : state.head;
-    syncEl.textContent = state.upstream ? `↑${state.ahead} ↓${state.behind}` : 'tanpa upstream';
+    branchButton.title = state.detached && !state.branch ? t('scm.detachedHead') : state.head;
+    syncEl.textContent = state.upstream ? `↑${state.ahead} ↓${state.behind}` : t('scm.noUpstream');
     lastEl.textContent = state.last ? `${state.last.sha} · ${state.last.subject} · ${state.last.when}` : '';
     lastEl.title = state.last?.subject ?? '';
   }
 
   function paintCompose(): void {
     const staged = state ? state.files.filter((file) => inGroup(file, 'staged')).length : 0;
-    commitButton.textContent = `${amend ? 'Amend' : 'Commit'}${staged ? ` (${staged})` : ''}`;
+    commitButton.textContent = `${amend ? t('scm.amend') : t('scm.commit')}${staged ? ` (${staged})` : ''}`;
     commitButton.disabled = busy || !state || (!amend && staged === 0);
     amendButton.disabled = busy || !state || !state.last;
     amendButton.classList.toggle('scm__chip--on', amend);
@@ -260,12 +286,12 @@ export function mountScm(container: HTMLElement, hooks: ScmHooks = {}): ScmPanel
     composeRow.append(commitButton, amendButton);
     if (armed === 'undo') {
       composeRow.append(
-        confirmButtons('Urungkan', () =>
-          void run('Membatalkan commit terakhir…', () => chatApi.scmCommitUndo(), (body) => {
+        confirmButtons(t('scm.undoYes'), () =>
+          void run(t('scm.undoing'), () => chatApi.scmCommitUndo(), (body) => {
             const back = (body as ScmStatus)?.last;
             return back
-              ? `Commit terakhir dibatalkan; HEAD kembali ke ${back.sha} · ${back.subject}.`
-              : 'Commit terakhir dibatalkan; repo kembali ke sebelum commit pertama.';
+              ? t('scm.undone', { sha: back.sha, subject: back.subject })
+              : t('scm.undoneFirst');
           })
         )
       );
@@ -282,7 +308,8 @@ export function mountScm(container: HTMLElement, hooks: ScmHooks = {}): ScmPanel
     if (active) line.classList.add('scm__row--active');
 
     const chip = el('span', `scm__mark scm__mark--${letter === '?' ? 'q' : letter.toLowerCase()}`, letter);
-    chip.title = LETTER_LABEL[letter] ?? letter;
+    const letterKey = LETTER_KEYS[letter];
+    chip.title = letterKey ? t(letterKey) : letter;
     line.append(chip);
 
     const glyph = icon(ICON.file, 14);
@@ -299,15 +326,15 @@ export function mountScm(container: HTMLElement, hooks: ScmHooks = {}): ScmPanel
 
     const actions = el('span', 'scm__actions');
     if (armed === `${staged ? 's' : 'w'}:${file.path}`) {
-      actions.append(confirmButtons('Buang', () => void run('Membuang perubahan…', () => chatApi.scmDiscard(pairOf(file)), () => `Dibuang: ${file.path}.`)));
+      actions.append(confirmButtons(t('scm.discard'), () => void run(t('scm.discarding'), () => chatApi.scmDiscard(pairOf(file)), () => t('scm.discarded', { path: file.path }))));
     } else {
       actions.append(
-        actionButton(staged ? 'Batalkan stage file ini' : 'Siapkan file ini', staged ? ICON.minus : ICON.plus, () =>
-          void run(staged ? 'Membatalkan stage…' : 'Menyiapkan…', () => chatApi.scmStage(pairOf(file), !staged))
+        actionButton(staged ? t('scm.unstageFile') : t('scm.stageFile'), staged ? ICON.minus : ICON.plus, () =>
+          void run(staged ? t('scm.unstaging') : t('scm.staging'), () => chatApi.scmStage(pairOf(file), !staged))
         )
       );
       actions.append(
-        actionButton('Buang perubahan file ini', ICON.trash, () => {
+        actionButton(t('scm.discardFile'), ICON.trash, () => {
           armed = `${staged ? 's' : 'w'}:${file.path}`;
           renderList();
         })
@@ -319,34 +346,34 @@ export function mountScm(container: HTMLElement, hooks: ScmHooks = {}): ScmPanel
     return line;
   }
 
-  function groupHeader(group: { key: GroupKey; title: string }, files: ScmFile[]): HTMLElement {
+  function groupHeader(group: { key: GroupKey; titleId: string }, files: ScmFile[]): HTMLElement {
     const bar = el('div', 'scm__group');
-    bar.append(el('span', 'scm__group-name', `${group.title} · ${files.length}`));
+    bar.append(el('span', 'scm__group-name', `${t(group.titleId)} · ${files.length}`));
     const paths = files.flatMap(pairOf);
     const actions = el('span', 'scm__actions');
 
     if (armed === `group:${group.key}`) {
       actions.append(
-        confirmButtons('Buang semua', () =>
-          void run('Membuang perubahan…', () => chatApi.scmDiscard(paths), () => `Dibuang: ${files.length} file.`)
+        confirmButtons(t('scm.discardAll'), () =>
+          void run(t('scm.discarding'), () => chatApi.scmDiscard(paths), () => t('scm.discardedCount', { count: files.length }))
         )
       );
     } else {
       if (group.key === 'staged') {
         actions.append(
-          actionButton('Batalkan stage semua file', ICON.minus, () => void run('Membatalkan stage…', () => chatApi.scmStageAll(false)))
+          actionButton(t('scm.unstageAll'), ICON.minus, () => void run(t('scm.unstaging'), () => chatApi.scmStageAll(false)))
         );
       } else {
         actions.append(
           actionButton(
-            group.key === 'unstaged' ? 'Siapkan semua perubahan' : 'Siapkan semua file baru',
+            group.key === 'unstaged' ? t('scm.stageChanges') : t('scm.stageNew'),
             ICON.plus,
-            () => void run('Menyiapkan…', () => chatApi.scmStageAll(true))
+            () => void run(t('scm.staging'), () => chatApi.scmStageAll(true))
           )
         );
       }
       actions.append(
-        actionButton('Buang semua perubahan di kelompok ini', ICON.trash, () => {
+        actionButton(t('scm.discardGroup'), ICON.trash, () => {
           armed = `group:${group.key}`;
           renderList();
         })
@@ -359,15 +386,15 @@ export function mountScm(container: HTMLElement, hooks: ScmHooks = {}): ScmPanel
   function renderList(): void {
     list.textContent = '';
     if (!workspace) {
-      list.append(note('Buka workspace lebih dulu untuk melihat perubahan git.'));
+      list.append(note(t('scm.needWorkspace')));
       return;
     }
     if (!state) {
-      list.append(note(loading ? 'Membaca status repo…' : 'Belum ada status.'));
+      list.append(note(loading ? t('scm.readingStatus') : t('scm.noStatus')));
       return;
     }
     if (state.clean) {
-      list.append(note(`Tidak ada perubahan di ${state.branch || state.detached || 'repo ini'}.`));
+      list.append(note(t('scm.clean', { branch: state.branch || state.detached || t('scm.thisRepo') })));
       return;
     }
 
@@ -382,7 +409,7 @@ export function mountScm(container: HTMLElement, hooks: ScmHooks = {}): ScmPanel
   function branchLine(branch: ScmBranch, local: boolean): HTMLElement {
     const line = el('div', 'scm__branch-row');
     if (branch.current) line.classList.add('scm__branch-row--on');
-    else line.title = local ? `Pindah ke ${branch.name}` : `Checkout ${branch.name} sebagai branch lokal`;
+    else line.title = local ? t('scm.switchTo', { name: branch.name }) : t('scm.checkoutLocal', { name: branch.name });
 
     const glyph = icon(branch.current ? ICON.check : ICON.branch, 14);
     glyph.classList.add('scm__glyph');
@@ -390,10 +417,10 @@ export function mountScm(container: HTMLElement, hooks: ScmHooks = {}): ScmPanel
     line.append(el('span', 'scm__meta', local ? (branch.current ? branch.name : trackOf(branch)) : branch.when));
 
     if (armed === `branch:${branch.name}`) {
-      line.append(confirmButtons('Hapus', () => void run('Menghapus branch…', () => chatApi.scmBranchDelete(branch.name), (body) => `Branch ${branch.name} dihapus. ${branchSummary(body)}`)));
+      line.append(confirmButtons(t('scm.delete'), () => void run(t('scm.deletingBranch'), () => chatApi.scmBranchDelete(branch.name), (body) => t('scm.branchDeleted', { name: branch.name, summary: branchSummary(body) }))));
     } else if (local && !branch.current) {
       line.append(
-        actionButton(`Hapus branch ${branch.name}`, ICON.trash, () => {
+        actionButton(t('scm.deleteBranch', { name: branch.name }), ICON.trash, () => {
           armed = `branch:${branch.name}`;
           renderPicker();
         })
@@ -405,7 +432,7 @@ export function mountScm(container: HTMLElement, hooks: ScmHooks = {}): ScmPanel
 
   function branchSummary(body: unknown): string {
     const list2 = (body as ScmBranches | null)?.local;
-    return Array.isArray(list2) ? `${list2.length} branch lokal.` : '';
+    return Array.isArray(list2) ? t('scm.localCount', { count: list2.length }) : '';
   }
 
   function pickerGroup(title: string, items: ScmBranch[], local: boolean): HTMLElement {
@@ -422,8 +449,8 @@ export function mountScm(container: HTMLElement, hooks: ScmHooks = {}): ScmPanel
     if (!pickerOpen) return;
 
     const bar = el('div', 'scm__picker-head');
-    bar.append(el('span', 'scm__picker-title', 'Branch'));
-    const close = iconButton('Tutup daftar branch', ICON.close, () => {
+    bar.append(el('span', 'scm__picker-title', t('scm.branches')));
+    const close = iconButton(t('scm.closeList'), ICON.close, () => {
       pickerOpen = false;
       renderPicker();
     });
@@ -431,25 +458,25 @@ export function mountScm(container: HTMLElement, hooks: ScmHooks = {}): ScmPanel
     picker.append(bar, branchNew);
 
     if (!branches) {
-      picker.append(note('Membaca daftar branch…'));
+      picker.append(note(t('scm.readingBranches')));
       return;
     }
-    if (!branches.local.length) picker.append(note('Belum ada branch — repo ini belum punya commit.'));
-    else picker.append(pickerGroup('Lokal', branches.local, true));
-    if (branches.remote.length) picker.append(pickerGroup('Remote', branches.remote, false));
+    if (!branches.local.length) picker.append(note(t('scm.noBranches')));
+    else picker.append(pickerGroup(t('scm.local'), branches.local, true));
+    if (branches.remote.length) picker.append(pickerGroup(t('scm.remote'), branches.remote, false));
   }
 
   function renderHistory(): void {
     historyBox.textContent = '';
     historyBox.hidden = !showHistory;
     if (!showHistory) return;
-    historyBox.append(el('p', 'scm__group', history ? `Riwayat · ${history.length}` : 'Riwayat'));
+    historyBox.append(el('p', 'scm__group', history ? `${t('scm.history')} · ${history.length}` : t('scm.history')));
     if (!history) {
-      historyBox.append(note('Membaca riwayat commit…'));
+      historyBox.append(note(t('scm.readingHistory')));
       return;
     }
     if (!history.length) {
-      historyBox.append(note('Belum ada commit di branch ini.'));
+      historyBox.append(note(t('scm.noCommits')));
       return;
     }
     for (const entry of history) {
@@ -471,15 +498,15 @@ export function mountScm(container: HTMLElement, hooks: ScmHooks = {}): ScmPanel
     headRow.append(el('span', 'scm__viewer-path', diff.path));
 
     const info: string[] = [];
-    if (diff.untracked) info.push('belum dilacak');
-    else info.push(diff.staged ? 'versi index' : 'versi folder kerja');
-    if (diff.truncated) info.push(`dipotong dari ${diff.total} baris`);
+    if (diff.untracked) info.push(t('scm.untracked'));
+    else info.push(diff.staged ? t('scm.indexVersion') : t('scm.workVersion'));
+    if (diff.truncated) info.push(t('scm.truncated', { count: diff.total }));
     headRow.append(el('span', 'scm__viewer-info', info.join(' · ')));
 
     const actions = el('span', 'scm__viewer-actions');
     if (!diff.untracked) {
       const flip = iconButton(
-        diff.staged ? 'Lihat versi folder kerja' : 'Lihat versi index',
+        diff.staged ? t('scm.viewWork') : t('scm.viewIndex'),
         ICON.refresh,
         () => void openDiff(diff?.path ?? '', !diff?.staged)
       );
@@ -487,18 +514,19 @@ export function mountScm(container: HTMLElement, hooks: ScmHooks = {}): ScmPanel
       actions.append(flip);
     }
     if (hooks.onReference && !diff.untracked) {
-      actions.append(iconButton('Sisipkan ke pesan', ICON.plus, () => hooks.onReference?.(diff?.path ?? '')));
+      actions.append(iconButton(t('scm.insertRef'), ICON.plus, () => hooks.onReference?.(diff?.path ?? '')));
     }
-    actions.append(iconButton('Tutup diff', ICON.close, closeViewer));
+    actions.append(iconButton(t('scm.closeDiff'), ICON.close, closeViewer));
     headRow.append(actions);
     viewer.append(headRow);
 
     if (diff.empty) {
-      viewer.append(note('Tidak ada diff — perubahannya mungkin sudah disiapkan atau sudah di-commit.'));
+      viewer.append(note(t('scm.emptyDiff')));
       return;
     }
 
     const body = el('div', 'scm__code');
+    // Baris diff mentah = patch git, bukan teks UI — tidak diterjemahkan.
     for (const line of diff.lines) {
       const kind = line.startsWith('++') || line.startsWith('--') || line.startsWith('diff ')
         ? 'head'
@@ -521,6 +549,7 @@ export function mountScm(container: HTMLElement, hooks: ScmHooks = {}): ScmPanel
   }
 
   function repaint(): void {
+    paintLabels();
     paintHead();
     paintCompose();
     paintMessage();
@@ -562,12 +591,12 @@ export function mountScm(container: HTMLElement, hooks: ScmHooks = {}): ScmPanel
   async function commit(): Promise<void> {
     const text = draftArea.value.trim();
     if (!amend && !text) {
-      say('Pesan commit harus diisi lebih dulu.', true);
+      say(t('scm.needMessage'), true);
       return;
     }
-    const ok = await run('Meng-commit…', () => chatApi.scmCommit(text, amend), (body) => {
+    const ok = await run(t('scm.committing'), () => chatApi.scmCommit(text, amend), (body) => {
       const head = (body as ScmStatus)?.head ?? '';
-      return amend ? `Commit terakhir ditimpa menjadi ${head}.` : `Tersimpan sebagai ${head}.`;
+      return amend ? t('scm.amended', { head }) : t('scm.committed', { head });
     });
     if (ok) {
       draftArea.value = '';
@@ -577,26 +606,26 @@ export function mountScm(container: HTMLElement, hooks: ScmHooks = {}): ScmPanel
   }
 
   async function push(kind: 'push' | 'pull'): Promise<void> {
-    await run(kind === 'push' ? 'Mengirim ke remote…' : 'Mengambil dari remote…', () =>
+    await run(kind === 'push' ? t('scm.pushing') : t('scm.pullFrom'), () =>
       kind === 'push' ? chatApi.scmPush() : chatApi.scmPull(),
-      (body) => noteOf(body) || (kind === 'push' ? 'Terkirim ke upstream.' : 'Sudah paling baru.')
+      (body) => noteOf(body) || (kind === 'push' ? t('scm.pushed') : t('scm.upToDate'))
     );
   }
 
   async function switchTo(name: string, local: boolean): Promise<void> {
-    await run(local ? `Pindah ke ${name}…` : `Checkout ${name}…`, () => chatApi.scmBranchSwitch(name), (body) =>
-      `Sekarang di ${(body as ScmBranches)?.current ?? name}. ${branchSummary(body)}`
+    await run(local ? t('scm.switching', { name }) : t('scm.checkout', { name }), () => chatApi.scmBranchSwitch(name), (body) =>
+      t('scm.nowOn', { name: (body as ScmBranches)?.current ?? name, summary: branchSummary(body) })
     );
   }
 
   async function createBranch(): Promise<void> {
     const name = branchInput.value.trim();
     if (!name) {
-      say('Tulis nama branch lebih dulu.', true);
+      say(t('scm.needBranchName'), true);
       return;
     }
-    const ok = await run(`Membuat ${name}…`, () => chatApi.scmBranchCreate(name, true), (body) =>
-      `Branch ${name} dibuat. ${branchSummary(body)}`
+    const ok = await run(t('scm.creating', { name }), () => chatApi.scmBranchCreate(name, true), (body) =>
+      t('scm.branchCreated', { name, summary: branchSummary(body) })
     );
     if (ok) branchInput.value = '';
   }
@@ -702,6 +731,7 @@ export function mountScm(container: HTMLElement, hooks: ScmHooks = {}): ScmPanel
     }
   }
 
+  subscribeLocale(repaint);
   void load();
 
   return {

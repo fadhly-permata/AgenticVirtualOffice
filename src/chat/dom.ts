@@ -24,6 +24,7 @@ export const ICON = {
   clock: 'M12 21a9 9 0 1 0 0-18 9 9 0 0 0 0 18ZM12 7v5l4 2',
   chevronDown: 'm6 9 6 6 6-6',
   paste: 'M9 4h6v3H9zM15 5h2a1 1 0 0 1 1 1v13a1 1 0 0 1-1 1H7a1 1 0 0 1-1-1V6a1 1 0 0 1 1-1h2M12 10v6M9.5 13.5 12 16l2.5-2.5',
+  wrap: 'M4 7h16M4 12h10a3.5 3.5 0 1 1 0 7h-3m1.5-2.5L10 17l2.5 2.5M4 17h4',
 };
 
 export function icon(d: string, size = 16): SVGSVGElement {

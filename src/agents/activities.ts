@@ -1,3 +1,4 @@
+import { t } from '../i18n';
 import { randRange } from '../core/math';
 import type { ActivityId } from '../world/layout';
 
@@ -11,15 +12,30 @@ export const ACTIVITIES: ActivityId[] = [
   'idle',
 ];
 
-export const ACTIVITY_LABEL: Record<ActivityId, string> = {
-  working: 'Fokus kerja',
-  coffee: 'Ngopi',
-  meeting: 'Meeting',
-  gaming: 'Main game',
-  tv: 'Nonton TV',
-  chatting: 'Ngobrol',
-  idle: 'Istirahat',
+/** Kunci i18n per aktivitas; labelnya dibaca ulang lewat `t()` setiap diambil. */
+const ACTIVITY_KEYS: Record<ActivityId, string> = {
+  working: 'office.working',
+  coffee: 'office.coffee',
+  meeting: 'office.meeting',
+  gaming: 'office.gaming',
+  tv: 'office.tv',
+  chatting: 'office.chatting',
+  idle: 'office.idle',
 };
+
+/**
+ * Bentuk ekspor tidak berubah (`Record<ActivityId, string>`), jadi pemanggil lama
+ * seperti `src/api.ts` dan HUD tetap pakai kurung siku. Proxy-nya menghitung ulang
+ * lewat `t()` saat dibaca, sehingga ganti bahasa ikut tanpa muat ulang.
+ */
+export const ACTIVITY_LABEL: Record<ActivityId, string> = new Proxy(ACTIVITY_KEYS, {
+  get(target, prop, receiver) {
+    if (typeof prop === 'string' && Object.prototype.hasOwnProperty.call(target, prop)) {
+      return t(target[prop as ActivityId]);
+    }
+    return Reflect.get(target, prop, receiver);
+  },
+});
 
 /** Min/max stay duration in seconds. */
 export const ACTIVITY_DURATION: Record<ActivityId, [number, number]> = {

@@ -1,3 +1,4 @@
+import { subscribeLocale, t } from '../i18n';
 import { el, icon, ICON } from './dom';
 
 type OptionEntry = { value: string; row: HTMLButtonElement };
@@ -17,6 +18,8 @@ export class SearchSelect {
   readonly #popup: HTMLDivElement;
   readonly #list: HTMLDivElement;
   readonly #search: HTMLInputElement | null;
+  readonly #placeholderGiven: string | null;
+  #fieldLabel: string;
   #entries: OptionEntry[] = [];
   #active = -1;
   #open = false;
@@ -25,7 +28,8 @@ export class SearchSelect {
     this.#select = select;
     select.hidden = true;
 
-    const fieldLabel = select.closest('.field')?.querySelector(':scope > span')?.textContent?.trim() || 'Pilih opsi';
+    this.#fieldLabel = select.closest('.field')?.querySelector(':scope > span')?.textContent?.trim() || t('select.chooseOption');
+    this.#placeholderGiven = options.searchPlaceholder ?? null;
     const searchable = options.searchable ?? false;
 
     this.#root = el('div', 'search-select');
@@ -33,7 +37,7 @@ export class SearchSelect {
     this.#trigger.type = 'button';
     this.#trigger.setAttribute('aria-haspopup', 'listbox');
     this.#trigger.setAttribute('aria-expanded', 'false');
-    this.#trigger.setAttribute('aria-label', fieldLabel);
+    this.#trigger.setAttribute('aria-label', this.#fieldLabel);
 
     this.#label = el('span', 'search-select__label', '—');
     const chevron = icon(ICON.chevron, 13);
@@ -54,7 +58,7 @@ export class SearchSelect {
       search.type = 'search';
       search.autocomplete = 'off';
       search.spellcheck = false;
-      search.placeholder = options.searchPlaceholder ?? 'Cari…';
+      search.placeholder = this.#placeholderGiven ?? t('select.search');
       search.setAttribute('aria-label', search.placeholder);
       wrap.append(search);
       this.#popup.append(wrap);
@@ -64,7 +68,7 @@ export class SearchSelect {
     this.#list = el('div', 'search-select__list');
     this.#list.id = listId;
     this.#list.setAttribute('role', 'listbox');
-    this.#list.setAttribute('aria-label', fieldLabel);
+    this.#list.setAttribute('aria-label', this.#fieldLabel);
     this.#popup.append(this.#list);
 
     this.#root.append(this.#trigger, this.#popup);
@@ -72,6 +76,21 @@ export class SearchSelect {
 
     this.#bind();
     this.#sync();
+    subscribeLocale(() => this.#applyLocale());
+  }
+
+  /** Label statis dipasang ulang saat bahasa diganti; teks opsi diurus pemilik select. */
+  #applyLocale(): void {
+    this.#fieldLabel =
+      this.#select.closest('.field')?.querySelector(':scope > span')?.textContent?.trim() || t('select.chooseOption');
+    this.#trigger.setAttribute('aria-label', this.#fieldLabel);
+    this.#list.setAttribute('aria-label', this.#fieldLabel);
+    if (this.#search) {
+      const placeholder = this.#placeholderGiven ?? t('select.search');
+      this.#search.placeholder = placeholder;
+      this.#search.setAttribute('aria-label', placeholder);
+    }
+    if (this.#open) this.#renderList();
   }
 
   #bind(): void {
@@ -227,7 +246,7 @@ export class SearchSelect {
     }
 
     if (!this.#entries.length) {
-      const message = query ? `Tidak ada hasil untuk “${query}”.` : 'Tidak ada pilihan.';
+      const message = query ? t('select.noResults', { query }) : t('select.noOptions');
       this.#list.append(el('p', 'search-select__empty', message));
       this.#active = -1;
       return;

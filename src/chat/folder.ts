@@ -1,10 +1,11 @@
+import { t } from '../i18n';
 import { chatApi, ChatApiError } from './client';
 import { el, ICON, icon } from './dom';
 import type { BrowseEntry, RecentWorkspace, WorkspaceInfo } from './types';
 
 function byId<T extends HTMLElement>(id: string): T {
   const node = document.getElementById(id);
-  if (!node) throw new Error(`Elemen #${id} tidak ditemukan.`);
+  if (!node) throw new Error(t('folder.elemMissing', { id }));
   return node as T;
 }
 
@@ -49,7 +50,7 @@ export class FolderPicker {
       event.preventDefault();
       const target = this.#pathInput.value.trim();
       if (!target) {
-        this.#showError('Isi path folder terlebih dahulu.');
+        this.#showError(t('folder.needPath'));
         return;
       }
       void this.#browse(target);
@@ -113,9 +114,9 @@ export class FolderPicker {
       this.#parentPath = result.parent;
       this.#pathInput.value = result.path ?? '';
       this.#up.disabled = !result.parent;
-      this.#crumb.textContent = result.path ?? 'Pilih drive atau folder';
+      this.#crumb.textContent = result.path ?? t('folder.pickDrive');
       this.#open.disabled = !result.path;
-      this.#selection.textContent = result.path ? `Buka: ${result.path}` : 'Belum ada folder dipilih';
+      this.#selection.textContent = result.path ? t('folder.openTarget', { path: result.path }) : t('folder.noneSelected');
       this.#renderEntries(result.entries);
     } catch (error) {
       this.#showError(error instanceof Error ? error.message : String(error));
@@ -129,7 +130,7 @@ export class FolderPicker {
   #renderEntries(entries: BrowseEntry[]): void {
     this.#list.replaceChildren();
     if (!entries.length) {
-      this.#list.append(el('li', 'folder__empty', this.#currentPath ? 'Tidak ada subfolder.' : 'Tidak ada drive.'));
+      this.#list.append(el('li', 'folder__empty', this.#currentPath ? t('folder.noSubfolders') : t('folder.noDrives')));
       return;
     }
 
@@ -157,12 +158,12 @@ export class FolderPicker {
     if (this.#busy) return;
     this.#busy = true;
     this.#showError('');
-    this.#open.textContent = 'Membuka…';
+    this.#open.textContent = t('folder.opening');
     this.#open.disabled = true;
 
     try {
       const state = await chatApi.openWorkspace(target);
-      if (!state.workspace) throw new ChatApiError(400, 'Workspace tidak valid.');
+      if (!state.workspace) throw new ChatApiError(400, t('folder.invalidWorkspace'));
       this.#busy = false;
       this.#modal.hidden = true;
       document.body.classList.remove('modal-open');
@@ -173,7 +174,7 @@ export class FolderPicker {
       );
     } finally {
       this.#busy = false;
-      this.#open.textContent = 'Buka folder ini';
+      this.#open.textContent = t('folder.openThis');
       this.#open.disabled = !this.#currentPath;
     }
   }
@@ -186,8 +187,8 @@ export class FolderPicker {
   #setLoading(loading: boolean): void {
     this.#list.classList.toggle('is-loading', loading);
     if (loading) {
-      this.#list.replaceChildren(el('li', 'folder__empty', 'Memuat folder…'));
-      this.#list.append(el('li', 'folder__empty', `Membuka ${baseName(this.#pathInput.value || 'drive')}…`));
+      this.#list.replaceChildren(el('li', 'folder__empty', t('folder.loading')));
+      this.#list.append(el('li', 'folder__empty', t('folder.browsing', { name: baseName(this.#pathInput.value || t('folder.driveWord')) })));
     }
   }
 }

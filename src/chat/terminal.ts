@@ -1,3 +1,4 @@
+import { subscribeLocale, t } from '../i18n';
 import { ChatApiError, chatApi, terminalEventsUrl } from './client';
 import { ICON, el, iconButton } from './dom';
 import type { ShellInfo, TerminalEvent, TerminalSession, WorkspaceInfo } from './types';
@@ -42,6 +43,7 @@ interface View {
   stage: HTMLElement;
   group: HTMLElement;
   tab: HTMLButtonElement;
+  close: HTMLButtonElement;
   term: Xterm | null;
   fit: Fit | null;
   stream: EventSource | null;
@@ -63,6 +65,16 @@ function shortName(cwd: string): string {
   return parts.at(-1) ?? cwd;
 }
 
+/** Title + aria-label untuk tombol ikon; dipasang ulang saat bahasa diganti. */
+function labelButton(button: HTMLButtonElement, label: string): void {
+  button.title = label;
+  button.setAttribute('aria-label', label);
+}
+
+function viewTitle(session: TerminalSession): string {
+  return `${session.label} (${session.cwd})\nPATH ${session.nativePath ? t('term.pathNative') : t('term.pathInherited')}`;
+}
+
 export function mountTerminal(container: HTMLElement): TerminalPanel {
   let workspace: WorkspaceInfo | null = null;
   let shells: ShellInfo[] = [];
@@ -75,15 +87,15 @@ export function mountTerminal(container: HTMLElement): TerminalPanel {
 
   const tabs = el('div', 'term__tabs');
   tabs.setAttribute('role', 'tablist');
-  tabs.setAttribute('aria-label', 'Terminal yang terbuka');
+  tabs.setAttribute('aria-label', t('term.tabsAria'));
 
   const picker = el('select', 'term__picker');
-  picker.setAttribute('aria-label', 'Shell untuk terminal baru');
+  picker.setAttribute('aria-label', t('term.pickerAria'));
 
-  const addButton = iconButton('Terminal baru', ICON.plus, () => void create());
-  const copyButton = iconButton('Salin pilihan ke clipboard', ICON.copy, () => void copySelection());
-  const pasteButton = iconButton('Tempel dari clipboard', ICON.paste, () => void pasteClipboard());
-  const closeButton = iconButton('Tutup terminal ini', ICON.trash, () => {
+  const addButton = iconButton(t('term.new'), ICON.plus, () => void create());
+  const copyButton = iconButton(t('term.copy'), ICON.copy, () => void copySelection());
+  const pasteButton = iconButton(t('term.paste'), ICON.paste, () => void pasteClipboard());
+  const closeButton = iconButton(t('term.close'), ICON.trash, () => {
     if (active) void destroy(active);
   });
 
@@ -96,10 +108,10 @@ export function mountTerminal(container: HTMLElement): TerminalPanel {
   const pad = el('div', 'term__pad');
   pad.hidden = true;
   const padInput = el('textarea', 'term__pad-input');
-  padInput.placeholder = 'Tempel teks di sini (Ctrl+V atau menu klik kanan), lalu Enter untuk menyisipkan ke terminal.';
-  padInput.setAttribute('aria-label', 'Kolom tempel ke terminal');
-  padInput.title = 'Enter untuk menyisipkan, Esc untuk menutup';
-  const padSend = el('button', 'term__pad-send', 'Tempel');
+  padInput.placeholder = t('term.padPh');
+  padInput.setAttribute('aria-label', t('term.padAria'));
+  padInput.title = t('term.padTitle');
+  const padSend = el('button', 'term__pad-send', t('term.pasteBtn'));
   padSend.type = 'button';
   pad.append(padInput, padSend);
   padSend.addEventListener('click', submitPad);
@@ -115,13 +127,32 @@ export function mountTerminal(container: HTMLElement): TerminalPanel {
   const stages = el('div', 'term__stages');
 
   const empty = el('div', 'term__empty');
-  empty.append(
-    el('p', 'term__empty-title', 'Belum ada terminal'),
-    el('p', 'term__empty-body', 'Buka shell di folder workspace aktif. Beberapa tab bisa berjalan bersamaan.')
-  );
+  const emptyTitle = el('p', 'term__empty-title', t('term.emptyTitle'));
+  const emptyBody = el('p', 'term__empty-body', t('term.emptyBody'));
+  empty.append(emptyTitle, emptyBody);
 
   root.append(bar, messageEl, pad, stages, empty);
   container.append(root);
+
+  /** Teks yang dipasang saat konstruksi: dipasang ulang tiap kali bahasa diganti. */
+  function paintChrome(): void {
+    tabs.setAttribute('aria-label', t('term.tabsAria'));
+    picker.setAttribute('aria-label', t('term.pickerAria'));
+    labelButton(addButton, t('term.new'));
+    labelButton(copyButton, t('term.copy'));
+    labelButton(pasteButton, t('term.paste'));
+    labelButton(closeButton, t('term.close'));
+    padInput.placeholder = t('term.padPh');
+    padInput.setAttribute('aria-label', t('term.padAria'));
+    padInput.title = t('term.padTitle');
+    padSend.textContent = t('term.pasteBtn');
+    emptyTitle.textContent = t('term.emptyTitle');
+    emptyBody.textContent = t('term.emptyBody');
+    for (const view of views) {
+      view.tab.title = viewTitle(view.session);
+      labelButton(view.close, t('term.closeTab', { name: view.session.label }));
+    }
+  }
 
   function render(): void {
     messageEl.textContent = message;
@@ -191,10 +222,10 @@ export function mountTerminal(container: HTMLElement): TerminalPanel {
     tab.type = 'button';
     tab.setAttribute('role', 'tab');
     tab.textContent = `${session.label} · ${shortName(session.cwd)}`;
-    tab.title = `${session.label} (${session.cwd})\nPATH ${session.nativePath ? 'asli Windows (registry)' : 'warisan proses server'}`;
+    tab.title = viewTitle(session);
     tab.addEventListener('click', () => activate(view));
 
-    const close = iconButton(`Tutup ${session.label}`, ICON.close, () => void destroy(view));
+    const close = iconButton(t('term.closeTab', { name: session.label }), ICON.close, () => void destroy(view));
     close.className = 'icon-btn term__tab-close';
 
     // Tombol di dalam tombol tidak valid, jadi label dan X bersebelahan dalam satu grup.
@@ -207,6 +238,7 @@ export function mountTerminal(container: HTMLElement): TerminalPanel {
       stage,
       group,
       tab,
+      close,
       term: null,
       fit: null,
       stream: null,
@@ -242,7 +274,7 @@ export function mountTerminal(container: HTMLElement): TerminalPanel {
         const status = error instanceof ChatApiError ? error.status : 0;
         message = describeError(error);
         // 404/409 berarti shell-nya memang sudah tidak ada, bukan server yang rewel.
-        if (status === 404 || status === 409) markDead(view, 'shell sudah selesai');
+        if (status === 404 || status === 409) markDead(view, t('term.shellDone'));
         render();
       });
   }
@@ -303,12 +335,12 @@ export function mountTerminal(container: HTMLElement): TerminalPanel {
         if (payload.data) term.write(payload.data);
         return;
       }
-      markDead(view, `shell selesai, kode ${payload.code ?? 0}`);
+      markDead(view, t('term.shellExit', { code: payload.code ?? 0 }));
       render();
     };
     stream.onerror = () => {
       if (view.dead) return;
-      message = 'Koneksi terminal terputus; browser mencoba menyambung lagi.';
+      message = t('term.disconnected');
       render();
     };
     term.focus();
@@ -392,21 +424,21 @@ export function mountTerminal(container: HTMLElement): TerminalPanel {
     if (!term || active?.dead) return;
     const text = term.getSelection();
     if (!text) {
-      message = 'Blok teks di terminal lebih dulu, baru salin.';
+      message = t('term.selectFirst');
       render();
       return;
     }
     const lines = text.split('\n').filter(Boolean).length;
     if (copyViaExec(text)) {
-      message = `${lines} baris tersalin ke clipboard.`;
+      message = t('term.copiedLines', { count: lines });
       render();
       return;
     }
     try {
       await navigator.clipboard.writeText(text);
-      message = `${lines} baris tersalin ke clipboard.`;
+      message = t('term.copiedLines', { count: lines });
     } catch {
-      message = 'Browser menolak akses clipboard — klik kanan lalu pilih Salin.';
+      message = t('term.clipCopyDenied');
     }
     render();
   }
@@ -435,7 +467,7 @@ export function mountTerminal(container: HTMLElement): TerminalPanel {
     // Sama seperti tempel biasa: baris terakhir baru jalan setelah Enter di terminal.
     term.paste(text);
     closePad();
-    message = 'Teks masuk ke terminal — tekan Enter untuk menjalankan baris terakhir.';
+    message = t('term.pastedHint');
     render();
   }
 
@@ -446,13 +478,13 @@ export function mountTerminal(container: HTMLElement): TerminalPanel {
     try {
       text = await navigator.clipboard.readText();
     } catch {
-      message = 'Browser menolak baca clipboard — tempel di kolom di bawah.';
+      message = t('term.clipReadDenied');
       openPad();
       render();
       return;
     }
     if (!text) {
-      message = 'Clipboard kosong.';
+      message = t('term.clipEmpty');
       render();
       return;
     }
@@ -477,7 +509,7 @@ export function mountTerminal(container: HTMLElement): TerminalPanel {
 
   async function create(): Promise<void> {
     if (!workspace) {
-      message = 'Buka workspace lebih dulu sebelum menjalankan terminal.';
+      message = t('term.needWorkspace');
       render();
       return;
     }
@@ -541,6 +573,8 @@ export function mountTerminal(container: HTMLElement): TerminalPanel {
     }
   });
   observer.observe(stages);
+
+  subscribeLocale(paintChrome);
 
   return {
     setWorkspace(next) {

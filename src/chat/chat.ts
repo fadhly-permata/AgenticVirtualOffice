@@ -1,4 +1,5 @@
 import type { VirtOfficeApi } from '../api';
+import { applyStatic, subscribeLocale, t } from '../i18n';
 import {
   type Presence,
   type RosterAgent,
@@ -15,6 +16,7 @@ import { mountTerminal, type TerminalPanel } from './terminal';
 import { FolderPicker } from './folder';
 import { cancelPendingDiagrams, renderMarkdown } from './markdown';
 import { SearchSelect } from './select';
+import { mountSettings, type SettingsPanel } from './settings';
 import {
   applyChatEvent,
   bubbleCopy,
@@ -93,7 +95,7 @@ const sendButton = byId<HTMLButtonElement>('chat-send');
 const STORAGE_TAB = 'virtoOffice.chatTab';
 
 /** Rail vertikal: satu halaman aktif, halaman lain tetap terpasang tapi tersembunyi. */
-const CHAT_TABS = ['agentic', 'files', 'scm', 'terminal'] as const;
+const CHAT_TABS = ['agentic', 'files', 'scm', 'terminal', 'settings'] as const;
 type ChatTab = (typeof CHAT_TABS)[number];
 
 const tabButtons = new Map<ChatTab, HTMLButtonElement>(
@@ -107,14 +109,17 @@ let activeTab: ChatTab = 'agentic';
 let filesPanel: FilesPanel | null = null;
 let scmPanel: ScmPanel | null = null;
 let terminalPanel: TerminalPanel | null = null;
+let settingsPanel: SettingsPanel | null = null;
 
 /** Model tidak tahu chat ini bisa menggambar, jadi permintaan visual dibawai catatan format. */
+// Dikirim ke model sebagai bagian prompt: instruksi format, JANGAN diterjemahkan.
 const MERMAID_DIRECTIVE =
   '[format] Chat VirtOffice merender markdown dan menggambar blok ```mermaid menjadi diagram ' +
   '(flowchart, sequence, gantt, class, er, state, mindmap, timeline) atau chart (pie, xychart-beta). ' +
   'Untuk bagan, skema, grafik, atau chart: jawab dengan blok ```mermaid, bukan ASCII art/box-drawing. ' +
   'Sintaksnya harus bisa di-parse: beri tanda kutip untuk label, dan tulis nilai sebagai angka tanpa tanda persen.';
 
+// Mengevaluasi teks mentah user (kata kunci visual), bukan label UI: biarkan apa adanya.
 const VISUAL_REQUEST = /diagram|flow ?chart|chart|graph|grafik|bagan|skema|visual|mind ?map|gantt|sequence|pie|xychart/i;
 
 /** Dipotong lagi saat render supaya gelembung user tetap berisi teks aslinya. */
@@ -144,6 +149,7 @@ const permissions = new Map<string, PermissionRequest>();
 const questions = new Map<string, QuestionRequest>();
 const fatalAborts = new Set<string>();
 
+// Mencocokkan teks provider dari server (bahasa Inggris server): JANGAN diterjemahkan/diubah.
 const FATAL_PROVIDER_RE =
   /free usage exceeded|model is unavailable|personal access tokens are not supported|insufficient credit/i;
 
@@ -175,8 +181,8 @@ let ruleDelay = storedRuleDelay();
 
 export function installChat(officeApi: VirtOfficeApi): void {
   office = officeApi;
-  new SearchSelect(sessionSelect, { searchable: true, searchPlaceholder: 'Cari sesi…' });
-  new SearchSelect(modelSelect, { searchable: true, searchPlaceholder: 'Cari model…' });
+  new SearchSelect(sessionSelect, { searchable: true, searchPlaceholder: t('chat.searchSessions') });
+  new SearchSelect(modelSelect, { searchable: true, searchPlaceholder: t('chat.searchModels') });
   new SearchSelect(agentSelect);
   folderPicker = new FolderPicker((selected) => {
     applyWorkspace(selected);
@@ -225,20 +231,10 @@ export function installChat(officeApi: VirtOfficeApi): void {
   });
   window.addEventListener('resize', keepBoxOnScreen);
   setBox(readStoredBox());
-  // Klik atau pindah fokus ke luar popup berarti user sudah meninggalkan chat-nya.
-  const dismiss = (event: Event): void => {
-    if (chatWindow.hidden || folderPicker?.isOpen) return;
-    const target = event.target;
-    if (!(target instanceof Node)) return;
-    if (chatWindow.contains(target) || launcher.contains(target)) return;
-    closeChat();
-  };
-  document.addEventListener('pointerdown', dismiss);
-  document.addEventListener('focusin', dismiss);
   chatNew.addEventListener('click', () => startNewChat(true));
   chatChangeFolder.addEventListener('click', () => {
     if (isAnyRunning()) {
-      setNotice('error', 'Hentikan respons yang sedang berjalan sebelum mengganti workspace.');
+      setNotice('error', t('chat.stopBeforeSwitch'));
       return;
     }
     folderPicker?.show(workspace?.path ?? null);
@@ -298,6 +294,8 @@ export function installChat(officeApi: VirtOfficeApi): void {
   if (scmPage) scmPanel = mountScm(scmPage, { onReference: referenceToComposer });
   const terminalPage = tabPages.get('terminal');
   if (terminalPage) terminalPanel = mountTerminal(terminalPage);
+  const settingsPage = tabPages.get('settings');
+  if (settingsPage) settingsPanel = mountSettings(settingsPage);
 
   for (const [tab, button] of tabButtons) button.addEventListener('click', () => setTab(tab));
 
@@ -321,6 +319,19 @@ export function installChat(officeApi: VirtOfficeApi): void {
   renderMessages({ forceBottom: true });
   updateComposer();
 
+  // Ganti bahasa: gambar ulang semua teks statis + dinamis chat, tanpa memaksa notice aktif.
+  subscribeLocale(() => {
+    applyStatic();
+    updateLauncher();
+    updateChatFolder();
+    renderModelSelect();
+    renderAgentSelect();
+    renderSessionSelect();
+    renderMessages({ forceBottom: true });
+    renderPrompts();
+    updateComposer();
+  });
+
   void syncWorkspace();
 }
 
@@ -330,7 +341,7 @@ async function syncWorkspace(): Promise<void> {
     applyWorkspace(state.workspace);
   } catch (error) {
     launcherStatus.dataset.state = 'error';
-    launcher.title = describeError(error) || 'Server lokal tidak tersedia. Jalankan npm run dev.';
+    launcher.title = describeError(error) || t('chat.serverOffline');
   }
 }
 
@@ -386,8 +397,8 @@ function updateChatFolder(): void {
   chatFolder.textContent = workspace?.name ?? '—';
   chatFolder.title = workspace?.path ?? '';
   input.placeholder = workspace
-    ? `Minta OpenCode mengerjakan sesuatu di ${workspace.name}…`
-    : 'Buka workspace untuk mulai…';
+    ? t('chat.placeholderWorkspace', { name: workspace.name })
+    : t('chat.placeholderNoWorkspace');
 }
 
 /** Menyisipkan path yang sedang dilihat ke composer, lalu kembali ke halaman chat. */
@@ -417,12 +428,13 @@ function setTab(next: ChatTab): void {
   if (next === 'files') filesPanel?.refresh();
   if (next === 'scm') scmPanel?.refresh();
   if (next === 'terminal') terminalPanel?.refresh();
+  if (next === 'settings') settingsPanel?.refresh();
 }
 
 function updateLauncher(): void {
-  launcherEyebrow.textContent = workspace ? 'OpenCode chat' : 'OpenCode';
-  launcherLabel.textContent = workspace?.name ?? 'Buka workspace';
-  launcher.title = workspace ? `Chat OpenCode di ${workspace.path}` : 'Pilih folder workspace untuk OpenCode';
+  launcherEyebrow.textContent = workspace ? t('chat.launcherEyebrow') : 'OpenCode';
+  launcherLabel.textContent = workspace?.name ?? t('chat.openWorkspace');
+  launcher.title = workspace ? t('chat.launcherTitle', { path: workspace.path }) : t('chat.launcherTitleIdle');
   launcherStatus.dataset.state = bootLoading
     ? 'loading'
     : isAnyRunning()
@@ -505,7 +517,7 @@ function setMaximized(next: boolean): void {
   maximized = next;
   chatWindow.classList.toggle('chat--max', next);
   chatMaximize.setAttribute('aria-pressed', String(next));
-  const label = next ? 'Perkecil chat' : 'Perbesar chat';
+  const label = next ? t('chat.shrinkChat') : t('chat.growChat');
   chatMaximize.title = label;
   chatMaximize.setAttribute('aria-label', label);
 }
@@ -550,9 +562,9 @@ async function applyRuleDelay(): Promise<void> {
   if (!workspace) return;
   try {
     const state = await chatApi.setRules(ruleDelay);
-    if (!state.ok) setNotice('error', 'Aturan jeda delegasi tidak bisa ditulis ke workspace ini.');
+    if (!state.ok) setNotice('error', t('chat.rulesWriteFailed'));
   } catch (error) {
-    setNotice('error', describeError(error) || 'Aturan jeda delegasi gagal ditulis.');
+    setNotice('error', describeError(error) || t('chat.rulesWriteError'));
   }
 }
 
@@ -587,7 +599,7 @@ async function loadBootstrap(): Promise<void> {
   const generation = workspaceGeneration;
   bootLoading = true;
   bootError = false;
-  setNotice('info', 'Menyiapkan OpenCode…');
+  setNotice('info', t('chat.booting'));
   renderMessages();
   updateLauncher();
   updateComposer();
@@ -614,7 +626,7 @@ async function loadBootstrap(): Promise<void> {
 
     setNotice(null);
     if (data.rules && !data.rules.ok) {
-      setNotice('error', 'Aturan jeda delegasi tidak bisa ditulis ke workspace ini.');
+      setNotice('error', t('chat.rulesWriteFailed'));
     }
     const latest = sessions[0];
     if (latest) {
@@ -626,7 +638,7 @@ async function loadBootstrap(): Promise<void> {
   } catch (error) {
     if (generation !== workspaceGeneration) return;
     bootError = true;
-    setNotice('error', describeError(error), { label: 'Coba lagi', run: () => void loadBootstrap() });
+    setNotice('error', describeError(error), { label: t('chat.retry'), run: () => void loadBootstrap() });
     renderMessages();
   } finally {
     if (generation === workspaceGeneration) {
@@ -659,7 +671,7 @@ function renderModelSelect(): void {
   if (!modelSelect.options.length) {
     const option = document.createElement('option');
     option.value = '';
-    option.textContent = 'Tidak ada model';
+    option.textContent = t('chat.noModels');
     option.disabled = true;
     modelSelect.append(option);
     modelSelect.disabled = true;
@@ -704,7 +716,7 @@ function renderSessionSelect(): void {
   sessionSelect.replaceChildren();
   const fresh = document.createElement('option');
   fresh.value = 'new';
-  fresh.textContent = '＋ Chat baru';
+  fresh.textContent = t('chat.newChat');
   sessionSelect.append(fresh);
 
   for (const session of sessions) {
@@ -722,7 +734,7 @@ function upsertSession(info: Record<string, unknown>): void {
   const previous = sessions.find((entry) => entry.id === info.id);
   const summary: SessionSummary = {
     id: info.id,
-    title: typeof info.title === 'string' && info.title.trim() ? info.title : 'Sesi tanpa judul',
+    title: typeof info.title === 'string' && info.title.trim() ? info.title : t('chat.untitledSession'),
     created: typeof (info.time as { created?: number } | undefined)?.created === 'number'
       ? (info.time as { created: number }).created
       : Date.now(),
@@ -783,13 +795,13 @@ async function selectSession(session: SessionSummary, options: { initial?: boole
     for (const request of data.questions) questions.set(request.id, request);
 
     if (data.status.type === 'retry') {
-      setNotice('retry', typeof data.status.message === 'string' ? data.status.message : 'OpenCode mencoba ulang…');
+      setNotice('retry', typeof data.status.message === 'string' ? data.status.message : t('chat.retryNotice'));
     }
     if (runningSessions.has(session.id)) schedulePresence(0);
     scheduleFallbackPoll();
   } catch (error) {
     if (generation !== workspaceGeneration) return;
-    setNotice('error', describeError(error), { label: 'Muat ulang', run: () => void selectSession(session) });
+    setNotice('error', describeError(error), { label: t('chat.reload'), run: () => void selectSession(session) });
   } finally {
     if (generation === workspaceGeneration && currentSession?.id === session.id) {
       reading = false;
@@ -821,7 +833,7 @@ async function sendMessage(): Promise<void> {
   const text = input.value.trim();
   if (!text || !workspace || sending || isCurrentRunning() || bootLoading || reading) return;
   if (!selectedModel) {
-    setNotice('error', 'Pilih model OpenCode terlebih dahulu.');
+    setNotice('error', t('chat.chooseModelFirst'));
     return;
   }
 
@@ -830,7 +842,7 @@ async function sendMessage(): Promise<void> {
   const agent = selectedAgent;
   const connected = ensureStream();
   sending = true;
-  sendPhase = currentSession ? 'Mengirim permintaan…' : 'Membuat sesi…';
+  sendPhase = currentSession ? t('chat.sendingPrompt') : t('chat.creatingSession');
   setNotice(null);
   updateComposer();
 
@@ -845,7 +857,7 @@ async function sendMessage(): Promise<void> {
       messages = [];
       renderSessionSelect();
       renderMessages({ forceBottom: true });
-      sendPhase = 'Mengirim permintaan…';
+      sendPhase = t('chat.sendingPrompt');
       updateComposer();
     }
 
@@ -867,7 +879,7 @@ async function sendMessage(): Promise<void> {
     if (generation !== workspaceGeneration) return;
     sending = false;
     sendPhase = '';
-    setNotice('error', describeError(error), { label: 'Coba lagi', run: () => form.requestSubmit() });
+    setNotice('error', describeError(error), { label: t('chat.retry'), run: () => form.requestSubmit() });
   } finally {
     if (generation === workspaceGeneration) {
       sending = false;
@@ -884,7 +896,7 @@ async function stopResponse(): Promise<void> {
   try {
     await chatApi.abort(session.id);
   } catch (error) {
-    setNotice('error', describeError(error), { label: 'Muat ulang', run: () => void refreshCurrentSession() });
+    setNotice('error', describeError(error), { label: t('chat.reload'), run: () => void refreshCurrentSession() });
   } finally {
     updateComposer();
   }
@@ -937,7 +949,7 @@ function connectStream(): void {
       streamNoticeTimer = window.setTimeout(() => {
         streamNoticeTimer = 0;
         if (!streamReady && !chatWindow.hidden) {
-          setNotice('disconnect', 'Koneksi event terputus. Mencoba menyambung ulang…');
+          setNotice('disconnect', t('chat.streamLost'));
         }
       }, 4_000);
     }
@@ -1016,9 +1028,10 @@ function handleEvent(event: ChatEvent): void {
 
   switch (event.type) {
     case 'bridge.error':
+      // props.message dari server: tampilkan apa adanya; hanya fallback kita yang diterjemahkan.
       setNotice(
         'disconnect',
-        typeof props.message === 'string' ? props.message : 'Koneksi ke server terputus.'
+        typeof props.message === 'string' ? props.message : t('chat.bridgeDown')
       );
       return;
 
@@ -1036,7 +1049,7 @@ function handleEvent(event: ChatEvent): void {
       sessions = sessions.filter((session) => session.id !== id);
       if (currentSession?.id === id) {
         startNewChat(false);
-        setNotice('info', 'Sesi dihapus.');
+        setNotice('info', t('chat.sessionDeleted'));
       } else {
         renderSessionSelect();
       }
@@ -1056,8 +1069,9 @@ function handleEvent(event: ChatEvent): void {
         schedulePresence(0);
         if (sessionID === currentSession?.id) {
           if (type === 'retry') {
+            // status.message dari server: dipakai apa adanya (regex fatal mencocokkan teks mentah ini).
             const message =
-              typeof status.message === 'string' ? status.message : 'Provider sedang bermasalah, mencoba ulang…';
+              typeof status.message === 'string' ? status.message : t('chat.providerRetry');
             setNotice('retry', message);
             if (FATAL_PROVIDER_RE.test(message)) abortFatalSession(sessionID, message);
           } else if (noticeKind === 'retry') {
@@ -1173,7 +1187,7 @@ function abortFatalSession(sessionID: string, message: string): void {
     .catch(() => undefined)
     .then(() => {
       if (sessionID !== currentSession?.id) return;
-      setNotice('error', `${message} — ganti model lewat dropdown Model untuk melanjutkan.`);
+      setNotice('error', `${message}${t('chat.fatalSuffix')}`);
     });
 }
 
@@ -1244,7 +1258,7 @@ function normalizeQuestion(props: Record<string, unknown>): QuestionRequest | nu
         : [];
       return {
         question: typeof question.question === 'string' ? question.question : '',
-        header: typeof question.header === 'string' ? question.header : 'Pertanyaan',
+        header: typeof question.header === 'string' ? question.header : t('chat.questionDefault'),
         options,
         multiple: question.multiple === true,
         custom: question.custom !== false,
@@ -1273,16 +1287,16 @@ function renderMessages(options: { forceBottom?: boolean } = {}): void {
   clockHosts.length = 0;
 
   if (!workspace) {
-    messagesEl.append(renderEmptyState('Buka workspace', 'Pilih folder proyek untuk mulai menggunakan OpenCode.'));
+    messagesEl.append(renderEmptyState(t('chat.openWorkspace'), t('chat.emptyWorkspaceBody')));
   } else if (bootLoading) {
-    messagesEl.append(renderLoading('Menyiapkan OpenCode…', 'Menghubungkan CLI dan membaca konfigurasi workspace.'));
+    messagesEl.append(renderLoading(t('chat.booting'), t('chat.bootingBody')));
   } else if (reading) {
-    messagesEl.append(renderLoading('Memuat sesi…', 'Mengambil riwayat percakapan.'));
+    messagesEl.append(renderLoading(t('chat.loadingSession'), t('chat.loadingSessionBody')));
   } else if (!messages.length) {
-    const title = bootError ? 'OpenCode belum siap' : 'Mulai percakapan';
+    const title = bootError ? t('chat.emptyTitleNotReady') : t('chat.emptyTitleStart');
     const body = bootError
-      ? 'Periksa pesan error di atas, lalu coba lagi.'
-      : `OpenCode akan bekerja langsung di folder ${workspace.name}. Ia bisa membaca, menulis, dan menjalankan perintah — setiap aksi sensitif meminta izin.`;
+      ? t('chat.emptyCheckError')
+      : t('chat.emptyReadyBody', { name: workspace.name });
     messagesEl.append(renderEmptyState(title, body));
     if (!bootError) messagesEl.append(renderSuggestions());
   } else {
@@ -1295,7 +1309,7 @@ function renderMessages(options: { forceBottom?: boolean } = {}): void {
     if (running && messages[messages.length - 1]?.role !== 'assistant') {
       const content = el('div', 'msg__content');
       const since = messages[messages.length - 1]?.created ?? Date.now();
-      content.append(renderWorkBar(RUN_LABEL.prepare, since));
+      content.append(renderWorkBar(t(RUN_LABEL.prepare), since));
       messagesEl.append(wrapAssistant(content));
     }
     if (nearBottom || options.forceBottom) {
@@ -1339,6 +1353,7 @@ function renderLoading(title: string, body: string): HTMLElement {
 
 function renderSuggestions(): HTMLElement {
   const wrap = el('div', 'chat__suggestions');
+  // Prompt contoh ditulis ke input.value lalu dikirim sebagai isi pesan user: tetap literal (jangan diterjemahkan).
   const prompts = [
     'Jelaskan struktur proyek ini',
     'Cari bug atau masalah yang perlu diperbaiki',
@@ -1407,7 +1422,8 @@ function renderMessage(message: LiveMessage, runningLast: boolean): HTMLElement 
 
   if (message.error && !isAbortError(message.error)) {
     const error = el('div', 'msg__error');
-    error.append(el('p', 'msg__error-title', 'OpenCode error'), el('p', 'msg__error-text', describeError(message.error)));
+    // describeError(message.error) menampilkan teks error dari server/model: apa adanya.
+    error.append(el('p', 'msg__error-title', t('chat.openCodeError')), el('p', 'msg__error-text', describeError(message.error)));
     content.append(error);
     hasContent = true;
   }
@@ -1440,11 +1456,12 @@ interface RunState {
   since: number;
 }
 
+// Kunci label fase run; diselesaikan lewat t() saat render supaya ikut bahasa aktif.
 const RUN_LABEL: Record<RunPhase, string> = {
-  prepare: 'Menyiapkan…',
-  think: 'Menalar…',
-  tool: 'Menjalankan alat…',
-  write: 'Menulis jawaban…',
+  prepare: 'tool.runPrepare',
+  think: 'tool.runThink',
+  tool: 'tool.runTool',
+  write: 'tool.runWrite',
 };
 
 function isReasoningSettled(part: Part): boolean {
@@ -1473,9 +1490,9 @@ function runState(message: LiveMessage): RunState {
   // Alat yang sedang jalan selalu menang: token bisa saja masih mengalir saat tool dijalankan.
   // Label tool sudah diawali kata kerja, jadi tidak perlu ditambahi "Menjalankan" lagi.
   if (tool) return { phase: 'tool', label: `${tool}…`, since };
-  if (thinking) return { phase: 'think', label: RUN_LABEL.think, since };
-  if (talking || settled) return { phase: 'write', label: RUN_LABEL.write, since };
-  return { phase: 'prepare', label: RUN_LABEL.prepare, since };
+  if (thinking) return { phase: 'think', label: t(RUN_LABEL.think), since };
+  if (talking || settled) return { phase: 'write', label: t(RUN_LABEL.write), since };
+  return { phase: 'prepare', label: t(RUN_LABEL.prepare), since };
 }
 
 /** The phase the currently open session is in, or null when nothing is running. */
@@ -1485,7 +1502,7 @@ function currentRun(): RunState | null {
   if (!workspace || bootLoading || reading || !messages.length || !isCurrentRunning()) return null;
   const last = messages[messages.length - 1];
   if (!last || last.role !== 'assistant') {
-    return { phase: 'prepare', label: RUN_LABEL.prepare, since: last?.created ?? Date.now() };
+    return { phase: 'prepare', label: t(RUN_LABEL.prepare), since: last?.created ?? Date.now() };
   }
   return runState(last);
 }
@@ -1517,8 +1534,8 @@ function stopWorkClock(): void {
 function elapsedLabel(since: number): string {
   if (!since) return '';
   const seconds = Math.max(0, Math.floor((Date.now() - since) / 1000));
-  if (seconds < 60) return `${seconds} dtk`;
-  return `${Math.floor(seconds / 60)} mnt ${seconds % 60} dtk`;
+  if (seconds < 60) return t('chat.elapsedSeconds', { n: seconds });
+  return t('chat.elapsedMinutes', { m: Math.floor(seconds / 60), s: seconds % 60 });
 }
 
 function renderTool(part: Part): HTMLElement {
@@ -1541,19 +1558,19 @@ function renderTool(part: Part): HTMLElement {
   const body = el('div', 'tool__body');
   const inputData = state?.input;
   if (inputData && Object.keys(inputData).length) {
-    body.append(el('p', 'tool__label', 'Input'));
+    body.append(el('p', 'tool__label', t('tool.input')));
     const pre = el('pre', 'tool__pre');
     pre.textContent = truncate(JSON.stringify(inputData, null, 2), 4_000);
     body.append(pre);
   }
   if (typeof state?.output === 'string' && state.output.trim()) {
-    body.append(el('p', 'tool__label', 'Output'));
+    body.append(el('p', 'tool__label', t('tool.output')));
     const pre = el('pre', 'tool__pre');
     pre.textContent = truncate(state.output.trim(), 8_000);
     body.append(pre);
   }
   if (typeof state?.error === 'string' && state.error.trim()) {
-    body.append(el('p', 'tool__label', 'Error'));
+    body.append(el('p', 'tool__label', t('tool.error')));
     const pre = el('pre', 'tool__pre tool__pre--error');
     pre.textContent = state.error;
     body.append(pre);
@@ -1563,17 +1580,17 @@ function renderTool(part: Part): HTMLElement {
 }
 
 function toolStatusLabel(status: string): string {
-  if (status === 'running') return 'Berjalan';
-  if (status === 'completed') return 'Selesai';
-  if (status === 'error') return 'Gagal';
-  return 'Menunggu';
+  if (status === 'running') return t('tool.statusRunning');
+  if (status === 'completed') return t('tool.statusDone');
+  if (status === 'error') return t('tool.statusError');
+  return t('tool.statusPending');
 }
 
 function renderReasoning(part: Part, live: boolean): HTMLElement {
   const raw = typeof part.text === 'string' ? part.text : '';
   const details = el('details', 'reasoning');
   if (live) details.classList.add('reasoning--live');
-  const summary = el('summary', undefined, live ? 'Penalaran…' : 'Penalaran');
+  const summary = el('summary', undefined, live ? t('chat.reasoningLive') : t('chat.reasoning'));
   const pre = el('pre', 'reasoning__text');
   // Saat masih menalar, yang paling penting adalah token terbaru, jadi potong dari depan.
   pre.textContent = live && raw.length > 4_000 ? `…${raw.slice(-4_000)}` : truncate(raw, 6_000);
@@ -1605,10 +1622,10 @@ function renderPrompts(): void {
 function renderPermissionPrompt(request: PermissionRequest): HTMLElement {
   const card = el('article', 'prompt');
   const head = el('header', 'prompt__head');
-  head.append(el('span', 'prompt__kind', 'Izin diperlukan'), el('span', 'prompt__tool', prettyToolName(request.permission)));
+  head.append(el('span', 'prompt__kind', t('chat.permissionNeeded')), el('span', 'prompt__tool', prettyToolName(request.permission)));
   card.append(head);
 
-  card.append(el('p', 'prompt__text', 'OpenCode ingin menggunakan tool ini di workspace.'));
+  card.append(el('p', 'prompt__text', t('chat.permissionText')));
 
   const targets = request.patterns?.length ? request.patterns : [];
   if (targets.length) {
@@ -1618,7 +1635,7 @@ function renderPermissionPrompt(request: PermissionRequest): HTMLElement {
       item.append(el('code', undefined, target));
       list.append(item);
     }
-    if (targets.length > 8) list.append(el('li', 'prompt__more', `+${targets.length - 8} lainnya`));
+    if (targets.length > 8) list.append(el('li', 'prompt__more', t('chat.moreTargets', { count: targets.length - 8 })));
     card.append(list);
   }
 
@@ -1640,16 +1657,16 @@ function renderPermissionPrompt(request: PermissionRequest): HTMLElement {
     }
   };
 
-  const reject = el('button', 'button button--ghost', 'Tolak');
+  const reject = el('button', 'button button--ghost', t('chat.reject'));
   reject.type = 'button';
   reject.addEventListener('click', () => void reply('reject'));
-  const once = el('button', 'button', 'Izinkan');
+  const once = el('button', 'button', t('chat.allow'));
   once.type = 'button';
   once.addEventListener('click', () => void reply('once'));
   actions.append(reject, once);
 
   if (request.always?.length) {
-    const always = el('button', 'button button--soft', 'Selalu izinkan');
+    const always = el('button', 'button button--soft', t('chat.allowAlways'));
     always.type = 'button';
     always.addEventListener('click', () => void reply('always'));
     actions.append(always);
@@ -1662,7 +1679,7 @@ function renderPermissionPrompt(request: PermissionRequest): HTMLElement {
 function renderQuestionPrompt(request: QuestionRequest): HTMLElement {
   const card = el('article', 'prompt');
   const head = el('header', 'prompt__head');
-  head.append(el('span', 'prompt__kind', 'OpenCode bertanya'));
+  head.append(el('span', 'prompt__kind', t('chat.askQuestion')));
   card.append(head);
 
   const answers: string[][] = request.questions.map(() => []);
@@ -1703,8 +1720,8 @@ function renderQuestionPrompt(request: QuestionRequest): HTMLElement {
       const custom = document.createElement('input');
       custom.type = 'text';
       custom.className = 'question__input';
-      custom.placeholder = 'Jawaban lain…';
-      custom.setAttribute('aria-label', `Jawaban lain untuk ${question.header}`);
+      custom.placeholder = t('chat.customAnswer');
+      custom.setAttribute('aria-label', t('chat.customAnswerAria', { header: question.header }));
       customInputs[index] = custom;
       block.append(custom);
     }
@@ -1713,7 +1730,7 @@ function renderQuestionPrompt(request: QuestionRequest): HTMLElement {
   });
 
   const actions = el('div', 'prompt__actions');
-  const submit = el('button', 'button', 'Kirim jawaban');
+  const submit = el('button', 'button', t('chat.sendAnswer'));
   submit.type = 'button';
   submit.addEventListener('click', async () => {
     error.hidden = true;
@@ -1724,7 +1741,7 @@ function renderQuestionPrompt(request: QuestionRequest): HTMLElement {
       return values;
     });
     if (payload.some((values) => values.length === 0)) {
-      error.textContent = 'Pilih minimal satu jawaban untuk setiap pertanyaan.';
+      error.textContent = t('chat.pickAnswer');
       error.hidden = false;
       return;
     }
@@ -1774,19 +1791,19 @@ function isAnyRunning(): boolean {
 function updateComposer(): void {
   const running = isCurrentRunning();
   const unavailable = !workspace || bootLoading || reading;
-  const label = running ? 'Hentikan' : 'Kirim';
+  const label = running ? t('chat.sendStop') : t('chat.sendSend');
   sendButton.dataset.mode = running ? 'stop' : 'send';
   sendButton.title = label;
-  sendButton.setAttribute('aria-label', running ? 'Hentikan respons OpenCode' : 'Kirim pesan');
+  sendButton.setAttribute('aria-label', running ? t('chat.sendStopAria') : t('chat.sendSendAria'));
   sendButton.disabled = running ? false : unavailable || sending || !selectedModel || !input.value.trim();
   input.disabled = !workspace || bootLoading;
 
-  if (!workspace) statusEl.textContent = 'Pilih workspace';
-  else if (bootLoading) statusEl.textContent = 'Menyiapkan OpenCode…';
-  else if (reading) statusEl.textContent = 'Memuat sesi…';
-  else if (sending) statusEl.textContent = sendPhase || 'Mengirim…';
-  else if (running) statusEl.textContent = noticeKind === 'retry' ? 'Menunggu percobaan ulang…' : 'OpenCode sedang bekerja…';
-  else statusEl.textContent = 'Siap';
+  if (!workspace) statusEl.textContent = t('chat.statusChooseWorkspace');
+  else if (bootLoading) statusEl.textContent = t('chat.booting');
+  else if (reading) statusEl.textContent = t('chat.loadingSession');
+  else if (sending) statusEl.textContent = sendPhase || t('chat.statusSending');
+  else if (running) statusEl.textContent = noticeKind === 'retry' ? t('chat.statusWaitRetry') : t('chat.statusWorking');
+  else statusEl.textContent = t('chat.statusReady');
 
   statusEl.dataset.state = running ? 'busy' : unavailable ? 'loading' : 'idle';
   updateLauncher();

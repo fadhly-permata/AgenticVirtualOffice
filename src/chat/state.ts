@@ -1,3 +1,4 @@
+import { t } from '../i18n';
 import type { ChatEvent, LiveMessage, MessageInfo, Part, RawMessage, RunActivity } from './types';
 
 function messageFromInfo(info: MessageInfo, parts: Part[] = []): LiveMessage {
@@ -124,7 +125,7 @@ export function describeError(error: unknown): string {
     if (typeof candidate === 'string' && candidate.trim()) return candidate.trim();
   }
   if (typeof record.data === 'string' && record.data.trim()) return record.data.trim();
-  return 'OpenCode mengembalikan kesalahan yang tidak dikenal.';
+  return t('errors.unknown');
 }
 
 export function isAbortError(error: unknown): boolean {
@@ -133,25 +134,27 @@ export function isAbortError(error: unknown): boolean {
   return record.name === 'MessageAbortedError' || record.name === 'AbortError';
 }
 
+// Kunci label aktivitas per tool; diselesaikan lewat t() saat render agar ikut bahasa aktif.
 const TOOL_LABEL: Record<string, string> = {
-  bash: 'Menjalankan perintah',
-  edit: 'Mengubah file',
-  glob: 'Mencari file',
-  grep: 'Mencari teks',
-  list: 'Melihat folder',
-  question: 'Bertanya',
-  read: 'Membaca file',
-  task: 'Menjalankan subagent',
-  todoread: 'Membaca rencana',
-  todowrite: 'Menyusun rencana',
-  webfetch: 'Mengambil halaman',
-  websearch: 'Mencari di web',
-  write: 'Menulis file',
+  bash: 'tool.bash',
+  edit: 'tool.edit',
+  glob: 'tool.glob',
+  grep: 'tool.grep',
+  list: 'tool.list',
+  question: 'tool.question',
+  read: 'tool.read',
+  task: 'tool.task',
+  todoread: 'tool.todoread',
+  todowrite: 'tool.todowrite',
+  webfetch: 'tool.webfetch',
+  websearch: 'tool.websearch',
+  write: 'tool.write',
 };
 
 export function prettyToolName(tool: string | undefined): string {
-  if (!tool) return 'Tool';
-  return TOOL_LABEL[tool] ?? tool.replace(/[-_]/g, ' ');
+  if (!tool) return t('tool.default');
+  const key = TOOL_LABEL[tool];
+  return key ? t(key) : tool.replace(/[-_]/g, ' ');
 }
 
 export function toolTitle(part: Part): string {
@@ -178,22 +181,24 @@ export function bubbleCopy(activity: RunActivity | null | undefined): string {
     const name = prettyToolName(activity.tool ?? undefined);
     return clampBubble(detail ? `${name}: ${detail}` : name);
   }
-  if (activity.phase === 'think') return detail ? clampBubble(`Mikir: ${detail}`) : 'Menalar…';
-  if (activity.phase === 'write') return detail ? clampBubble(`Nulis: ${detail}`) : 'Menulis jawaban…';
+  if (activity.phase === 'think')
+    return detail ? clampBubble(t('tool.bubbleThink', { detail })) : t('tool.runThink');
+  if (activity.phase === 'write')
+    return detail ? clampBubble(t('tool.bubbleWrite', { detail })) : t('tool.runWrite');
   return '';
 }
 
 export function relativeTime(timestamp: number, now = Date.now()): string {
   if (!timestamp) return '';
   const diff = Math.max(0, now - timestamp);
-  if (diff < 60_000) return 'baru saja';
-  if (diff < 3_600_000) return `${Math.floor(diff / 60_000)} mnt lalu`;
-  if (diff < 86_400_000) return `${Math.floor(diff / 3_600_000)} jam lalu`;
+  if (diff < 60_000) return t('chat.justNow');
+  if (diff < 3_600_000) return t('chat.minutesAgo', { n: Math.floor(diff / 60_000) });
+  if (diff < 86_400_000) return t('chat.hoursAgo', { n: Math.floor(diff / 3_600_000) });
   const date = new Date(timestamp);
   return `${date.getDate()}/${date.getMonth() + 1}`;
 }
 
 export function truncate(value: string, limit = 6_000): string {
   if (value.length <= limit) return value;
-  return `${value.slice(0, limit)}\n… ${value.length - limit} karakter lagi`;
+  return `${value.slice(0, limit)}${t('chat.charsMore', { count: value.length - limit })}`;
 }

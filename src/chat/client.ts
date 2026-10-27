@@ -1,3 +1,4 @@
+import { t } from '../i18n';
 import type {
   Bootstrap,
   BrowseResult,
@@ -41,9 +42,9 @@ async function request<T>(pathname: string, init: RequestInit = {}, timeoutMs = 
     });
   } catch (error) {
     if (error instanceof DOMException && error.name === 'TimeoutError') {
-      throw new ChatApiError(0, 'Server tidak merespons. Cek terminal dev server.');
+      throw new ChatApiError(0, t('errors.timeout'));
     }
-    throw new ChatApiError(0, 'Tidak bisa menghubungi server lokal.');
+    throw new ChatApiError(0, t('errors.noLocal'));
   }
 
   const text = await response.text();
@@ -59,17 +60,15 @@ async function request<T>(pathname: string, init: RequestInit = {}, timeoutMs = 
   }
 
   if (!response.ok) {
+    // payload.error datang dari server; ditampilkan apa adanya. Hanya fallback buatan kita yang diterjemahkan.
     const message =
       payload && typeof payload === 'object' && 'error' in payload && typeof payload.error === 'string'
         ? payload.error
-        : `Permintaan gagal (${response.status}).`;
+        : t('errors.requestFailed', { status: response.status });
     throw new ChatApiError(response.status, message);
   }
   if (!parsed) {
-    throw new ChatApiError(
-      0,
-      'Server ini bukan bridge VirtOffice (mengembalikan HTML, bukan JSON). Jalankan npm run dev dan buka alamat yang dicetak di terminal.'
-    );
+    throw new ChatApiError(0, t('errors.notBridge'));
   }
   return payload as T;
 }

@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { t } from '../i18n';
 import { clamp, smoothstep } from './math';
 
 const SKY = {
@@ -56,12 +57,13 @@ export class DayCycle {
     return clamp(1 - Math.abs(this.sunAltitude) / 0.3);
   }
 
+  /** Label fase dibaca ulang lewat `t()` setiap akses, jadi bahasa ikut berganti tanpa muat ulang. */
   get phaseLabel(): string {
-    if (this.hours < 5) return 'Malam';
-    if (this.hours < 10.5) return 'Pagi';
-    if (this.hours < 15) return 'Siang';
-    if (this.hours < 18.5) return 'Sore';
-    return 'Malam';
+    if (this.hours < 5) return t('office.phaseNight');
+    if (this.hours < 10.5) return t('office.phaseMorning');
+    if (this.hours < 15) return t('office.phaseMidday');
+    if (this.hours < 18.5) return t('office.phaseAfternoon');
+    return t('office.phaseNight');
   }
 
   get timeLabel(): string {
