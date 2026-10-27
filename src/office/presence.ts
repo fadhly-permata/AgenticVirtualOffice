@@ -34,9 +34,6 @@ const RANK: Record<PresenceRole, number> = {
   idle: 0,
 };
 
-/** The diorama only has so many chairs; extra agents stay in the tool, not on the floor. */
-export const OFFICE_CAPACITY = 15;
-
 export function slugify(name: string): string {
   return name
     .trim()
@@ -47,7 +44,8 @@ export function slugify(name: string): string {
 
 /**
  * Turns an agent catalogue into the people standing on the office floor.
- * Order is kept because the first entries get the desks.
+ * Order is kept because the first entries get the desks; entries past the
+ * seat plan are reported by the office API as overflow.
  */
 export function crewFromRoster(agents: { name: string }[]): CrewEntry[] {
   const crew: CrewEntry[] = [];
@@ -58,7 +56,6 @@ export function crewFromRoster(agents: { name: string }[]): CrewEntry[] {
     if (!id || seen.has(id)) continue;
     seen.add(id);
     crew.push({ id, label: agent.name });
-    if (crew.length >= OFFICE_CAPACITY) break;
   }
 
   return crew;

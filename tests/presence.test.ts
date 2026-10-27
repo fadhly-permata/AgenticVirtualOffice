@@ -1,6 +1,5 @@
 import { describe, expect, it } from 'vitest';
 import {
-  OFFICE_CAPACITY,
   type Presence,
   type SessionActivity,
   buildPresence,
@@ -76,14 +75,14 @@ describe('presence engine', () => {
     expect(slugify('---')).toBe('');
   });
 
-  it('turns the roster into one employee per agent, without duplicates or overflow', () => {
-    const many = Array.from({ length: OFFICE_CAPACITY + 6 }, (_, index) => ({ name: `agent ${index}` }));
+  it('turns the roster into one employee per unique agent, past seat capacity too', () => {
+    const many = Array.from({ length: 21 }, (_, index) => ({ name: `agent ${index}` }));
     many.push({ name: 'Agent 1' }, { name: 'agent 1' });
     const crew = crewFromRoster(many);
-    expect(crew).toHaveLength(OFFICE_CAPACITY);
+    expect(crew).toHaveLength(21);
     expect(crew[0]).toEqual({ id: 'agent-0', label: 'agent 0' });
     expect(crew.map((entry) => entry.id)).not.toContain('agent-1-again');
-    expect(new Set(crew.map((entry) => entry.id)).size).toBe(OFFICE_CAPACITY);
+    expect(new Set(crew.map((entry) => entry.id)).size).toBe(21);
   });
 
   it('reads a run state per session from the status map', () => {

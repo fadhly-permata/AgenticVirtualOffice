@@ -151,8 +151,10 @@ function boot(target: HTMLCanvasElement): void {
   const countEl = document.getElementById('agent-count');
   const floorModeEl = document.getElementById('floor-mode');
   const legendEl = document.getElementById('legend');
+  const overflowEl = document.getElementById('agent-overflow');
   const stateEls = new Map<string, HTMLElement>();
   const legendRankById = new Map<string, number>();
+  let legendOverflow = '';
 
   /** Meeting table first, then the desks, then whoever is free — the busiest rows stay on top. */
   function legendRank(agent: Agent): number {
@@ -164,6 +166,16 @@ function boot(target: HTMLCanvasElement): void {
   function renderLegend(): void {
     if (countEl) countEl.textContent = String(agents.length);
     if (!legendEl) return;
+
+    const extras = office.overflow();
+    legendOverflow = extras.join('\u0000');
+    if (overflowEl) {
+      overflowEl.hidden = extras.length === 0;
+      overflowEl.textContent = `+${extras.length}`;
+      const title = t('shell.offFloorTitle', { n: extras.length, names: extras.join(', ') });
+      overflowEl.title = title;
+      overflowEl.setAttribute('aria-label', title);
+    }
 
     // Susunan baru memindahkan baris, jadi posisi scroll hanya dipertahankan
     // selama tidak ada sesi yang mengambil atau melepas kursi.
@@ -203,6 +215,29 @@ function boot(target: HTMLCanvasElement): void {
       stateEls.set(agent.id, state);
     }
 
+    // Agen yang tidak mendapat kursi tetap disebut namanya, bukan hilang diam-diam.
+    for (const label of extras) {
+      const row = document.createElement('li');
+      row.className = 'legend__row';
+      row.dataset.rank = '3';
+      row.dataset.offfloor = 'true';
+
+      const dot = document.createElement('span');
+      dot.className = 'legend__dot legend__dot--off';
+
+      const name = document.createElement('span');
+      name.className = 'legend__name';
+      name.textContent = label;
+      name.title = label;
+
+      const state = document.createElement('span');
+      state.className = 'legend__state';
+      state.textContent = t('shell.offFloor');
+
+      row.append(dot, name, state);
+      legendEl.append(row);
+    }
+
     legendEl.scrollTop = busyIds === legendBusyIds ? keptTop : 0;
     legendBusyIds = busyIds;
   }
@@ -228,6 +263,7 @@ function boot(target: HTMLCanvasElement): void {
     }
     // Orang pindah kursi = barisnya harus disusun ulang, bukan cuma labelnya diganti.
     if (agents.some((agent) => legendRankById.get(agent.id) !== legendRank(agent))) legendDirty = true;
+    if (office.overflow().join('\u0000') !== legendOverflow) legendDirty = true;
     if (legendDirty) {
       renderLegend();
       legendDirty = false;

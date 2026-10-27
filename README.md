@@ -208,7 +208,7 @@ Peran presence: `working` (meja kerja), `delegating` + `delegated` (ruang meetin
 
 Perilaku penting:
 
-- Jumlah karyawan mengikuti `roster` dari `/api/chat/bootstrap` (maksimal 15 karena kursi terbatas); tanpa workspace, lantai kantor tetap memakai karyawan demo.
+- Jumlah karyawan mengikuti `roster` dari `/api/chat/bootstrap` (maksimal 15 karena kursi terbatas). Agen di luar kapasitas tetap dihitung dan dinamai: header legend menampilkan badge `+N`, dan baris **Luar lantai** di bawah daftar menyebut siapa saja yang tidak mendapat kursi. Tanpa workspace, lantai kantor tetap memakai karyawan demo.
 - `applyPresence` hanya memindahkan karyawan yang perannya benar-benar berubah, jadi karyawan tidak berjalan ulang tanpa perlu.
 - `setActivity` memilih spot kosong untuk aktivitas tersebut, mengunci (`pinned`) agent, dan membuatnya berjalan ke sana. Agent tetap di sana sampai `release` dipanggil.
 - Agent yang di-`release` akan dijadwalkan ulang oleh autopilot pada tick berikutnya.

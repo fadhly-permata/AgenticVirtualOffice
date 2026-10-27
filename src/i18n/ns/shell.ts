@@ -16,6 +16,11 @@ export const shell: Catalog = {
 
   legendAria: ['Status agen', 'Agent status'],
   agentsLabel: ['Agen', 'Agents'],
+  offFloor: ['Luar lantai', 'Off the floor'],
+  offFloorTitle: [
+    '{n} agen tidak mendapat kursi: {names}',
+    '{n} agents have no seat: {names}',
+  ],
   floorLive: ['LIVE', 'LIVE'],
   floorAutoPlay: ['AUTO-PLAY', 'AUTO-PLAY'],
 

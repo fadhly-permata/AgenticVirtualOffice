@@ -53,6 +53,8 @@ export interface VirtOfficeApi {
   readonly ready: true;
   agents(): AgentSnapshot[];
   setCrew(entries: CrewEntry[]): boolean;
+  /** Roster agents with no seat on the floor, in roster order. */
+  overflow(): string[];
   applyPresence(presence: Presence[], copy?: Record<string, string>): void;
   /** 'live' means a real tool drives the floor: free time stays in the common areas. */
   setFloorMode(mode: FloorMode): void;
@@ -71,6 +73,7 @@ export function installApi(
 ): VirtOfficeApi {
   const find = (key: string): Agent | undefined =>
     agents.find((agent) => agent.id === key || agent.name.toLowerCase() === key.toLowerCase());
+  let crewOverflow: string[] = [];
 
   const seat = (agent: Agent, activity: ActivityId): boolean => {
     const taken = new Set(agents.filter((other) => other !== agent).map((other) => other.spot.id));
@@ -108,14 +111,19 @@ export function installApi(
         agents.splice(agents.indexOf(agent), 1);
       }
 
+      const overflow: string[] = [];
       entries.forEach((entry, index) => {
         if (find(entry.id)) return;
         const agent = crew.add(entry, index);
         if (agent) agents.push(agent);
+        else overflow.push(entry.label);
       });
+      crewOverflow = overflow;
 
       return agents.length > 0;
     },
+
+    overflow: () => crewOverflow,
 
     setFloorMode: (mode) => {
       autopilot.setFloorMode(mode);

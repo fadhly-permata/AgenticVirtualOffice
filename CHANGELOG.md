@@ -4,6 +4,12 @@ Semua perubahan penting pada VirtOffice dicatat di sini. Format mengikuti
 [Keep a Changelog](https://keepachangelog.com/id/1.1.0/) dan versi mengikuti
 [Semantic Versioning](https://semver.org/lang/id/).
 
+## [0.9.0] - 2026-10-28
+
+### Ditambahkan
+
+- Roster yang lebih besar dari kapasitas lantai tidak lagi hilang diam-diam: header legend menampilkan badge `+N`, dan agen tanpa kursi muncul sebagai baris **Luar lantai** dengan namanya. Tooltip dan `aria-label` badge menyebut jumlah serta daftar namanya.
+
 ## [0.8.0] - 2026-10-28
 
 ### Ditambahkan

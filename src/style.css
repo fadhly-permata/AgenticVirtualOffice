@@ -189,6 +189,16 @@ body.is-ready #scene {
   color: var(--accent);
 }
 
+.panel__overflow {
+  margin-left: 5px;
+  padding: 1px 5px;
+  border: 1px dashed var(--panel-border);
+  border-radius: 99px;
+  font-size: 9px;
+  color: var(--ink-dim);
+  vertical-align: 1px;
+}
+
 .panel--legend ul {
   --legend-row: 17px;
   --legend-gap: 7px;
@@ -219,6 +229,11 @@ body.is-ready #scene {
   height: 8px;
   border-radius: 50%;
   box-shadow: 0 0 0 2px var(--glass-strong, rgba(255, 255, 255, 0.14));
+}
+
+.legend__dot--off {
+  background: var(--ink-dim);
+  opacity: 0.5;
 }
 
 .legend__name {
