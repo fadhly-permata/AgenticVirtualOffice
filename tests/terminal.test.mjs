@@ -176,3 +176,92 @@ describe('terminal sessions', () => {
     sink.unsubscribe();
   });
 });
+
+describe('environment shell', () => {
+  const machineTable = [
+    'HKEY_LOCAL_MACHINE\\SYSTEM\\CurrentControlSet\\Control\\Session Manager\\Environment',
+    '    Path    REG_EXPAND_SZ    C:\\Windows\\system32;C:\\Windows',
+    '    ComSpec    REG_SZ    C:\\Windows\\system32\\cmd.exe',
+    '',
+  ].join('\r\n');
+  const userTable = [
+    'HKEY_CURRENT_USER\\Environment',
+    '    Path    REG_EXPAND_SZ    %USERPROFILE%\\App\\Local\\Programs;C:\\Windows\\system32',
+    '    PREFERRED_DOMAIN    REG_SZ    example',
+    '',
+  ].join('\r\n');
+
+  /** Child palsu: yang penting bentuknya seperti ChildProcess, tidak ada proses nyata. */
+  function spawnHub(options) {
+    const captures = [];
+    const instance = hub({
+      env: {
+        PATH: 'C:\\Program Files\\Git\\usr\\bin;C:\\Windows',
+        MSYSTEM: 'MINGW64',
+        USERPROFILE: 'C:\\Users\\test',
+        SystemRoot: 'C:\\Windows',
+      },
+      shells: [{ id: 'fake', label: 'Fake Shell', file: 'fake.exe', args: [], echo: 'local' }],
+      spawner: (file, args, spawnOptions) => {
+        captures.push(spawnOptions.env);
+        return {
+          pid: 4242,
+          exitCode: 0,
+          signalCode: null,
+          stdout: { on() {} },
+          stderr: { on() {} },
+          stdin: { write() {}, end() {} },
+          on() {},
+          kill() {},
+        };
+      },
+      ...options,
+    });
+    return { instance, captures };
+  }
+
+  it('menyusun PATH dari registry supaya cmd tidak mewarisi coreutils Git Bash', async () => {
+    const { instance, captures } = spawnHub({
+      platform: 'win32',
+      registry: (key) => Promise.resolve(key.includes('HKLM') ? machineTable : userTable),
+    });
+    const session = await instance.start({ cwd: workDir });
+
+    expect(session.nativePath).toBe(true);
+    const env = captures[0];
+    // Machine dulu, lalu User, duplikat dibuang, %USERPROFILE% sudah dikembangkan.
+    expect(env.Path).toBe('C:\\Windows\\system32;C:\\Windows;C:\\Users\\test\\App\\Local\\Programs');
+    expect(env.PATH).toBeUndefined();
+    expect(env.MSYSTEM).toBeUndefined();
+    expect(env.ComSpec).toBe('C:\\Windows\\system32\\cmd.exe');
+    expect(env.PREFERRED_DOMAIN).toBe('example');
+    expect(env.TERM).toBeUndefined();
+  });
+
+  it('mewarisi PATH server kalau registry tidak terbaca', async () => {
+    const { instance, captures } = spawnHub({
+      platform: 'win32',
+      registry: () => Promise.reject(new Error('reg tidak ada')),
+    });
+    const session = await instance.start({ cwd: workDir });
+
+    expect(session.nativePath).toBe(false);
+    expect(captures[0].PATH).toContain('Git\\usr\\bin');
+  });
+
+  it('di POSIX tidak menyentuh registry dan TERM tetap dipasang', async () => {
+    const calls = [];
+    const { instance, captures } = spawnHub({
+      platform: 'linux',
+      registry: () => {
+        calls.push(1);
+        return Promise.resolve('');
+      },
+    });
+    const session = await instance.start({ cwd: workDir });
+
+    expect(session.nativePath).toBe(false);
+    expect(captures[0].TERM).toBe('xterm-256color');
+    expect(calls).toEqual([]);
+  });
+});

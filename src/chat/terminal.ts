@@ -191,7 +191,7 @@ export function mountTerminal(container: HTMLElement): TerminalPanel {
     tab.type = 'button';
     tab.setAttribute('role', 'tab');
     tab.textContent = `${session.label} · ${shortName(session.cwd)}`;
-    tab.title = `${session.label} (${session.cwd})`;
+    tab.title = `${session.label} (${session.cwd})\nPATH ${session.nativePath ? 'asli Windows (registry)' : 'warisan proses server'}`;
     tab.addEventListener('click', () => activate(view));
 
     const close = iconButton(`Tutup ${session.label}`, ICON.close, () => void destroy(view));

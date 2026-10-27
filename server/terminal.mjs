@@ -1,4 +1,4 @@
-import { spawn } from 'node:child_process';
+import { spawn, execFile } from 'node:child_process';
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import { HttpError } from './http.mjs';
@@ -77,6 +77,78 @@ export async function detectShells(env = process.env, platform = process.platfor
   return shells;
 }
 
+/**
+ * Shell harus melihat PATH asli Windows, bukan PATH dari proses yang menyalakan server
+ * (Git Bash misalnya, yang menyisipkan coreutils sehingga cmd bisa menjalankan `ls`).
+ */
+const ENV_KEYS = [
+  'HKLM\\SYSTEM\\CurrentControlSet\\Control\\Session Manager\\Environment',
+  'HKCU\\Environment',
+];
+
+// Variabel warisan MSYS/Git Bash yang tidak pernah ada di shell Windows asli.
+const MSYS_VARS = [
+  'MSYSTEM', 'MINGW_PREFIX', 'MINGW_CHOST', 'MSYSCON', 'CHERE_INVOKING', 'EXEEXT',
+  'HOSTTYPE', 'MACHTYPE', 'OSTYPE', 'PS1', 'PS2', 'SHLVL', 'OLDPWD', 'PAGER',
+  'MANPATH', 'INFOPATH', 'SSH_ASKPASS', 'PLINK_PROTOCOL', '_',
+];
+
+function parseRegTable(text) {
+  const values = new Map();
+  for (const line of String(text).split(/\r?\n/)) {
+    const match = /^\s+(\S+)\s+REG_[A-Z_]+\s+(.*)$/.exec(line);
+    if (match) values.set(match[1], match[2].trim());
+  }
+  return values;
+}
+
+function expandRefs(value, lookup) {
+  return value.replace(/%([^%]+)%/g, (whole, name) => lookup.get(name.toUpperCase()) ?? whole);
+}
+
+function setVar(target, name, value) {
+  // Windows menganggap nama variabel case-insensitive; kunci ganda bikin shell bingung.
+  for (const key of Object.keys(target)) {
+    if (key.toUpperCase() === name.toUpperCase()) delete target[key];
+  }
+  target[name] = value;
+}
+
+function defaultRegistry(key) {
+  return new Promise((resolve, reject) => {
+    execFile('reg', ['query', key], { windowsHide: true }, (error, stdout) => {
+      if (error) reject(error);
+      else resolve(stdout);
+    });
+  });
+}
+
+function registryEnv(base, machine, user) {
+  const env = { ...base };
+  for (const name of MSYS_VARS) delete env[name];
+
+  const lookup = new Map();
+  for (const [name, value] of Object.entries(env)) lookup.set(name.toUpperCase(), value);
+  for (const source of [machine, user]) {
+    for (const [name, value] of source) lookup.set(name.toUpperCase(), value);
+  }
+
+  const joined = [machine.get('Path'), user.get('Path')]
+    .filter(Boolean)
+    .flatMap((entry) => expandRefs(entry, lookup).split(';'))
+    .map((entry) => entry.trim())
+    .filter((entry, index, all) => entry && all.indexOf(entry) === index);
+  if (joined.length) setVar(env, 'Path', joined.join(';'));
+
+  for (const source of [machine, user]) {
+    for (const [name, value] of source) {
+      if (name.toLowerCase() === 'path') continue;
+      setVar(env, name, expandRefs(value, lookup));
+    }
+  }
+  return env;
+}
+
 function killTree(child, platform) {
   if (child.exitCode !== null || child.signalCode) return;
   // taskkill /T ikut mematikan anak-anak shell; child.kill() saja meninggalkan yatim.
@@ -95,14 +167,44 @@ function killTree(child, platform) {
 }
 
 export class TerminalHub {
-  constructor({ spawner = spawn, env = process.env, platform = process.platform, shells = null } = {}) {
+  constructor({
+    spawner = spawn,
+    env = process.env,
+    platform = process.platform,
+    shells = null,
+    registry = defaultRegistry,
+  } = {}) {
     this.spawner = spawner;
     this.env = env;
     this.platform = platform;
     this.staticShells = shells;
+    this.registry = registry;
     this.shellsPromise = null;
+    this.envPromise = null;
     this.sessions = new Map();
     this.counter = 0;
+  }
+
+  /**
+   * Environment shell. Windows: PATH disusun dari registry (Machine + User) supaya tab cmd
+   * tidak mewarisi coreutils Git Bash kalau server-nya dijalankan dari Git Bash.
+   */
+  environment() {
+    if (!this.envPromise) {
+      this.envPromise = (async () => {
+        if (this.platform !== 'win32') return { env: { ...this.env }, source: 'inherited' };
+        try {
+          const [machineText, userText] = await Promise.all(ENV_KEYS.map((key) => this.registry(key)));
+          const machine = parseRegTable(machineText);
+          const user = parseRegTable(userText);
+          if (!machine.size && !user.size) return { env: { ...this.env }, source: 'inherited' };
+          return { env: registryEnv(this.env, machine, user), source: 'registry' };
+        } catch {
+          return { env: { ...this.env }, source: 'inherited' };
+        }
+      })();
+    }
+    return this.envPromise;
   }
 
   listShells() {
@@ -137,11 +239,13 @@ export class TerminalHub {
     }
 
     const id = `t${++this.counter}`;
+    const { env, source } = await this.environment();
+    const childEnv = this.platform === 'win32' ? env : { ...env, TERM: 'xterm-256color' };
     let child;
     try {
       child = this.spawner(target.file, target.args, {
         cwd: directory,
-        env: { ...this.env, TERM: 'xterm-256color' },
+        env: childEnv,
         stdio: ['pipe', 'pipe', 'pipe'],
         windowsHide: true,
       });
@@ -155,6 +259,7 @@ export class TerminalHub {
       label: target.label,
       echo: target.echo,
       cwd: directory,
+      pathSource: source,
       child,
       listeners: new Set(),
       pending: [],
@@ -275,6 +380,7 @@ function publicSession(session) {
     label: session.label,
     echo: session.echo,
     cwd: session.cwd,
+    nativePath: session.pathSource === 'registry',
     pid: session.child.pid ?? null,
     alive: !session.exited,
     exitCode: session.exitCode,

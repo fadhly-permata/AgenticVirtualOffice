@@ -253,6 +253,7 @@ export interface TerminalSession {
   label: string;
   echo: EchoMode;
   cwd: string;
+  nativePath: boolean;
   pid: number | null;
   alive: boolean;
   exitCode: number | null;
