@@ -10,6 +10,7 @@ import {
 import { chatApi } from './client';
 import { el, ICON, icon } from './dom';
 import { mountFiles, type FilesPanel } from './files';
+import { mountScm, type ScmPanel } from './scm';
 import { mountTerminal, type TerminalPanel } from './terminal';
 import { FolderPicker } from './folder';
 import { cancelPendingDiagrams, renderMarkdown } from './markdown';
@@ -104,14 +105,8 @@ const tabPages = new Map<ChatTab, HTMLElement>(
 const chatRail = byId<HTMLElement>('chat-rail');
 let activeTab: ChatTab = 'agentic';
 let filesPanel: FilesPanel | null = null;
+let scmPanel: ScmPanel | null = null;
 let terminalPanel: TerminalPanel | null = null;
-
-const STUB_COPY: Record<'scm', { title: string; body: string }> = {
-  scm: {
-    title: 'Source Control',
-    body: 'Belum aktif. Halaman ini akan menampilkan branch, perubahan yang belum di-commit, dan diff per file.',
-  },
-};
 
 /** Model tidak tahu chat ini bisa menggambar, jadi permintaan visual dibawai catatan format. */
 const MERMAID_DIRECTIVE =
@@ -298,18 +293,9 @@ export function installChat(officeApi: VirtOfficeApi): void {
   });
 
   const filesPage = tabPages.get('files');
-  if (filesPage) {
-    filesPanel = mountFiles(filesPage, {
-      onReference: (path) => {
-        const mention = `@${path}`;
-        input.value = input.value.trim() ? `${input.value.trim()} ${mention}` : mention;
-        setTab('agentic');
-        resizeInput();
-        updateComposer();
-        input.focus();
-      },
-    });
-  }
+  if (filesPage) filesPanel = mountFiles(filesPage, { onReference: referenceToComposer });
+  const scmPage = tabPages.get('scm');
+  if (scmPage) scmPanel = mountScm(scmPage, { onReference: referenceToComposer });
   const terminalPage = tabPages.get('terminal');
   if (terminalPage) terminalPanel = mountTerminal(terminalPage);
 
@@ -381,6 +367,7 @@ function applyWorkspace(next: WorkspaceInfo | null): void {
 
   updateChatFolder();
   filesPanel?.setWorkspace(next);
+  scmPanel?.setWorkspace(next);
   terminalPanel?.setWorkspace(next);
   updateLauncher();
   renderSessionSelect();
@@ -403,19 +390,19 @@ function updateChatFolder(): void {
     : 'Buka workspace untuk mulai…';
 }
 
+/** Menyisipkan path yang sedang dilihat ke composer, lalu kembali ke halaman chat. */
+function referenceToComposer(path: string): void {
+  const mention = `@${path}`;
+  input.value = input.value.trim() ? `${input.value.trim()} ${mention}` : mention;
+  setTab('agentic');
+  resizeInput();
+  updateComposer();
+  input.focus();
+}
+
 function storedTab(): ChatTab {
   const raw = localStorage.getItem(STORAGE_TAB);
   return CHAT_TABS.includes(raw as ChatTab) ? (raw as ChatTab) : 'agentic';
-}
-
-/** Placeholder jujur: halamannya sudah ada, isinya masih tahap berikutnya. */
-function renderStub(tab: 'scm'): void {
-  const page = tabPages.get(tab);
-  if (!page || page.childElementCount > 0) return;
-  const copy = STUB_COPY[tab];
-  const wrap = el('div', 'chat__stub');
-  wrap.append(el('p', 'chat__stub-title', copy.title), el('p', 'chat__stub-body', copy.body));
-  page.append(wrap);
 }
 
 function setTab(next: ChatTab): void {
@@ -426,9 +413,9 @@ function setTab(next: ChatTab): void {
     button.tabIndex = tab === next ? 0 : -1;
   }
   for (const [tab, page] of tabPages) page.hidden = tab !== next;
-  if (next === 'scm') renderStub(next);
-  // Pindah ke daftar file berarti membaca ulang workspace, bukan memakai salinan tadi.
+  // Pindah halaman berarti membaca ulang keadaan, bukan memakai salinan tadi.
   if (next === 'files') filesPanel?.refresh();
+  if (next === 'scm') scmPanel?.refresh();
   if (next === 'terminal') terminalPanel?.refresh();
 }
 

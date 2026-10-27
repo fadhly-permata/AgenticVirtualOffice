@@ -266,3 +266,45 @@ export interface TerminalEvent {
   error?: boolean;
   code?: number | null;
 }
+
+export interface DiffCounts {
+  added: number;
+  deleted: number;
+}
+
+export interface ScmFile {
+  path: string;
+  origin: string;
+  /** Huruf pertama porcelain: isi index (staged). */
+  index: string;
+  /** Huruf kedua porcelain: isi folder kerja. */
+  worktree: string;
+  untracked: boolean;
+  staged: DiffCounts;
+  unstaged: DiffCounts;
+}
+
+export interface ScmStatus {
+  root: string;
+  branch: string;
+  detached: string;
+  head: string;
+  upstream: string;
+  ahead: number;
+  behind: number;
+  last: { sha: string; subject: string; when: string } | null;
+  files: ScmFile[];
+  counts: { staged: number; unstaged: number; untracked: number };
+  clean: boolean;
+}
+
+export interface ScmDiff {
+  path: string;
+  staged: boolean;
+  untracked: boolean;
+  empty: boolean;
+  lines: string[];
+  truncated: boolean;
+  total: number;
+  note?: string;
+}

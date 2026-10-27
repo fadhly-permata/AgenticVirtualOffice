@@ -7,6 +7,8 @@ import type {
   PermissionReply,
   RuleState,
   RunActivity,
+  ScmDiff,
+  ScmStatus,
   SearchMode,
   SearchResult,
   SessionMessages,
@@ -129,6 +131,13 @@ export const chatApi = {
     }),
   deleteFile: (path: string) =>
     request<{ path: string }>('/api/chat/files/delete', { method: 'POST', body: JSON.stringify({ path }) }),
+  scmStatus: () => request<ScmStatus>('/api/chat/scm/status', {}, 20_000),
+  scmDiff: (path: string, staged: boolean) =>
+    request<ScmDiff>(
+      `/api/chat/scm/diff?path=${encodeURIComponent(path)}${staged ? '&staged=1' : ''}`,
+      {},
+      20_000
+    ),
   terminalShells: () => request<{ shells: ShellInfo[] }>('/api/chat/terminal/shells', {}, 20_000),
   createTerminal: (shell: string | null) =>
     request<TerminalSession>('/api/chat/terminal', { method: 'POST', body: JSON.stringify({ shell }) }, 20_000),

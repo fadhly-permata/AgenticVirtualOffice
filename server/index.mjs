@@ -14,6 +14,7 @@ import {
   OpenCodeBridge,
 } from './opencode.mjs';
 import { upsertToolRules } from './rules.mjs';
+import { fileDiff, repoStatus } from './scm.mjs';
 import { TerminalHub } from './terminal.mjs';
 import { browseDirectory, WorkspaceStore } from './workspace.mjs';
 
@@ -275,6 +276,18 @@ async function handleApi(req, res, url) {
   if (pathname === '/api/chat/files/delete' && method === 'POST') {
     const body = await readJson(req);
     return sendJson(res, 200, await deleteEntry(workspaceOrThrow(), body.path));
+  }
+
+  if (pathname === '/api/chat/scm/status' && method === 'GET') {
+    return sendJson(res, 200, await repoStatus(workspaceOrThrow()));
+  }
+
+  if (pathname === '/api/chat/scm/diff' && method === 'GET') {
+    return sendJson(
+      res,
+      200,
+      await fileDiff(workspaceOrThrow(), searchParams.get('path') ?? '', searchParams.get('staged') === '1')
+    );
   }
 
   if (pathname === '/api/chat/terminal/shells' && method === 'GET') {
