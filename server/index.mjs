@@ -164,7 +164,7 @@ async function handleApi(req, res, url) {
   const method = req.method ?? 'GET';
 
   if (pathname === '/api/health' && method === 'GET') {
-    return sendJson(res, 200, { ok: true, opencode: bridge.running ? 'running' : 'stopped', dev: isDev });
+    return sendJson(res, 200, { ok: true, opencode: bridge.running ? 'running' : 'stopped', url: bridge.url ?? null, dev: isDev });
   }
 
   if (pathname === '/api/workspace' && method === 'GET') {

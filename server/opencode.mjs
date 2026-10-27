@@ -4,6 +4,7 @@ import { HttpError } from './http.mjs';
 const START_TIMEOUT_MS = 30_000;
 const REQUEST_TIMEOUT_MS = 60_000;
 const EVENT_TIMEOUT_MS = 40_000;
+const ATTACH_PROBE_TIMEOUT_MS = 1_500;
 const HIDDEN_AGENTS = new Set(['compaction', 'summary', 'title']);
 
 export function readableError(text) {
@@ -203,6 +204,10 @@ export class OpenCodeBridge {
     return Boolean(this.#baseUrl);
   }
 
+  get url() {
+    return this.#baseUrl;
+  }
+
   async ensure() {
     if (this.#baseUrl) return this.#baseUrl;
     if (this.#starting) return this.#starting;
@@ -213,7 +218,42 @@ export class OpenCodeBridge {
     return this.#starting;
   }
 
+  /**
+   * OpenCode keeps one shared session store, so a second `opencode serve` on the
+   * same project aborts the runs of the first. Attach to a server that is already
+   * up before spawning our own.
+   */
+  async #attachExisting() {
+    const candidates = [
+      process.env.VIRTOFFICE_OPENCODE_URL,
+      process.env.OPENCODE_BASE_URL,
+      'http://127.0.0.1:4096',
+    ].filter((url) => typeof url === 'string' && url.trim());
+
+    for (const candidate of candidates) {
+      const base = candidate.replace(/\/+$/, '');
+      const controller = new AbortController();
+      const timer = setTimeout(() => controller.abort(), ATTACH_PROBE_TIMEOUT_MS);
+      try {
+        const response = await fetch(`${base}/global/health`, { signal: controller.signal });
+        if (!response.ok) continue;
+        const body = await response.json().catch(() => null);
+        if (body && body.healthy === true) {
+          this.#baseUrl = base;
+          return base;
+        }
+      } catch {
+        // Nothing listening there; fall through to the next candidate.
+      } finally {
+        clearTimeout(timer);
+      }
+    }
+    return null;
+  }
+
   async #start() {
+    const attached = await this.#attachExisting();
+    if (attached) return attached;
     return new Promise((resolve, reject) => {
       const useShell = process.platform === 'win32';
       const command = 'opencode serve --port 0 --hostname 127.0.0.1';
