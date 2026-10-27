@@ -3,7 +3,7 @@ import fs from 'node:fs/promises';
 import http from 'node:http';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { createEntry, deleteEntry, readFileAt, renameEntry, searchIn, treeAt } from './files.mjs';
+import { createEntry, deleteEntry, readFileAt, renameEntry, resolveInside, searchIn, treeAt } from './files.mjs';
 import { HttpError, readJson, sendError, sendJson } from './http.mjs';
 import {
   buildAgentList,
@@ -14,6 +14,7 @@ import {
   OpenCodeBridge,
 } from './opencode.mjs';
 import { upsertToolRules } from './rules.mjs';
+import { TerminalHub } from './terminal.mjs';
 import { browseDirectory, WorkspaceStore } from './workspace.mjs';
 
 const APP_DIR = path.resolve(fileURLToPath(new URL('..', import.meta.url)));
@@ -43,6 +44,7 @@ const MIME = {
 
 const store = new WorkspaceStore(APP_DIR);
 const bridge = new OpenCodeBridge({ cwd: APP_DIR });
+const terminals = new TerminalHub();
 
 function workspaceOrThrow() {
   const { workspace } = store.snapshot();
@@ -57,6 +59,11 @@ function sessionId(value) {
 
 function requestId(value) {
   if (!/^[A-Za-z0-9_]+$/.test(value)) throw new HttpError(400, 'ID permintaan tidak valid.');
+  return value;
+}
+
+function terminalId(value) {
+  if (!/^t\d+$/.test(value)) throw new HttpError(400, 'ID terminal tidak valid.');
   return value;
 }
 
@@ -160,6 +167,48 @@ async function streamEvents(req, res) {
   }
 }
 
+/**
+ * Satu stream SSE per terminal. Putusnya koneksi tidak membunuh shell:
+ * sesi baru mati setelah IDLE_CLOSE_MS tanpa subscriber (dijaga TerminalHub).
+ */
+async function streamTerminal(req, res, id) {
+  const session = terminals.get(id);
+  res.writeHead(200, {
+    'content-type': 'text/event-stream; charset=utf-8',
+    'cache-control': 'no-cache, no-transform',
+    connection: 'keep-alive',
+    'x-accel-buffering': 'no',
+  });
+  res.flushHeaders?.();
+
+  let stopped = false;
+  let unsubscribe = () => {};
+  const heartbeat = setInterval(() => {
+    if (!stopped && !res.writableEnded) res.write(': keep-alive\n\n');
+  }, 15_000);
+  const stop = () => {
+    if (stopped) return;
+    stopped = true;
+    clearInterval(heartbeat);
+    unsubscribe();
+    if (!res.writableEnded) res.end();
+  };
+
+  const send = (event) => {
+    if (stopped || res.writableEnded) return;
+    res.write(`data: ${JSON.stringify(event)}\n\n`);
+    if (event.type === 'exit') stop();
+  };
+
+  // Flush isi tertunda bisa mengirim 'exit' secara sinkron di dalam panggilan ini.
+  const attached = terminals.subscribe(session.id, send);
+  unsubscribe = () => attached();
+  if (stopped) unsubscribe();
+  req.on('close', stop);
+  req.on('error', stop);
+  res.on('close', stop);
+}
+
 async function handleApi(req, res, url) {
   const { pathname, searchParams } = url;
   const method = req.method ?? 'GET';
@@ -226,6 +275,40 @@ async function handleApi(req, res, url) {
   if (pathname === '/api/chat/files/delete' && method === 'POST') {
     const body = await readJson(req);
     return sendJson(res, 200, await deleteEntry(workspaceOrThrow(), body.path));
+  }
+
+  if (pathname === '/api/chat/terminal/shells' && method === 'GET') {
+    const shells = await terminals.listShells();
+    return sendJson(res, 200, { shells: shells.map(({ id, label, echo }) => ({ id, label, echo })) });
+  }
+
+  if (pathname === '/api/chat/terminal' && method === 'GET') {
+    return sendJson(res, 200, { terminals: terminals.list() });
+  }
+
+  if (pathname === '/api/chat/terminal' && method === 'POST') {
+    const body = await readJson(req);
+    const root = workspaceOrThrow();
+    const { abs } = resolveInside(root, typeof body.cwd === 'string' && body.cwd ? body.cwd : '.');
+    const session = await terminals.start({
+      shell: typeof body.shell === 'string' ? body.shell : null,
+      cwd: abs,
+    });
+    return sendJson(res, 201, session);
+  }
+
+  if (pathname === '/api/chat/terminal/events' && method === 'GET') {
+    return streamTerminal(req, res, terminalId(searchParams.get('id') ?? ''));
+  }
+
+  if (pathname === '/api/chat/terminal/input' && method === 'POST') {
+    const body = await readJson(req);
+    return sendJson(res, 200, terminals.write(terminalId(String(body.id ?? '')), body.data));
+  }
+
+  if (pathname === '/api/chat/terminal/close' && method === 'POST') {
+    const body = await readJson(req);
+    return sendJson(res, 200, await terminals.close(terminalId(String(body.id ?? ''))));
   }
 
   if (pathname === '/api/chat/bootstrap' && method === 'GET') {
@@ -519,12 +602,16 @@ function logReady() {
 function wireShutdown(server) {
   const shutdown = () => {
     bridge.stop();
+    terminals.closeAll();
     server.close(() => process.exit(0));
     setTimeout(() => process.exit(0), 1_500).unref();
   };
   process.once('SIGINT', shutdown);
   process.once('SIGTERM', shutdown);
-  process.once('exit', () => bridge.stop());
+  process.once('exit', () => {
+    bridge.stop();
+    terminals.closeAll();
+  });
 }
 
 main().catch((error) => {

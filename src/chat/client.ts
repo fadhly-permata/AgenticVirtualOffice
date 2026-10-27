@@ -11,6 +11,8 @@ import type {
   SearchResult,
   SessionMessages,
   SessionSummary,
+  ShellInfo,
+  TerminalSession,
   TreeResult,
   WorkspaceState,
 } from './types';
@@ -127,4 +129,21 @@ export const chatApi = {
     }),
   deleteFile: (path: string) =>
     request<{ path: string }>('/api/chat/files/delete', { method: 'POST', body: JSON.stringify({ path }) }),
+  terminalShells: () => request<{ shells: ShellInfo[] }>('/api/chat/terminal/shells', {}, 20_000),
+  createTerminal: (shell: string | null) =>
+    request<TerminalSession>('/api/chat/terminal', { method: 'POST', body: JSON.stringify({ shell }) }, 20_000),
+  terminalInput: (id: string, data: string) =>
+    request<{ ok: boolean; alive: boolean }>('/api/chat/terminal/input', {
+      method: 'POST',
+      body: JSON.stringify({ id, data }),
+    }),
+  closeTerminal: (id: string) =>
+    request<{ id: string; closed: boolean }>('/api/chat/terminal/close', {
+      method: 'POST',
+      body: JSON.stringify({ id }),
+    }),
 };
+
+export function terminalEventsUrl(id: string): string {
+  return `/api/chat/terminal/events?id=${encodeURIComponent(id)}`;
+}

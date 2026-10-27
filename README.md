@@ -21,7 +21,7 @@ npm install
 npm run dev      # bridge + Vite di http://127.0.0.1:5199
 npm run build    # typecheck + production build ke dist/
 npm start        # menyajikan dist/ + API di http://127.0.0.1:4180
-npm test         # 102 test: layout, navigasi, autopilot, siklus waktu, agen, layar, chat, presence, server, file workspace
+npm test         # 112 test: layout, navigasi, autopilot, siklus waktu, agen, layar, chat, presence, server, file workspace, terminal
 ```
 
 `npm run dev` menjalankan server Node lokal (bukan `vite` langsung). Server yang sama melayani API, proxy event OpenCode, dan Vite dev middleware. Port dev sengaja jauh dari 5173 supaya Vite yang lupa dimatikan tidak bisa menyamar jadi bridge ini (gejalanya: `/api/*` dijawab HTML). Untuk port lain:
@@ -60,11 +60,13 @@ server/
   opencode.mjs      proses `opencode serve`, katalog model/agent/sesi, event stream
   workspace.mjs     validasi folder, browse direktori, simpan workspace + recents
   files.mjs         pohon file, baca/tulis/hapus, pencarian — terkunci di dalam workspace
+  terminal.mjs      shell lewat child_process + pipe (tanpa PTY), max 6 sesi, SSE per terminal
 src/
   chat/
     chat.ts         controller jendela chat, streaming SSE, sesi, permission, composer
     client.ts       wrapper fetch ke /api/chat
     files.ts        halaman File List: pohon, pratinjau, CRUD, pencarian
+    terminal.ts     halaman Terminal: tab ganda xterm.js, mode echo per shell, SSE
     state.ts        reducer event OpenCode + helper format
     folder.ts       modal pemilih folder workspace
     types.ts        tipe payload chat
@@ -119,9 +121,11 @@ Klik pill **OpenCode** di kanan bawah untuk membuka chat. Kalau belum ada worksp
 - **Diagram gagal** — nilai persen ala model (`"Backend" : 40%` di diagram pie) dibetulkan otomatis sebelum digambar; kalau masih gagal parse, kartunya menampilkan pesan ringkas (tanpa header `Syntax error in text / mermaid version`) plus tombol salin kode dan panel **Lihat kode** berisi sumber aslinya. Node sementara mermaid (`#d<id>`) selalu dibersihkan — termasuk saat parse gagal — karena gambar error bawaan mermaid tertinggal di `document.body` dan tampil sebagai teks mentah kalau tidak.
 - **Stop** — tombol kirim berikon panah otomatis berganti menjadi kotak stop (merah) selagi sesi berjalan, lalu kembali jadi panah saat OpenCode selesai; satu tombol ikon tanpa teks.
 - **Perbesar** — jendela chat bisa diperbesar melebar penuh satu layar; klik ikon restore (atau seret jendela) untuk mengembalikan ukuran mengambang.
-- **Tab vertikal** — rail ikon di kiri jendela membagi chat jadi empat halaman: **Agentic** (halaman chat), **File List**, **Source Control**, **Terminal**. Halaman terakhir yang dibuka disimpan di browser dan berpindah dengan `↑`/`↓` saat rail fokus. Source Control & Terminal baru placeholder: halamannya sudah ada, isinya tahap berikutnya.
+- **Tab vertikal** — rail ikon di kiri jendela membagi chat jadi empat halaman: **Agentic** (halaman chat), **File List**, **Source Control**, **Terminal**. Halaman terakhir yang dibuka disimpan di browser dan berpindah dengan `↑`/`↓` saat rail fokus. Source Control masih placeholder: halamannya sudah ada, isinya tahap berikutnya.
 - **File List** — pohon isi workspace aktif: folder dibuka per kebutuhan (isinya baru diambil saat diklik), file diklik untuk pratinjau isinya di panel bawah, dan baris menampilkan ukuran. Aksi per baris (ganti nama, hapus) muncul saat hover; hapus meminta konfirmasi di dalam panel, bukan dialog browser. Ada tombol buat file/folder baru, muat ulang, dan pencarian nama atau isi file (dengan nomor baris + cuplikan, lalu lompat ke baris itu saat file dibuka). Semua path dikirim relatif terhadap akar workspace dan bridge menolak `..`, path absolut, drive letter, serta karakter pemisah — lihat `server/files.mjs`.
 - **Sisip ke pesan** — tombol `＋` di header pratinjau file menulis `@path/file.ts` ke composer lalu kembali ke tab Agentic, jadi file yang sedang dilihat bisa langsung ditunjuk ke OpenCode.
+- **Terminal** — multi-tab shell (cmd, PowerShell, PowerShell 7 — yang ada di mesin) yang berjalan di folder workspace aktif. `＋` membuka tab baru dengan shell dari dropdown, `×` menutupnya; maksimal 6 shell hidup bersamaan, dan shell ikut mati saat dev server berhenti. xterm.js baru dimuat ketika tab ini dibuka, jadi halaman lain tidak ikut menanggung bundlenya.
+- **Catatan terminal** — jalurnya `child_process` + pipe, bukan PTY (tanpa dependency native). Akibatnya: tidak ada Ctrl+C, tidak ada aplikasi layar penuh (`vim`, `htop`), dan output program yang di-buffer bisa baru muncul saat process selesai. cmd memakai mode baris milik klien (backspace dan `↑`/`↓` riwayat berfungsi); PowerShell mengulang baris sendiri sehingga tombol diteruskan apa adanya — di sanalah bedanya `echo: local` dan `echo: shell`.
 - **Kantor** — jumlah karyawan mengikuti `roster` agent OpenCode di workspace. Setiap ~3 detik (dan setiap ada event sesi) server ditanya sesi mana yang busy, lalu `presence` menentukan kursinya: sesi biasa → meja kerja, sesi yang punya anak busy → ruang meeting bersama anak yang didelegasi. Di atas kepalanya muncul bubble berisi potongan aktivitas aslinya (`Mikir: …`, `Nulis: …`, `Membaca file: README.md`) yang diambil dari `/api/chat/activity`; kalau belum ada yang bisa dikutip, bubble berubah jadi pil titik-titik. Chip header menampilkan fase run sesi yang sedang dibuka beserta hitungan waktu. Saat sesi selesai, karyawan dilepas kembali ke autopilot.
 
 Workspace dan recents disimpan di `.virtoffice/workspace.json` (gitignored). Bridge menjalankan `opencode serve --hostname 127.0.0.1 --port 0` dan mengarahkan setiap request ke folder aktif lewat query `directory`, sehingga config, `AGENTS.md`, dan tool OpenCode mengikuti proyek yang dibuka.
@@ -139,6 +143,12 @@ Workspace dan recents disimpan di `.virtoffice/workspace.json` (gitignored). Bri
 | POST | `/api/chat/files` | buat file/folder (`path`, `kind`) |
 | POST | `/api/chat/files/rename` | ganti nama / pindah (`from`, `to`) |
 | POST | `/api/chat/files/delete` | hapus file atau folder rekursif |
+| GET | `/api/chat/terminal/shells` | shell yang tersedia di mesin ini + mode echo-nya |
+| GET | `/api/chat/terminal` | daftar sesi terminal yang masih dipegang server |
+| POST | `/api/chat/terminal` | buka shell (`shell`, `cwd` — dipaksa di dalam workspace) |
+| GET | `/api/chat/terminal/events?id=` | SSE output satu terminal; stream tertutup saat shell selesai |
+| POST | `/api/chat/terminal/input` | kirim keystroke/baris ke stdin shell (`id`, `data`) |
+| POST | `/api/chat/terminal/close` | tutup terminal dan bunuh proses shell beserta anaknya |
 | GET | `/api/chat/bootstrap` | workspace, model, agent (pemilih chat), `roster` (semua agent untuk lantai kantor), sesi |
 | GET | `/api/chat/status` | peta `sessionID → status` untuk presence kantor |
 | GET | `/api/chat/activity?ids=a,b` | ekor pesan terakhir tiap sesi (fase, alat, potongan teks) untuk bubble kantor |

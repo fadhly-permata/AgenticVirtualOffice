@@ -237,3 +237,31 @@ export interface SearchResult {
   scanned: number;
   stopped: 'limit' | 'done';
 }
+
+/** 'local': klien yang menampilkan ketikan; 'shell': shell yang mengulang sendiri. */
+export type EchoMode = 'local' | 'shell';
+
+export interface ShellInfo {
+  id: string;
+  label: string;
+  echo: EchoMode;
+}
+
+export interface TerminalSession {
+  id: string;
+  shell: string;
+  label: string;
+  echo: EchoMode;
+  cwd: string;
+  pid: number | null;
+  alive: boolean;
+  exitCode: number | null;
+}
+
+export interface TerminalEvent {
+  type: 'output' | 'exit';
+  id: string;
+  data?: string;
+  error?: boolean;
+  code?: number | null;
+}
