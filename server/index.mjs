@@ -395,7 +395,7 @@ async function handleApi(req, res, url) {
 
   if (pathname === '/api/chat/terminal/shells' && method === 'GET') {
     const shells = await terminals.listShells();
-    return sendJson(res, 200, { shells: shells.map(({ id, label, echo }) => ({ id, label, echo })) });
+    return sendJson(res, 200, { shells: shells.map(({ id, label }) => ({ id, label })) });
   }
 
   if (pathname === '/api/chat/terminal' && method === 'GET') {
@@ -420,6 +420,15 @@ async function handleApi(req, res, url) {
   if (pathname === '/api/chat/terminal/input' && method === 'POST') {
     const body = await readJson(req);
     return sendJson(res, 200, terminals.write(terminalId(String(body.id ?? '')), body.data));
+  }
+
+  if (pathname === '/api/chat/terminal/resize' && method === 'POST') {
+    const body = await readJson(req);
+    return sendJson(
+      res,
+      200,
+      terminals.resize(terminalId(String(body.id ?? '')), Number(body.cols), Number(body.rows))
+    );
   }
 
   if (pathname === '/api/chat/terminal/close' && method === 'POST') {

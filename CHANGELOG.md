@@ -4,6 +4,13 @@ Semua perubahan penting pada VirtOffice dicatat di sini. Format mengikuti
 [Keep a Changelog](https://keepachangelog.com/id/1.1.0/) dan versi mengikuti
 [Semantic Versioning](https://semver.org/lang/id/).
 
+## [0.10.0] - 2026-10-28
+
+### Diubah
+
+- Terminal memakai PTY sungguhan lewat node-pty (ConPTY di Windows), menggantikan `child_process` + pipe. Echo, backspace, riwayat panah, Ctrl+C sebagai sinyal, dan aplikasi layar penuh seperti `vim` sekarang diurus shell; mode baris buatan klien dan field `echo` per shell dihapus.
+- Ukuran grid xterm dikirim ke PTY lewat `POST /api/chat/terminal/resize` setiap kali terminal di-fit; ukuran di luar 2–500 × 1–300 ditolak 400.
+
 ## [0.9.0] - 2026-10-28
 
 ### Ditambahkan

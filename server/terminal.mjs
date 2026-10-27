@@ -1,6 +1,7 @@
-import { spawn, execFile } from 'node:child_process';
+import { execFile, spawn } from 'node:child_process';
 import fs from 'node:fs/promises';
 import path from 'node:path';
+import nodePty from 'node-pty';
 import { HttpError } from './http.mjs';
 
 const MAX_SESSIONS = 6;
@@ -11,27 +12,21 @@ const MAX_INPUT_CHARS = 32_000;
 const IDLE_CLOSE_MS = 90_000;
 const EXIT_TTL_MS = 60_000;
 
-/**
- * 'local': shell tidak mengulang baris yang dikirim, jadi klien yang menampilkan
- *          ketikan dan menangani backspace.
- * 'shell': shell mengulang sendiri (PowerShell), jadi klien meneruskan tombol apa adanya.
- */
 const CANDIDATES = {
   win32: [
-    { id: 'cmd', label: 'Command Prompt', file: (env) => env.COMSPEC || 'cmd.exe', args: ['/Q'], echo: 'local' },
+    { id: 'cmd', label: 'Command Prompt', file: (env) => env.COMSPEC || 'cmd.exe', args: [] },
     {
       id: 'powershell',
       label: 'PowerShell',
       file: (env) => path.join(env.SystemRoot || 'C:\\Windows', 'System32', 'WindowsPowerShell', 'v1.0', 'powershell.exe'),
       args: ['-NoLogo'],
-      echo: 'shell',
     },
-    { id: 'pwsh', label: 'PowerShell 7', file: () => 'pwsh.exe', args: ['-NoLogo'], echo: 'shell' },
+    { id: 'pwsh', label: 'PowerShell 7', file: () => 'pwsh.exe', args: ['-NoLogo'] },
   ],
   posix: [
-    { id: 'shell', label: (env) => path.basename(env.SHELL || 'sh'), file: (env) => env.SHELL || '/bin/sh', args: ['-i'], echo: 'shell' },
-    { id: 'bash', label: 'Bash', file: () => '/bin/bash', args: ['-i'], echo: 'shell' },
-    { id: 'zsh', label: 'Zsh', file: () => '/bin/zsh', args: ['-i'], echo: 'shell' },
+    { id: 'shell', label: (env) => path.basename(env.SHELL || 'sh'), file: (env) => env.SHELL || '/bin/sh', args: ['-i'] },
+    { id: 'bash', label: 'Bash', file: () => '/bin/bash', args: ['-i'] },
+    { id: 'zsh', label: 'Zsh', file: () => '/bin/zsh', args: ['-i'] },
   ],
 };
 
@@ -71,7 +66,6 @@ export async function detectShells(env = process.env, platform = process.platfor
       label: typeof spec.label === 'function' ? spec.label(env) : spec.label,
       file,
       args: spec.args,
-      echo: spec.echo,
     });
   }
   return shells;
@@ -150,8 +144,8 @@ function registryEnv(base, machine, user) {
 }
 
 function killTree(child, platform) {
-  if (child.exitCode !== null || child.signalCode) return;
-  // taskkill /T ikut mematikan anak-anak shell; child.kill() saja meninggalkan yatim.
+  if (!child) return;
+  // taskkill /T ikut mematikan anak-anak shell; pty.kill() saja meninggalkan yatim.
   if (platform === 'win32' && child.pid) {
     try {
       spawn('taskkill', ['/pid', String(child.pid), '/T', '/F'], { stdio: 'ignore', windowsHide: true }).on('error', () => undefined);
@@ -160,7 +154,7 @@ function killTree(child, platform) {
     }
   }
   try {
-    child.kill(platform === 'win32' ? undefined : 'SIGTERM');
+    child.kill();
   } catch {
     // Proses sudah mati di antara pengecekan dan kill.
   }
@@ -168,7 +162,7 @@ function killTree(child, platform) {
 
 export class TerminalHub {
   constructor({
-    spawner = spawn,
+    spawner = nodePty.spawn,
     env = process.env,
     platform = process.platform,
     shells = null,
@@ -244,10 +238,11 @@ export class TerminalHub {
     let child;
     try {
       child = this.spawner(target.file, target.args, {
+        name: 'xterm-256color',
+        cols: 80,
+        rows: 24,
         cwd: directory,
         env: childEnv,
-        stdio: ['pipe', 'pipe', 'pipe'],
-        windowsHide: true,
       });
     } catch (error) {
       throw new HttpError(500, `Gagal menjalankan ${target.label}: ${error.message}`);
@@ -257,7 +252,6 @@ export class TerminalHub {
       id,
       shell: target.id,
       label: target.label,
-      echo: target.echo,
       cwd: directory,
       pathSource: source,
       child,
@@ -271,21 +265,12 @@ export class TerminalHub {
     };
     this.sessions.set(id, session);
 
-    this.tap(id, child.stdout, false);
-    this.tap(id, child.stderr, true);
-    child.on('error', (error) => this.emit(id, { type: 'output', id, data: `Shell error: ${error.message}\n`, error: true }));
-    child.on('close', (code, signal) => this.finish(session, code, signal));
+    child.onData((data) => {
+      if (data) this.emit(id, { type: 'output', id, data });
+    });
+    child.onExit(({ exitCode, signal }) => this.finish(session, exitCode, signal));
 
     return publicSession(session);
-  }
-
-  tap(id, stream, isError) {
-    if (!stream) return;
-    const decoder = new TextDecoder('utf-8');
-    stream.on('data', (chunk) => {
-      const data = decoder.decode(chunk, { stream: true });
-      if (data) this.emit(id, { type: 'output', id, data, error: isError });
-    });
   }
 
   emit(id, event) {
@@ -334,8 +319,18 @@ export class TerminalHub {
     const session = this.get(id);
     if (session.exited) throw new HttpError(409, 'Terminal sudah selesai.');
     if (typeof data !== 'string' || !data) return { ok: true, alive: true };
-    session.child.stdin?.write(data.slice(0, MAX_INPUT_CHARS));
+    session.child.write(data.slice(0, MAX_INPUT_CHARS));
     return { ok: true, alive: !session.exited };
+  }
+
+  resize(id, cols, rows) {
+    const session = this.get(id);
+    if (session.exited) throw new HttpError(409, 'Terminal sudah selesai.');
+    if (!Number.isInteger(cols) || !Number.isInteger(rows) || cols < 2 || rows < 1 || cols > 500 || rows > 300) {
+      throw new HttpError(400, 'Ukuran terminal tidak valid.');
+    }
+    session.child.resize(cols, rows);
+    return { ok: true };
   }
 
   async close(id) {
@@ -354,11 +349,6 @@ export class TerminalHub {
     if (session.exitTimer) clearTimeout(session.exitTimer);
     for (const listener of [...session.listeners]) listener({ type: 'exit', id: session.id, code: session.exitCode ?? 0 });
     session.listeners.clear();
-    try {
-      session.child.stdin?.end();
-    } catch {
-      // Pipe sudah tertutup.
-    }
     killTree(session.child, this.platform);
   }
 
@@ -378,7 +368,6 @@ function publicSession(session) {
     id: session.id,
     shell: session.shell,
     label: session.label,
-    echo: session.echo,
     cwd: session.cwd,
     nativePath: session.pathSource === 'registry',
     pid: session.child.pid ?? null,

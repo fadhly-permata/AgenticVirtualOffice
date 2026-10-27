@@ -4,8 +4,6 @@ import { ICON, el, iconButton } from './dom';
 import type { ShellInfo, TerminalEvent, TerminalSession, WorkspaceInfo } from './types';
 
 const MONO = "ui-monospace, 'SF Mono', 'Cascadia Mono', monospace";
-const HISTORY_MAX = 50;
-const CONTROL_CHARS = /[\u0000-\u0008\u000b-\u001f\u007f]/g;
 
 export interface TerminalPanel {
   setWorkspace(next: WorkspaceInfo | null): void;
@@ -47,9 +45,6 @@ interface View {
   term: Xterm | null;
   fit: Fit | null;
   stream: EventSource | null;
-  line: string;
-  history: string[];
-  historyAt: number;
   queue: Promise<void>;
   dead: boolean;
   note: string;
@@ -242,9 +237,6 @@ export function mountTerminal(container: HTMLElement): TerminalPanel {
       term: null,
       fit: null,
       stream: null,
-      line: '',
-      history: [],
-      historyAt: 0,
       queue: Promise.resolve(),
       dead: false,
       note: '',
@@ -309,8 +301,13 @@ export function mountTerminal(container: HTMLElement): TerminalPanel {
     });
     const fit = new bundle.FitAddon();
     term.loadAddon(fit);
+    const pushSize = () => {
+      void chatApi.terminalResize(view.session.id, term.cols, term.rows).catch(() => undefined);
+    };
+    term.onResize(pushSize);
     term.open(view.stage);
     fit.fit();
+    pushSize();
     term.onData((data) => onKeys(view, data));
 
     view.term = term;
@@ -349,58 +346,9 @@ export function mountTerminal(container: HTMLElement): TerminalPanel {
   function onKeys(view: View, raw: string): void {
     if (view.dead || !view.term) return;
 
+    // PTY mengurus echo dan line editing; Ctrl+C hanya diambil saat ada teks yang diblok.
     if (raw === '\u0003' && view.term.hasSelection()) return void copySelection();
-
-    // PowerShell dan bash mengulang sendiri, jadi tombol diteruskan apa adanya.
-    if (view.session.echo === 'shell') {
-      send(view, raw.replace(/\r\n/g, '\n').replace(/\r/g, '\n'));
-      return;
-    }
-
-    if (raw === '\r' || raw === '\n') return submit(view);
-    if (raw === '\u007f' || raw === '\u0008') return backspace(view);
-    if (raw === '\u0003') {
-      view.term.write('^C\r\n');
-      view.line = '';
-      return send(view, '\n');
-    }
-    if (raw === '\u001b[A' || raw === '\u001b[B') return recall(view, raw === '\u001b[A' ? -1 : 1);
-    if (raw.startsWith('\u001b')) return;
-
-    // xterm meratakan newline hasil paste menjadi CR tunggal, jadi normalisasi di sini.
-    const chunks = raw.replace(/\r\n/g, '\n').replace(/\r/g, '\n').split('\n');
-    chunks.forEach((chunk, index) => {
-      if (index > 0) submit(view);
-      const text = chunk.replace(CONTROL_CHARS, '');
-      if (!text) return;
-      view.line += text;
-      view.term?.write(text);
-    });
-  }
-
-  function submit(view: View): void {
-    const line = view.line;
-    view.line = '';
-    view.term?.write('\r\n');
-    if (line.trim()) {
-      view.history.push(line);
-      if (view.history.length > HISTORY_MAX) view.history.shift();
-    }
-    view.historyAt = view.history.length;
-    send(view, `${line}\n`);
-  }
-
-  function backspace(view: View): void {
-    if (!view.line) return;
-    view.line = view.line.slice(0, -1);
-    view.term?.write('\b \b');
-  }
-
-  function recall(view: View, step: number): void {
-    if (!view.history.length) return;
-    view.historyAt = Math.min(Math.max(view.historyAt + step, 0), view.history.length);
-    view.line = view.history[view.historyAt] ?? '';
-    view.term?.write(`\r\u001b[K${view.line}`);
+    send(view, raw);
   }
 
   /** Jalur tanpa izin: textarea terkubur + execCommand masih diterima banyak webview. */

@@ -15,10 +15,10 @@ function hub(options) {
 // Process anak mengunci folder cwd-nya di Windows, jadi pakai folder sementara bersama.
 const workDir = os.tmpdir();
 
-/** Shell buatan: node menjalankan skrip kecil, jadi tidak butuh cmd maupun PTY. */
+/** Shell buatan: node menjalankan skrip kecil, jadi tidak butuh cmd. */
 function nodeHub(script, extra = {}) {
   return hub({
-    shells: [{ id: 'node', label: 'Node', file: process.execPath, args: ['-e', script], echo: 'local', ...extra }],
+    shells: [{ id: 'node', label: 'Node', file: process.execPath, args: ['-e', script], ...extra }],
   });
 }
 
@@ -56,17 +56,14 @@ describe('shell detection', () => {
     expect(Array.isArray(shells)).toBe(true);
     expect(shells.length).toBeGreaterThan(0);
     for (const shell of shells) {
-      expect(['local', 'shell']).toContain(shell.echo);
       expect(shell.label).toBeTruthy();
       await expect(fs.stat(shell.file)).resolves.toBeTruthy();
     }
   });
 
   it('memakai daftar shell yang disuntik tanpa menyentuh PATH', async () => {
-    const instance = hub({ shells: [{ id: 'x', label: 'X', file: 'y', args: [], echo: 'shell' }] });
-    await expect(instance.listShells()).resolves.toEqual([
-      { id: 'x', label: 'X', file: 'y', args: [], echo: 'shell' },
-    ]);
+    const instance = hub({ shells: [{ id: 'x', label: 'X', file: 'y', args: [] }] });
+    await expect(instance.listShells()).resolves.toEqual([{ id: 'x', label: 'X', file: 'y', args: [] }]);
   });
 });
 
@@ -76,7 +73,7 @@ describe('terminal sessions', () => {
     const instance = nodeHub('console.log("hai dari shell");');
     const session = await instance.start({ shell: 'node', cwd: dir });
 
-    expect(session).toMatchObject({ id: 't1', shell: 'node', label: 'Node', echo: 'local', alive: true });
+    expect(session).toMatchObject({ id: 't1', shell: 'node', label: 'Node', alive: true });
     expect(session.pid).toBeTypeOf('number');
 
     const sink = listen(instance, session.id);
@@ -99,23 +96,33 @@ describe('terminal sessions', () => {
     const session = await instance.start({ shell: 'node', cwd: dir });
     const sink = listen(instance, session.id);
 
-    expect(instance.write(session.id, 'halo\n')).toEqual({ ok: true, alive: true });
+    expect(instance.write(session.id, 'halo\r')).toEqual({ ok: true, alive: true });
     await waitFor(() => sink.text().includes('echo:halo'));
     sink.unsubscribe();
     instance.close(session.id);
   });
 
-  it('memisahkan stderr dan menandai keluar dengan kode bukan nol', async () => {
+  it('menggabungkan stderr ke aliran PTY dan menandai keluar dengan kode bukan nol', async () => {
     const dir = workDir;
     const instance = nodeHub('console.error("gagal"); process.exit(3);');
     const session = await instance.start({ shell: 'node', cwd: dir });
     const sink = listen(instance, session.id);
 
     await waitFor(sink.exited);
-    expect(sink.events.filter((event) => event.error).map((event) => event.data).join('')).toContain('gagal');
+    expect(sink.text()).toContain('gagal');
     expect(sink.events.at(-1).code).toBe(3);
     expect(instance.list()[0]).toMatchObject({ id: 't1', alive: false, exitCode: 3 });
     sink.unsubscribe();
+  });
+
+  it('meneruskan ukuran xterm ke PTY dan menolak ukuran tidak sah', async () => {
+    const dir = workDir;
+    const instance = nodeHub('setInterval(() => {}, 1000)');
+    const session = await instance.start({ shell: 'node', cwd: dir });
+
+    expect(instance.resize(session.id, 120, 30)).toEqual({ ok: true });
+    expect(await statusOf(Promise.resolve().then(() => instance.resize(session.id, 0, 30)))).toBe(400);
+    instance.close(session.id);
   });
 
   it('menolak tulisan setelah shell selesai dan menutup sesi secara permanen', async () => {
@@ -139,9 +146,13 @@ describe('terminal sessions', () => {
     const instance = nodeHub('setInterval(() => {}, 1000)');
     const session = await instance.start({ shell: 'node', cwd: dir });
     const child = instance.get(session.id).child;
+    let killed = false;
+    child.onExit(() => {
+      killed = true;
+    });
 
     await instance.close(session.id);
-    await waitFor(() => child.exitCode !== null || child.signalCode !== null);
+    await waitFor(() => killed);
     expect(instance.list()).toEqual([]);
   });
 
@@ -191,7 +202,7 @@ describe('environment shell', () => {
     '',
   ].join('\r\n');
 
-  /** Child palsu: yang penting bentuknya seperti ChildProcess, tidak ada proses nyata. */
+  /** Child palsu: yang penting bentuknya seperti IPty, tidak ada proses nyata. */
   function spawnHub(options) {
     const captures = [];
     const instance = hub({
@@ -201,17 +212,15 @@ describe('environment shell', () => {
         USERPROFILE: 'C:\\Users\\test',
         SystemRoot: 'C:\\Windows',
       },
-      shells: [{ id: 'fake', label: 'Fake Shell', file: 'fake.exe', args: [], echo: 'local' }],
+      shells: [{ id: 'fake', label: 'Fake Shell', file: 'fake.exe', args: [] }],
       spawner: (file, args, spawnOptions) => {
         captures.push(spawnOptions.env);
         return {
           pid: 4242,
-          exitCode: 0,
-          signalCode: null,
-          stdout: { on() {} },
-          stderr: { on() {} },
-          stdin: { write() {}, end() {} },
-          on() {},
+          onData() {},
+          onExit() {},
+          write() {},
+          resize() {},
           kill() {},
         };
       },

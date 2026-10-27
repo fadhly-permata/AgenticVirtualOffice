@@ -238,20 +238,15 @@ export interface SearchResult {
   stopped: 'limit' | 'done';
 }
 
-/** 'local': klien yang menampilkan ketikan; 'shell': shell yang mengulang sendiri. */
-export type EchoMode = 'local' | 'shell';
-
 export interface ShellInfo {
   id: string;
   label: string;
-  echo: EchoMode;
 }
 
 export interface TerminalSession {
   id: string;
   shell: string;
   label: string;
-  echo: EchoMode;
   cwd: string;
   nativePath: boolean;
   pid: number | null;

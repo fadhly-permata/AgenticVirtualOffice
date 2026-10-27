@@ -169,6 +169,11 @@ export const chatApi = {
       method: 'POST',
       body: JSON.stringify({ id, data }),
     }),
+  terminalResize: (id: string, cols: number, rows: number) =>
+    request<{ ok: boolean }>('/api/chat/terminal/resize', {
+      method: 'POST',
+      body: JSON.stringify({ id, cols, rows }),
+    }),
   closeTerminal: (id: string) =>
     request<{ id: string; closed: boolean }>('/api/chat/terminal/close', {
       method: 'POST',
