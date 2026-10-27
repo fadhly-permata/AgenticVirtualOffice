@@ -83,7 +83,6 @@ const chatClose = byId<HTMLButtonElement>('chat-close');
 const sessionSelect = byId<HTMLSelectElement>('chat-session');
 const modelSelect = byId<HTMLSelectElement>('chat-model');
 const agentSelect = byId<HTMLSelectElement>('chat-agent');
-const delayInput = byId<HTMLInputElement>('chat-delay');
 const noticeEl = byId<HTMLElement>('chat-notice');
 const messagesEl = byId<HTMLElement>('chat-messages');
 const promptsEl = byId<HTMLElement>('chat-prompts');
@@ -276,13 +275,18 @@ export function installChat(officeApi: VirtOfficeApi): void {
       form.requestSubmit();
     }
   });
-  delayInput.value = String(ruleDelay / 1000);
-  delayInput.addEventListener('change', () => {
-    ruleDelay = clampRuleDelay(Number(delayInput.value) * 1000);
-    delayInput.value = String(ruleDelay / 1000);
-    localStorage.setItem(STORAGE_DELAY, String(ruleDelay));
-    void applyRuleDelay();
-  });
+  // Jeda animasi agen kini diatur di halaman Settings; keadaan tetap di sini.
+  const settingsPage = tabPages.get('settings');
+  if (settingsPage) {
+    settingsPanel = mountSettings(settingsPage, {
+      delayMs: () => ruleDelay,
+      setDelayMs: (ms) => {
+        ruleDelay = clampRuleDelay(ms);
+        localStorage.setItem(STORAGE_DELAY, String(ruleDelay));
+        void applyRuleDelay();
+      },
+    });
+  }
   // Satu tombol untuk dua keadaan: kirim saat idle, hentikan saat OpenCode bekerja.
   sendButton.addEventListener('click', () => {
     if (isCurrentRunning()) void stopResponse();
@@ -295,8 +299,6 @@ export function installChat(officeApi: VirtOfficeApi): void {
   if (scmPage) scmPanel = mountScm(scmPage, { onReference: referenceToComposer, onOpenFile: openInViewer });
   const terminalPage = tabPages.get('terminal');
   if (terminalPage) terminalPanel = mountTerminal(terminalPage);
-  const settingsPage = tabPages.get('settings');
-  if (settingsPage) settingsPanel = mountSettings(settingsPage);
 
   for (const [tab, button] of tabButtons) button.addEventListener('click', () => setTab(tab));
 
@@ -433,7 +435,7 @@ function setTab(next: ChatTab): void {
 }
 
 function updateLauncher(): void {
-  launcherEyebrow.textContent = workspace ? t('chat.launcherEyebrow') : 'OpenCode';
+  launcherEyebrow.textContent = t('chat.launcherEyebrow');
   launcherLabel.textContent = workspace?.name ?? t('chat.openWorkspace');
   launcher.title = workspace ? t('chat.launcherTitle', { path: workspace.path }) : t('chat.launcherTitleIdle');
   launcherStatus.dataset.state = bootLoading

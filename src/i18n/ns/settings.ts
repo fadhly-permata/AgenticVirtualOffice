@@ -40,6 +40,18 @@ export const settings: Catalog = {
     'Berisiko: halaman workspace bisa menjalankan kode saat pratinjau dibuka.',
     'Risky: workspace pages can run code when previewed.',
   ],
+  agent: ['Agen', 'Agent'],
+  delay: ['Jeda animasi agen', 'Agent animation pause'],
+  delayHint: [
+    'Detik jeda sebelum dan sesudah agen mengerjakan tugas yang didelegasikan.',
+    'Seconds of pause before and after an agent handles delegated work.',
+  ],
+  delayTitle: [
+    'Jeda sebelum dan sesudah pekerjaan yang didelegasikan',
+    'Pause before and after delegated work',
+  ],
+  delayAria: ['Jeda delegasi dalam detik', 'Delegation pause in seconds'],
+  delaySaved: ['Jeda agen diperbarui.', 'Agent pause updated.'],
   reset: ['Kembalikan bawaan', 'Reset to defaults'],
   resetHint: [
     'Bahasa, tema, dan opsi pratinjau kembali ke awal. Posisi jendela chat tidak diubah.',

@@ -9,6 +9,12 @@ export interface SettingsPanel {
   refresh(): void;
 }
 
+/** Jeda delegasi dimiliki chat.ts; halaman ini hanya membacanya dan melapor perubahan. */
+export interface SettingsHooks {
+  delayMs(): number;
+  setDelayMs(ms: number): void;
+}
+
 function toggle(key: keyof Prefs, value: boolean): HTMLButtonElement {
   const button = el('button', 'settings__switch');
   button.type = 'button';
@@ -70,7 +76,7 @@ function themeGrid(active: string): HTMLElement {
   return grid;
 }
 
-export function mountSettings(container: HTMLElement): SettingsPanel {
+export function mountSettings(container: HTMLElement, hooks: SettingsHooks): SettingsPanel {
   const root = el('div', 'settings');
   const notice = el('p', 'settings__notice');
   notice.hidden = true;
@@ -154,6 +160,23 @@ export function mountSettings(container: HTMLElement): SettingsPanel {
       setLocale('id');
       flash(t('settings.resetDone'));
     });
+    const delayInput = el('input', 'field__number');
+    delayInput.type = 'number';
+    delayInput.min = '0';
+    delayInput.max = '10';
+    delayInput.step = '0.5';
+    delayInput.inputMode = 'decimal';
+    delayInput.value = String(hooks.delayMs() / 1000);
+    delayInput.title = t('settings.delayTitle');
+    delayInput.setAttribute('aria-label', t('settings.delayAria'));
+    delayInput.addEventListener('change', () => {
+      hooks.setDelayMs(Number(delayInput.value) * 1000);
+      delayInput.value = String(hooks.delayMs() / 1000);
+      flash(t('settings.delaySaved'));
+    });
+
+    root.append(group(t('settings.agent'), [row(t('settings.delay'), t('settings.delayHint'), delayInput)]));
+
     const other = group(t('settings.other'), [
       row(t('settings.reset'), t('settings.resetHint'), resetButton),
       el('p', 'settings__note', t('settings.comingSoon')),

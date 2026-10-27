@@ -114,8 +114,8 @@ body.is-ready #scene {
 }
 
 .panel--clock {
-  top: 22px;
-  right: 24px;
+  top: 90px;
+  left: 24px;
   min-width: 176px;
 }
 
@@ -400,7 +400,7 @@ body.chat-open .launcher,
 
 .chat {
   position: absolute;
-  top: 126px;
+  top: 24px;
   right: 24px;
   bottom: 24px;
   z-index: 20;
@@ -3614,8 +3614,8 @@ body.chat-open .launcher,
   }
 
   .panel--clock {
-    top: 14px;
-    right: 14px;
+    top: 78px;
+    left: 14px;
   }
 
   .panel--legend {

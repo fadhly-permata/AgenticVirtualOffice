@@ -14,7 +14,7 @@
         <span class="brand__mark" aria-hidden="true"></span>
         <div>
           <p class="brand__title" data-i18n="shell.brandTitle">VIRTUAL OFFICE</p>
-          <p class="brand__sub" data-i18n="shell.brandSub">OpenCode Studio · 2.5D</p>
+          <p class="brand__sub" id="brand-version">Versi 0.2.0</p>
         </div>
       </header>
 
@@ -35,8 +35,8 @@
       <button id="chat-launcher" class="launcher" type="button" aria-haspopup="dialog">
         <span class="launcher__mark" aria-hidden="true">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">
-            <path d="M21 11.5a8.4 8.4 0 0 1-8.5 8.3H7.4L3 23v-6.1A8.4 8.4 0 0 1 12.5 3 8.4 8.4 0 0 1 21 11.5Z" />
-            <path d="M8 10h9M8 14h5.5" />
+            <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
+            <path d="M8 9h8M8 13h5" />
           </svg>
         </span>
         <span class="launcher__text">
@@ -46,7 +46,7 @@
         <span class="launcher__dot" id="launcher-status" aria-hidden="true"></span>
       </button>
 
-      <section id="chat-window" class="chat" data-i18n-aria="shell.chatAria" aria-label="Chat OpenCode" hidden>
+      <section id="chat-window" class="chat" data-i18n-aria="shell.chatAria" aria-label="Virtual Command Room" hidden>
         <header
           class="chat__head"
           id="chat-head"
@@ -65,7 +65,7 @@
               </svg>
             </span>
             <div class="chat__titles">
-              <p class="chat__eyebrow" data-i18n="shell.chatWorkspace">OpenCode workspace</p>
+              <p class="chat__eyebrow" data-i18n="shell.chatWorkspace">Virtual Command Room</p>
               <p class="chat__folder" id="chat-folder">—</p>
             </div>
             <button
@@ -149,8 +149,8 @@
               aria-label="Agentic"
             >
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">
-                <path d="M21 11.5a8.4 8.4 0 0 1-8.5 8.3H7.4L3 23v-6.1A8.4 8.4 0 0 1 12.5 3 8.4 8.4 0 0 1 21 11.5Z" />
-                <path d="M8.5 11h7M8.5 14.5h4" />
+                <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
+                <path d="M8.5 9.5h7M8.5 13.5h4" />
               </svg>
             </button>
             <button
@@ -240,22 +240,6 @@
                 <div class="field field--agent">
                   <span data-i18n="shell.fieldAgent">Agent</span>
                   <select id="chat-agent" hidden></select>
-                </div>
-                <div class="field field--delay">
-                  <span data-i18n="shell.fieldDelay">Jeda (s)</span>
-                  <input
-                    id="chat-delay"
-                    class="field__number"
-                    type="number"
-                    min="0"
-                    max="10"
-                    step="0.5"
-                    inputmode="decimal"
-                    data-i18n-title="shell.delayTitle"
-                    data-i18n-aria="shell.delayAria"
-                    title="Jeda sebelum dan sesudah pekerjaan yang didelegasikan"
-                    aria-label="Jeda delegasi dalam detik"
-                  />
                 </div>
               </div>
 

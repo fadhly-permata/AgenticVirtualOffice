@@ -8,7 +8,7 @@ export const chat: Catalog = {
   placeholderNoWorkspace: ['Buka workspace untuk mulai…', 'Open a workspace to start…'],
 
   // Peluncur & judul jendela
-  launcherEyebrow: ['OpenCode chat', 'OpenCode chat'],
+  launcherEyebrow: ['Virtual Command Room', 'Virtual Command Room'],
   openWorkspace: ['Buka workspace', 'Open workspace'],
   launcherTitle: ['Chat OpenCode di {path}', 'OpenCode chat in {path}'],
   launcherTitleIdle: ['Pilih folder workspace untuk OpenCode', 'Pick a workspace folder for OpenCode'],

@@ -7,7 +7,7 @@ import type { Catalog } from '../types';
 export const shell: Catalog = {
   docTitle: ['VirtOffice — Kantor Isometrik', 'VirtOffice — Isometric Office'],
   brandTitle: ['VIRTUAL OFFICE', 'VIRTUAL OFFICE'],
-  brandSub: ['OpenCode Studio · 2.5D', 'OpenCode Studio · 2.5D'],
+  brandVersion: ['Versi {version}', 'Version {version}'],
 
   sceneAria: ['Diorama kantor isometrik 2.5D bergerak', 'Animated 2.5D isometric office diorama'],
 
@@ -19,13 +19,13 @@ export const shell: Catalog = {
   floorLive: ['LIVE', 'LIVE'],
   floorAutoPlay: ['AUTO-PLAY', 'AUTO-PLAY'],
 
-  chatAria: ['Chat OpenCode', 'OpenCode chat'],
+  chatAria: ['Virtual Command Room', 'Virtual Command Room'],
   chatHeadTitle: ['Seret untuk memindahkan jendela chat', 'Drag to move the chat window'],
   chatHeadAria: [
     'Batang judul chat. Seret, atau pakai tombol panah, untuk memindahkan jendela.',
     'Chat title bar. Drag, or use the arrow keys, to move the window.',
   ],
-  chatWorkspace: ['Ruang kerja OpenCode', 'OpenCode workspace'],
+  chatWorkspace: ['Virtual Command Room', 'Virtual Command Room'],
   changeWorkspace: ['Ganti workspace', 'Change workspace'],
   newChat: ['Chat baru', 'New chat'],
   closeChat: ['Tutup chat', 'Close chat'],
@@ -40,12 +40,6 @@ export const shell: Catalog = {
   fieldSession: ['Sesi', 'Session'],
   fieldModel: ['Model', 'Model'],
   fieldAgent: ['Agent', 'Agent'],
-  fieldDelay: ['Jeda (s)', 'Pause (s)'],
-  delayTitle: [
-    'Jeda sebelum dan sesudah pekerjaan yang didelegasikan',
-    'Pause before and after delegated work',
-  ],
-  delayAria: ['Jeda delegasi dalam detik', 'Delegation pause in seconds'],
 
   composerPlaceholder: ['Minta OpenCode mengerjakan sesuatu…', 'Ask OpenCode to work on something…'],
   composerAria: ['Pesan untuk OpenCode', 'Message for OpenCode'],

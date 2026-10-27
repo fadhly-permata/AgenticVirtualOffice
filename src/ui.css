@@ -1,11 +1,19 @@
 /* Gaya komponen baru (Settings, menu konteks, toolbar pratinjau, pewarnaan sintaks).
    Diimpor setelah style.css supaya bisa menimpa seperlunya. */
 
+/* Gear dipatok ke dasar rail: margin-top auto mendorongnya menjauh dari tab. */
 .chat__rail-btn--tail {
-  margin-top: 10px;
-  border-top: 1px solid var(--panel-border, rgba(255, 255, 255, 0.1));
-  padding-top: 6px;
-  border-radius: 0 0 9px 9px;
+  margin-top: auto;
+}
+
+.chat__rail-btn--tail::before {
+  content: '';
+  position: absolute;
+  top: -8px;
+  left: 5px;
+  right: 5px;
+  height: 1px;
+  background: var(--border-strong, rgba(255, 255, 255, 0.14));
 }
 
 /* ---------- pewarnaan sintaks (kelas highlight.js → token tema) ---------- */

@@ -3,7 +3,8 @@ import './ui.css';
 import * as THREE from 'three';
 import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
-import { applyStatic, followBrowserLocale, t } from './i18n';
+import { applyStatic, followBrowserLocale, subscribeLocale, t } from './i18n';
+import { APP_VERSION } from './version';
 import { initTheme } from './theme';
 import { installApi } from './api';
 import type { CrewFactory } from './api';
@@ -23,6 +24,13 @@ const fatal = document.getElementById('fatal');
 initTheme();
 followBrowserLocale();
 applyStatic();
+
+const brandVersion = document.getElementById('brand-version');
+function paintVersion(): void {
+  if (brandVersion) brandVersion.textContent = t('shell.brandVersion', { version: APP_VERSION });
+}
+paintVersion();
+subscribeLocale(paintVersion);
 
 function fail(message: string): void {
   if (!fatal) return;
