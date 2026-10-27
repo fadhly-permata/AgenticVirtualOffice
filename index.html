@@ -261,18 +261,34 @@
               aria-labelledby="chat-tab-agentic"
               tabindex="-1"
             >
-              <div class="chat__selects">
-                <div class="field field--session">
-                  <span data-i18n="shell.fieldSession">Sesi</span>
-                  <select id="chat-session" hidden></select>
-                </div>
-                <div class="field">
-                  <span data-i18n="shell.fieldModel">Model</span>
-                  <select id="chat-model" hidden></select>
-                </div>
-                <div class="field field--agent">
-                  <span data-i18n="shell.fieldAgent">Agent</span>
-                  <select id="chat-agent" hidden></select>
+              <div id="chat-selects" class="chat__selects">
+                <button
+                  id="chat-selects-toggle"
+                  class="chat__selects-bar"
+                  type="button"
+                  aria-expanded="true"
+                  aria-controls="chat-selects-fields"
+                  title="Sembunyikan panel sesi"
+                  aria-label="Sembunyikan panel sesi"
+                >
+                  <span id="chat-selects-summary" class="chat__selects-summary">Sesi · model · agent</span>
+                  <svg class="chat__selects-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="m6 15 6-6 6 6" />
+                  </svg>
+                </button>
+                <div id="chat-selects-fields" class="chat__selects-fields">
+                  <div class="field field--session">
+                    <span data-i18n="shell.fieldSession">Sesi</span>
+                    <select id="chat-session" hidden></select>
+                  </div>
+                  <div class="field">
+                    <span data-i18n="shell.fieldModel">Model</span>
+                    <select id="chat-model" hidden></select>
+                  </div>
+                  <div class="field field--agent">
+                    <span data-i18n="shell.fieldAgent">Agent</span>
+                    <select id="chat-agent" hidden></select>
+                  </div>
                 </div>
               </div>
 

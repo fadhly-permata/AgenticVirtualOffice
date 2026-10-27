@@ -1885,14 +1885,94 @@ body.chat-open .launcher,
   line-height: 1.55;
 }
 
-/* Panel pemilih: sesi selebar baris, model dan agent berbagi baris kedua. Garis bawah memisahkannya dari chat. */
+/* Panel pemilih: sesi selebar baris, model dan agent berbagi baris kedua.
+   Chevron di pojok melipat panel; saat terlipat panel jadi satu baris ringkas. */
 .chat__selects {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 7px;
+  position: relative;
   padding: 10px 12px;
   border-bottom: 1px solid var(--border, rgba(255, 255, 255, 0.08));
   background: var(--glass, rgba(255, 255, 255, 0.025));
+}
+
+.chat__selects-bar {
+  position: absolute;
+  top: 0;
+  right: 12px;
+  z-index: 2;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  width: 26px;
+  height: 20px;
+  padding: 0;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--ink-faint, rgba(244, 239, 230, 0.48));
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  transition: color 120ms ease;
+}
+
+.chat__selects-bar:hover,
+.chat__selects-bar:focus-visible {
+  color: var(--ink-dim);
+}
+
+.chat__selects-bar:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+.chat__selects-summary {
+  display: none;
+  min-width: 0;
+  overflow: hidden;
+  color: var(--ink-dim);
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.chat__selects-chevron {
+  flex: none;
+  width: 13px;
+  height: 13px;
+  transition: transform 140ms ease;
+}
+
+.chat__selects.is-collapsed {
+  padding: 7px 12px;
+}
+
+.chat__selects.is-collapsed .chat__selects-bar {
+  position: static;
+  width: 100%;
+  height: auto;
+  min-height: 20px;
+}
+
+.chat__selects.is-collapsed .chat__selects-summary {
+  display: block;
+  flex: 1;
+}
+
+.chat__selects.is-collapsed .chat__selects-chevron {
+  transform: rotate(180deg);
+}
+
+.chat__selects-fields {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 7px;
+}
+
+.chat__selects.is-collapsed .chat__selects-fields {
+  display: none;
 }
 
 .field {
@@ -3696,7 +3776,8 @@ body.chat-open .launcher,
   .chat,
   .modal__card,
   .search-select__trigger,
-  .search-select__chevron {
+  .search-select__chevron,
+  .chat__selects-chevron {
     transition: none;
   }
 }
@@ -3719,8 +3800,12 @@ body.chat-open .launcher,
 }
 
 @media (max-width: 540px) {
+  /* Ponsel portrait: legend tetap ada, ditumpuk di atas launcher supaya tidak bertumpuk. */
   .panel--legend {
-    display: none;
+    right: 14px;
+    bottom: 76px;
+    left: 14px;
+    width: auto;
   }
 }
 

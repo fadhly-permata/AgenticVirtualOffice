@@ -6,6 +6,11 @@ export const chat: Catalog = {
   searchModels: ['Cari model…', 'Search models…'],
   placeholderNoWorkspace: ['Buka workspace untuk mulai…', 'Open a workspace to start…'],
 
+  // Panel sesi/model/agent yang bisa dilipat
+  selectsCaption: ['Sesi · model · agent', 'Session · model · agent'],
+  collapseSelects: ['Sembunyikan panel sesi', 'Collapse session panel'],
+  expandSelects: ['Tampilkan panel sesi', 'Expand session panel'],
+
   // Peluncur & judul jendela
   launcherEyebrow: ['Virtual Command Room', 'Virtual Command Room'],
   openWorkspace: ['Buka workspace', 'Open workspace'],

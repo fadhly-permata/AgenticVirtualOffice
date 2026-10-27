@@ -86,6 +86,10 @@ const chatClose = byId<HTMLButtonElement>('chat-close');
 const sessionSelect = byId<HTMLSelectElement>('chat-session');
 const modelSelect = byId<HTMLSelectElement>('chat-model');
 const agentSelect = byId<HTMLSelectElement>('chat-agent');
+const selectsBox = byId<HTMLElement>('chat-selects');
+const selectsFields = byId<HTMLElement>('chat-selects-fields');
+const selectsToggle = byId<HTMLButtonElement>('chat-selects-toggle');
+const selectsSummary = byId<HTMLElement>('chat-selects-summary');
 const noticeEl = byId<HTMLElement>('chat-notice');
 const messagesEl = byId<HTMLElement>('chat-messages');
 const promptsEl = byId<HTMLElement>('chat-prompts');
@@ -96,6 +100,7 @@ const input = byId<HTMLTextAreaElement>('chat-input');
 const sendButton = byId<HTMLButtonElement>('chat-send');
 
 const STORAGE_TAB = 'virtoOffice.chatTab';
+const STORAGE_SELECTS = 'virtoOffice.selectsCollapsed';
 
 /** Rail vertikal: satu halaman aktif, halaman lain tetap terpasang tapi tersembunyi. */
 const CHAT_TABS = ['agentic', 'files', 'scm', 'terminal', 'mobile', 'about', 'settings'] as const;
@@ -181,6 +186,7 @@ let officeRoster: RosterAgent[] = [];
 let presenceTimer = 0;
 let presenceFailures = 0;
 let ruleDelay = storedRuleDelay();
+let selectsCollapsed = localStorage.getItem(STORAGE_SELECTS) === '1';
 
 export function installChat(officeApi: VirtOfficeApi): void {
   office = officeApi;
@@ -241,6 +247,20 @@ export function installChat(officeApi: VirtOfficeApi): void {
       return;
     }
     folderPicker?.show(workspace?.path ?? null);
+  });
+
+  selectsToggle.addEventListener('click', () => {
+    selectsCollapsed = !selectsCollapsed;
+    localStorage.setItem(STORAGE_SELECTS, selectsCollapsed ? '1' : '0');
+    updateSelectsPanel();
+  });
+  // Label SearchSelect berada di dalam panel; ikuti setiap perubahan opsinya.
+  new MutationObserver(() => updateSelectsPanel()).observe(selectsFields, {
+    childList: true,
+    subtree: true,
+    characterData: true,
+    attributes: true,
+    attributeFilter: ['disabled'],
   });
 
   sessionSelect.addEventListener('change', () => {
@@ -323,6 +343,7 @@ export function installChat(officeApi: VirtOfficeApi): void {
     tabButtons.get(next)?.focus();
   });
   setTab(storedTab());
+  updateSelectsPanel();
 
   updateLauncher();
   updateChatFolder();
@@ -340,6 +361,7 @@ export function installChat(officeApi: VirtOfficeApi): void {
     renderMessages({ forceBottom: true });
     renderPrompts();
     updateComposer();
+    updateSelectsPanel();
   });
 
   void syncWorkspace();
@@ -434,6 +456,26 @@ function referenceToComposer(path: string): void {
 function storedTab(): ChatTab {
   const raw = localStorage.getItem(STORAGE_TAB);
   return CHAT_TABS.includes(raw as ChatTab) ? (raw as ChatTab) : 'agentic';
+}
+
+function selectedLabel(select: HTMLSelectElement): string {
+  return select.selectedOptions[0]?.textContent?.trim() ?? '';
+}
+
+/** Dilipat: ringkas jadi satu baris sesi · model · agent supaya pesan dapat ruang lebih. */
+function updateSelectsPanel(): void {
+  selectsBox.classList.toggle('is-collapsed', selectsCollapsed);
+  selectsToggle.setAttribute('aria-expanded', String(!selectsCollapsed));
+  const action = t(selectsCollapsed ? 'chat.expandSelects' : 'chat.collapseSelects');
+  selectsToggle.title = action;
+  selectsToggle.setAttribute('aria-label', action);
+
+  const summary = selectsCollapsed
+    ? [selectedLabel(sessionSelect), selectedLabel(modelSelect), selectedLabel(agentSelect)]
+        .filter(Boolean)
+        .join(' · ')
+    : '';
+  selectsSummary.textContent = summary || t('chat.selectsCaption');
 }
 
 function setTab(next: ChatTab): void {
