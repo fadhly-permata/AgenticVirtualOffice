@@ -18,6 +18,7 @@ import {
   setStaged,
   setStagedAll,
   switchBranch,
+  undoCommit,
 } from '../server/scm.mjs';
 
 const temps = [];
@@ -350,5 +351,42 @@ describe('riwayat commit', () => {
     expect(await commitHistory(root, 2)).toHaveLength(2);
     expect(await commitHistory(root, '')).toHaveLength(4);
     expect(await commitHistory(root, 9999)).toHaveLength(4);
+  });
+});
+
+describe('urungkan commit terakhir', () => {
+  it('mengembalikan isi commit ke staged tanpa menghapus file', async () => {
+    const root = await dirtyRepo();
+    await setStagedAll(root, true);
+    const done = await commitChanges(root, 'pesan kedua');
+    expect(done.clean).toBe(true);
+
+    const back = await undoCommit(root);
+    expect(back.last.subject).toBe('pesan awal');
+    expect(back.counts).toEqual({ staged: 4, unstaged: 0, untracked: 0 });
+    expect(paths(back).sort()).toEqual([
+      'keep.txt:M',
+      'loose.md:A',
+      'moved.txt:R',
+      'staged.ts:A',
+    ]);
+    expect(await read(root, 'keep.txt')).toBe('first\nchanged\nthird\n');
+    expect(await exists(root, 'loose.md')).toBe(true);
+  });
+
+  it('membuat repo kembali unborn saat commit pertama diurutkan', async () => {
+    const root = await freshRepo();
+    await setStagedAll(root, true);
+    await commitChanges(root, 'benih masuk');
+
+    const back = await undoCommit(root);
+    expect(back).toMatchObject({ branch: 'master', head: '', last: null, clean: false });
+    expect(back.files).toHaveLength(1);
+    expect(back.files[0]).toMatchObject({ path: 'benih.txt', index: 'A' });
+    expect(await exists(root, 'benih.txt')).toBe(true);
+  });
+
+  it('menolak saat belum ada commit', async () => {
+    expect(await rejected(undoCommit(await freshRepo()))).toBe(409);
   });
 });

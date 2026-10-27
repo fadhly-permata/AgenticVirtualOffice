@@ -148,8 +148,16 @@ export function mountScm(container: HTMLElement, hooks: ScmHooks = {}): ScmPanel
     amend = !amend;
     paintCompose();
   });
+  const undoButton = el('button', 'scm__chip');
+  undoButton.type = 'button';
+  undoButton.textContent = 'Urungkan commit';
+  undoButton.title = 'Batalkan commit terakhir; perubahannya kembali ke daftar siap commit';
+  undoButton.addEventListener('click', () => {
+    armed = 'undo';
+    paintCompose();
+  });
+  const composeHint = el('span', 'scm__compose-hint', 'Ctrl+Enter untuk commit');
   const composeRow = el('div', 'scm__compose-row');
-  composeRow.append(commitButton, amendButton, el('span', 'scm__compose-hint', 'Ctrl+Enter untuk commit'));
   compose.append(draftArea, composeRow);
 
   const messageEl = el('p', 'scm__message');
@@ -210,6 +218,7 @@ export function mountScm(container: HTMLElement, hooks: ScmHooks = {}): ScmPanel
       armed = '';
       renderList();
       renderPicker();
+      paintCompose();
     });
     box.append(yes, no);
     return box;
@@ -240,7 +249,29 @@ export function mountScm(container: HTMLElement, hooks: ScmHooks = {}): ScmPanel
     pushButton.disabled = busy || !state;
     pullButton.disabled = busy || !state || !state.upstream;
     historyButton.disabled = !workspace;
+    undoButton.disabled = busy || !state || !state.last;
     root.classList.toggle('is-busy', busy);
+    paintComposeRow();
+  }
+
+  /** Baris tombol commit dibangun ulang tiap kali agar konfirmasi "urungkan" bisa menempel di sana. */
+  function paintComposeRow(): void {
+    composeRow.textContent = '';
+    composeRow.append(commitButton, amendButton);
+    if (armed === 'undo') {
+      composeRow.append(
+        confirmButtons('Urungkan', () =>
+          void run('Membatalkan commit terakhir…', () => chatApi.scmCommitUndo(), (body) => {
+            const back = (body as ScmStatus)?.last;
+            return back
+              ? `Commit terakhir dibatalkan; HEAD kembali ke ${back.sha} · ${back.subject}.`
+              : 'Commit terakhir dibatalkan; repo kembali ke sebelum commit pertama.';
+          })
+        )
+      );
+      return;
+    }
+    composeRow.append(undoButton, composeHint);
   }
 
   function row(file: ScmFile, staged: boolean): HTMLElement {

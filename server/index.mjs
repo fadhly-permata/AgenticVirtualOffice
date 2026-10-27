@@ -28,6 +28,7 @@ import {
   setStaged,
   setStagedAll,
   switchBranch,
+  undoCommit,
 } from './scm.mjs';
 import { TerminalHub } from './terminal.mjs';
 import { browseDirectory, WorkspaceStore } from './workspace.mjs';
@@ -325,6 +326,10 @@ async function handleApi(req, res, url) {
   if (pathname === '/api/chat/scm/commit' && method === 'POST') {
     const body = await readJson(req);
     return sendJson(res, 200, await commitChanges(workspaceOrThrow(), body.message, Boolean(body.amend)));
+  }
+
+  if (pathname === '/api/chat/scm/commit/undo' && method === 'POST') {
+    return sendJson(res, 200, await undoCommit(workspaceOrThrow()));
   }
 
   if (pathname === '/api/chat/scm/discard' && method === 'POST') {

@@ -343,6 +343,18 @@ export async function discardChanges(root, paths) {
   return repoStatus(root);
 }
 
+/**
+ * Membatalkan commit terakhir. Soft reset menjaga isi file, jadi perubahan
+ * kembali berstatus staged; commit pertama dibuat unborn karena tidak ada parent.
+ */
+export async function undoCommit(root) {
+  if (!(await hasHead(root))) throw new HttpError(409, 'Belum ada commit yang bisa dibatalkan.');
+  const parent = await run(root, ['rev-parse', '-q', '--verify', 'HEAD^']);
+  if (parent.ok) await exec(root, ['reset', '--soft', 'HEAD~1']);
+  else await exec(root, ['update-ref', '-d', 'HEAD']);
+  return repoStatus(root);
+}
+
 /** `%(upstream:track)` berisi string seperti "[ahead 2, behind 1]". */
 function parseTrack(text) {
   return {

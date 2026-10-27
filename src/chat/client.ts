@@ -146,6 +146,7 @@ export const chatApi = {
     request<ScmStatus>('/api/chat/scm/stage/all', { method: 'POST', body: JSON.stringify({ staged }) }, 60_000),
   scmCommit: (message: string, amend: boolean) =>
     request<ScmStatus>('/api/chat/scm/commit', { method: 'POST', body: JSON.stringify({ message, amend }) }, 60_000),
+  scmCommitUndo: () => request<ScmStatus>('/api/chat/scm/commit/undo', { method: 'POST' }, 60_000),
   scmDiscard: (paths: string[]) =>
     request<ScmStatus>('/api/chat/scm/discard', { method: 'POST', body: JSON.stringify({ paths }) }, 60_000),
   scmBranches: () => request<ScmBranches>('/api/chat/scm/branches', {}, 20_000),
