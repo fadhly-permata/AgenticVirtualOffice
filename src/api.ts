@@ -33,7 +33,9 @@ type BusyRole = Exclude<PresenceRole, 'idle'>;
 const ROLE_ACTIVITY: Record<BusyRole, ActivityId> = {
   working: 'working',
   delegating: 'meeting',
-  delegated: 'meeting',
+  // Yang menerima tugas mengerjakannya di meja; cuma yang memimpin rapat yang
+  // tetap di ruang meeting menunggu hasil.
+  delegated: 'working',
 };
 
 const ROLE_SIGNAL: Record<BusyRole, AgentSignal> = {
