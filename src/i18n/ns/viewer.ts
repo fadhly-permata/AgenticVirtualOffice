@@ -11,6 +11,7 @@ export const viewer: Catalog = {
   lines: ['{count} baris', '{count} lines'],
   moreLines: ['{count} baris lagi tidak ditampilkan', '{count} more lines are not shown'],
   close: ['Tutup pratinjau', 'Close preview'],
+  dragSplit: ['Seret untuk mengubah ukuran pratinjau', 'Drag to resize the preview'],
   truncated: ['dipotong', 'truncated'],
   binary: ['file biner', 'binary file'],
   binaryBody: ['Isinya bukan teks, jadi tidak ditampilkan.', 'The content is not text, so nothing is shown.'],

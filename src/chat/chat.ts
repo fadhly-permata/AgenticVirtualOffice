@@ -18,6 +18,7 @@ import { FolderPicker } from './folder';
 import { cancelPendingDiagrams, renderMarkdown } from './markdown';
 import { SearchSelect } from './select';
 import { mountSettings, type SettingsPanel } from './settings';
+import { notifyLayout } from './split';
 import {
   applyChatEvent,
   bubbleCopy,
@@ -540,6 +541,7 @@ function setMaximized(next: boolean): void {
   const label = next ? t('chat.shrinkChat') : t('chat.growChat');
   chatMaximize.title = label;
   chatMaximize.setAttribute('aria-label', label);
+  notifyLayout();
 }
 
 function dragChat(event: PointerEvent): void {
@@ -595,6 +597,7 @@ function openChat(): void {
   }
   chatWindow.hidden = false;
   document.body.classList.add('chat-open');
+  notifyLayout();
   updateLauncher();
   updateComposer();
   if (!bootstrap && !bootLoading) {

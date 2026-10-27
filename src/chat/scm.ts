@@ -2,6 +2,7 @@ import { subscribeLocale, t } from '../i18n';
 import { chatApi } from './client';
 import { ICON, el, icon, iconButton } from './dom';
 import { prefs, subscribePrefs } from './prefs';
+import { splitHandle } from './split';
 import type { ScmBranch, ScmBranches, ScmDiff, ScmFile, ScmLogEntry, ScmStatus, WorkspaceInfo } from './types';
 
 export interface ScmHooks {
@@ -198,14 +199,17 @@ export function mountScm(container: HTMLElement, hooks: ScmHooks = {}): ScmPanel
   side.append(list, historyBox);
 
   const panes = el('div', 'scm__panes');
-  panes.append(side, viewer);
+  const split = splitHandle(panes, viewer);
+  panes.append(side, split.el, viewer);
 
   root.append(head, picker, compose, messageEl, panes);
   container.append(root);
   panes.classList.toggle('scm__panes--side', prefs().previewSplit === 'vertical');
+  split.sync();
 
   subscribePrefs(() => {
     panes.classList.toggle('scm__panes--side', prefs().previewSplit === 'vertical');
+    split.sync();
   });
 
   function say(text: string, bad = false): void {
@@ -516,6 +520,7 @@ export function mountScm(container: HTMLElement, hooks: ScmHooks = {}): ScmPanel
   function renderViewer(): void {
     viewer.textContent = '';
     viewer.hidden = !diff;
+    split.sync();
     if (!diff) return;
 
     const headRow = el('header', 'scm__viewer-head');

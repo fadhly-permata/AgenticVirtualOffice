@@ -5,7 +5,8 @@ import { openContextMenu } from './context-menu';
 import type { MenuEntry } from './context-menu';
 import { highlightLines, languageForPath } from './highlight';
 import { renderMarkdown } from './markdown';
-import { prefs, subscribePrefs } from './prefs';
+import { onlyRatioChanged, prefs, subscribePrefs } from './prefs';
+import { splitHandle } from './split';
 import type { FileContent, FileKind, SearchResult, SearchMode, TreeEntry, WorkspaceInfo } from './types';
 
 const KB = 1024;
@@ -172,9 +173,11 @@ export function mountFiles(container: HTMLElement, hooks: FilesHooks = {}): File
   const viewer = el('section', 'files__viewer');
   viewer.hidden = true;
 
-  // Dua pane: daftar di kiri/atas, pratinjau di kanan/bawah. Mode split dipilih di Settings.
+  // Dua pane: daftar di kiri/atas, pratinjau di kanan/bawah. Arah dipilih di Settings,
+  // porsinya digeser lewat pembatas di antaranya.
   const panes = el('div', 'files__panes');
-  panes.append(list, viewer);
+  const split = splitHandle(panes, viewer);
+  panes.append(list, split.el, viewer);
 
   root.append(rootBar, bar, messageEl, promptEl, panes);
   container.append(root);
@@ -200,6 +203,7 @@ export function mountFiles(container: HTMLElement, hooks: FilesHooks = {}): File
 
   function applySplit(): void {
     panes.classList.toggle('files__panes--side', prefs().previewSplit === 'vertical');
+    split.sync();
   }
 
   /* ---------------------------------- prompt inline ---------------------------------- */
@@ -815,6 +819,7 @@ export function mountFiles(container: HTMLElement, hooks: FilesHooks = {}): File
     viewer.textContent = '';
     findCount = null;
     viewer.hidden = tabs.length === 0;
+    split.sync();
     if (!viewed) return;
 
     viewer.append(tabStrip());
@@ -1112,9 +1117,16 @@ export function mountFiles(container: HTMLElement, hooks: FilesHooks = {}): File
 
   bindContextMenu();
 
+  // Geseran pembatas hanya perlu rasio baru; menulis ulang isi viewer dan pohon
+  // akan membuang posisi gulir user tepat setelah ia mengatur ukuran.
+  let lastPrefs = prefs();
   subscribePrefs(() => {
-    wrap = prefs().wrap;
+    const next = prefs();
+    const ratioOnly = onlyRatioChanged(lastPrefs, next);
+    lastPrefs = next;
+    wrap = next.wrap;
     applySplit();
+    if (ratioOnly) return;
     if (viewed) renderViewer();
     void redraw();
   });

@@ -998,8 +998,52 @@ body.chat-open .launcher,
 .chat--max .scm__panes--side > .scm__viewer {
   flex: 0 0 56%;
   min-width: 0;
-  border-top: 0;
-  border-left: 1px solid var(--border, rgba(255, 255, 255, 0.1));
+}
+
+/* Pembatas antara daftar dan pratinjau: garis tipis yang bisa diseret. */
+.split-handle {
+  position: relative;
+  flex: none;
+  height: 7px;
+  cursor: row-resize;
+  touch-action: none;
+}
+
+.split-handle[hidden] {
+  display: none;
+}
+
+.split-handle::before {
+  content: '';
+  position: absolute;
+  top: 3px;
+  right: 0;
+  left: 0;
+  height: 1px;
+  background: var(--border, rgba(255, 255, 255, 0.1));
+  transition: background 120ms ease;
+}
+
+.split-handle:hover::before,
+.split-handle[data-drag='true']::before {
+  background: var(--accent, #e2b44a);
+}
+
+.chat--max .files__panes--side > .split-handle,
+.chat--max .scm__panes--side > .split-handle {
+  width: 7px;
+  height: auto;
+  cursor: col-resize;
+}
+
+.chat--max .files__panes--side > .split-handle::before,
+.chat--max .scm__panes--side > .split-handle::before {
+  top: 0;
+  right: auto;
+  bottom: 0;
+  left: 3px;
+  width: 1px;
+  height: auto;
 }
 
 .files__viewer {
@@ -1007,7 +1051,6 @@ body.chat-open .launcher,
   flex: 0 0 46%;
   flex-direction: column;
   min-height: 0;
-  border-top: 1px solid var(--border, rgba(255, 255, 255, 0.1));
   background: var(--sunken, rgba(6, 11, 16, 0.42));
 }
 
@@ -1250,7 +1293,6 @@ body.chat-open .launcher,
   flex: 0 0 50%;
   flex-direction: column;
   min-height: 0;
-  border-top: 1px solid var(--border, rgba(255, 255, 255, 0.1));
   background: var(--sunken, rgba(6, 11, 16, 0.42));
 }
 
