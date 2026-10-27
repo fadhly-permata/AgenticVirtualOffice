@@ -171,9 +171,14 @@ async function draw(figure: HTMLElement, source: string): Promise<void> {
 
 async function renderSvg(mermaid: MermaidApi, source: string): Promise<string> {
   const id = `virtoDiagram${(diagramSeq += 1)}`;
-  const { svg } = await mermaid.render(id, source);
-  document.getElementById(`d${id}`)?.remove();
-  return cleanSvg(svg);
+  try {
+    const { svg } = await mermaid.render(id, source);
+    return cleanSvg(svg);
+  } finally {
+    // Node sementara ini ditinggali gambar "Syntax error in text" kalau parse gagal,
+    // dan tetap menempel visible di body kalau hanya dibersihkan saat sukses.
+    document.getElementById(`d${id}`)?.remove();
+  }
 }
 
 /** Pesan mermaid tiga baris bertele-tele; yang berguna cuma bagian setelah "Parsing failed". */
@@ -331,6 +336,7 @@ function loadMermaid(): Promise<MermaidApi> {
       mermaid.initialize({
         securityLevel: 'strict',
         startOnLoad: false,
+        suppressErrorRendering: true,
         theme: 'base',
         fontFamily: "'Inter', 'Segoe UI', system-ui, sans-serif",
         themeVariables: {
