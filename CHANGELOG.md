@@ -4,6 +4,17 @@ Semua perubahan penting pada VirtOffice dicatat di sini. Format mengikuti
 [Keep a Changelog](https://keepachangelog.com/id/1.1.0/) dan versi mengikuti
 [Semantic Versioning](https://semver.org/lang/id/).
 
+## [0.8.0] - 2026-10-28
+
+### Ditambahkan
+
+- Panel Sesi/Model/Agent di halaman chat bisa dilipat lewat chevron di pojok kanan. Saat terlipat, panel menjadi satu baris ringkas berisi sesi · model · agent, dan pilihan tetap berlaku. Statusnya diingat di `localStorage`.
+- Legend agen di HUD tetap tampil di ponsel portrait; panel ditumpuk di atas tombol launcher agar tidak bertumpuk.
+
+### Diperbaiki
+
+- Chat di ponsel landscape tidak lagi kehabisan ruang baca: pada viewport 844×390 area pesan bertambah dari 80px menjadi 157px saat panel dilipat, dan tinggi panel saat terbuka tidak berubah.
+
 ## [0.7.0] - 2026-10-28
 
 ### Ditambahkan
