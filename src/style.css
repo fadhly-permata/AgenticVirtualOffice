@@ -429,13 +429,13 @@ body.chat-open .launcher,
   }
 }
 
-/* Perbesar = separuh layar di sisi kanan, jadi diorama tetap terlihat. */
+/* Perbesar = lebar layar penuh supaya jawaban panjang nyaman dibaca. */
 .chat--max {
   top: 14px;
   right: 14px;
   bottom: 14px;
-  left: auto;
-  width: min(50vw, 760px);
+  left: 14px;
+  width: auto;
 }
 
 /* Setelah diseret, jendela hidup dari koordinat sendiri, bukan dari sudut layar. */
@@ -2009,21 +2009,6 @@ body.chat-open .launcher,
   flex: none;
 }
 
-.chat__stop {
-  padding: 5px 8px;
-  border: 1px solid rgba(224, 122, 95, 0.3);
-  border-radius: 7px;
-  background: rgba(224, 122, 95, 0.08);
-  color: #f0a18b;
-  font: inherit;
-  font-size: 9px;
-  cursor: pointer;
-}
-
-.chat__stop:hover {
-  background: rgba(224, 122, 95, 0.16);
-}
-
 .chat__send {
   display: grid;
   place-items: center;
@@ -2050,6 +2035,25 @@ body.chat-open .launcher,
 .chat__send:disabled {
   opacity: 0.3;
   cursor: default;
+}
+
+/* Satu tombol, dua rupa: panah kirim berganti jadi kotak stop selagi OpenCode bekerja. */
+.chat__send .icon-stop {
+  display: none;
+}
+
+.chat__send[data-mode='stop'] .icon-send {
+  display: none;
+}
+
+.chat__send[data-mode='stop'] .icon-stop {
+  display: block;
+}
+
+.chat__send[data-mode='stop'] {
+  background: rgba(224, 122, 95, 0.22);
+  color: #f6b39f;
+  box-shadow: inset 0 0 0 1px rgba(224, 122, 95, 0.5);
 }
 
 /* -------------------------------------------------------------- modal --- */

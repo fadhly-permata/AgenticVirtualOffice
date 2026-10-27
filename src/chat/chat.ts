@@ -86,7 +86,6 @@ const statusEl = byId<HTMLElement>('chat-status');
 const form = byId<HTMLFormElement>('chat-form');
 const input = byId<HTMLTextAreaElement>('chat-input');
 const sendButton = byId<HTMLButtonElement>('chat-send');
-const stopButton = byId<HTMLButtonElement>('chat-stop');
 
 type NoticeKind = 'info' | 'error' | 'retry' | 'disconnect';
 
@@ -164,7 +163,7 @@ export function installChat(officeApi: VirtOfficeApi): void {
   });
   chatMaximize.addEventListener('click', () => {
     const next = !maximized;
-    // Perbesar selalu mulai dari dock kanan, bukan dari posisi hasil seretan.
+    // Perbesar selalu mulai dari tepi layar, bukan dari posisi hasil seretan.
     if (next) setBox(null);
     setMaximized(next);
     if (window.innerWidth > 760) input.focus();
@@ -254,7 +253,11 @@ export function installChat(officeApi: VirtOfficeApi): void {
     localStorage.setItem(STORAGE_DELAY, String(ruleDelay));
     void applyRuleDelay();
   });
-  stopButton.addEventListener('click', () => void stopResponse());
+  // Satu tombol untuk dua keadaan: kirim saat idle, hentikan saat OpenCode bekerja.
+  sendButton.addEventListener('click', () => {
+    if (isCurrentRunning()) void stopResponse();
+    else void sendMessage();
+  });
 
   updateLauncher();
   updateChatFolder();
@@ -408,7 +411,7 @@ function setBox(next: ChatBox | null): void {
   localStorage.setItem(STORAGE_BOX, JSON.stringify(box));
 }
 
-/** Perbesar mengisi separuh kanan layar; seret bebas mengembalikan kendali ke user. */
+/** Perbesar mengisi lebar layar penuh; seret bebas mengembalikan kendali ke user. */
 function setMaximized(next: boolean): void {
   maximized = next;
   chatWindow.classList.toggle('chat--max', next);
@@ -784,13 +787,13 @@ async function sendMessage(): Promise<void> {
 async function stopResponse(): Promise<void> {
   const session = currentSession;
   if (!session || !runningSessions.has(session.id)) return;
-  stopButton.disabled = true;
+  sendButton.disabled = true;
   try {
     await chatApi.abort(session.id);
   } catch (error) {
     setNotice('error', describeError(error), { label: 'Muat ulang', run: () => void refreshCurrentSession() });
   } finally {
-    stopButton.disabled = false;
+    updateComposer();
   }
 }
 
@@ -1678,10 +1681,11 @@ function isAnyRunning(): boolean {
 function updateComposer(): void {
   const running = isCurrentRunning();
   const unavailable = !workspace || bootLoading || reading;
-  sendButton.disabled =
-    unavailable || sending || running || !selectedModel || !input.value.trim();
-  stopButton.hidden = !running;
-  stopButton.disabled = false;
+  const label = running ? 'Hentikan' : 'Kirim';
+  sendButton.dataset.mode = running ? 'stop' : 'send';
+  sendButton.title = label;
+  sendButton.setAttribute('aria-label', running ? 'Hentikan respons OpenCode' : 'Kirim pesan');
+  sendButton.disabled = running ? false : unavailable || sending || !selectedModel || !input.value.trim();
   input.disabled = !workspace || bootLoading;
 
   if (!workspace) statusEl.textContent = 'Pilih workspace';

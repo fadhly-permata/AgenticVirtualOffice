@@ -91,7 +91,8 @@
                 <path d="M8 3H5a2 2 0 0 0-2 2v3M21 8V5a2 2 0 0 0-2-2h-3M16 21h3a2 2 0 0 0 2-2v-3M3 16v3a2 2 0 0 0 2 2h3" />
               </svg>
               <svg class="icon-restore" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">
-                <path d="M8 3v2a2 2 0 0 1-2 2H3M21 8h-2a2 2 0 0 1-2-2V3M16 21v-2a2 2 0 0 1 2-2h3M3 16h2a2 2 0 0 1 2 2v3" />
+                <rect x="3" y="3" width="18" height="18" rx="3.5" />
+                <rect x="7" y="7" width="10" height="10" rx="2" />
               </svg>
             </button>
             <button id="chat-close" class="icon-btn" type="button" title="Tutup chat" aria-label="Tutup chat">
@@ -151,10 +152,19 @@
             aria-label="Pesan untuk OpenCode"
           ></textarea>
           <div class="chat__composer-actions">
-            <button id="chat-stop" class="chat__stop" type="button" hidden>Stop</button>
-            <button id="chat-send" class="chat__send" type="submit" title="Kirim" aria-label="Kirim pesan">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round">
+            <button
+              id="chat-send"
+              class="chat__send"
+              type="button"
+              data-mode="send"
+              title="Kirim"
+              aria-label="Kirim pesan"
+            >
+              <svg class="icon-send" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round">
                 <path d="M12 19V5M6 11l6-6 6 6" />
+              </svg>
+              <svg class="icon-stop" viewBox="0 0 24 24" fill="currentColor" stroke="none">
+                <rect x="7" y="7" width="10" height="10" rx="2.4" />
               </svg>
             </button>
           </div>
