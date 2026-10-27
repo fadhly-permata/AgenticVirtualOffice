@@ -69,12 +69,10 @@ function byId<T extends HTMLElement>(id: string): T {
 }
 
 const launcher = byId<HTMLButtonElement>('chat-launcher');
-const launcherEyebrow = byId<HTMLElement>('launcher-eyebrow');
 const launcherLabel = byId<HTMLElement>('launcher-label');
 const launcherStatus = byId<HTMLElement>('launcher-status');
 
 const chatWindow = byId<HTMLElement>('chat-window');
-const chatFolder = byId<HTMLElement>('chat-folder');
 const chatChangeFolder = byId<HTMLButtonElement>('chat-change-folder');
 const chatNew = byId<HTMLButtonElement>('chat-new');
 const chatMaximize = byId<HTMLButtonElement>('chat-maximize');
@@ -397,11 +395,11 @@ function applyWorkspace(next: WorkspaceInfo | null): void {
 }
 
 function updateChatFolder(): void {
-  chatFolder.textContent = workspace?.name ?? '—';
-  chatFolder.title = workspace?.path ?? '';
-  input.placeholder = workspace
-    ? t('chat.placeholderWorkspace', { name: workspace.name })
-    : t('chat.placeholderNoWorkspace');
+  // Nama workspace tidak lagi ditulis di batang judul; path-nya tetap bisa dibaca di tooltip.
+  chatChangeFolder.title = workspace
+    ? `${t('shell.changeWorkspace')} — ${workspace.path}`
+    : t('shell.changeWorkspace');
+  input.placeholder = workspace ? t('shell.composerPlaceholder') : t('chat.placeholderNoWorkspace');
 }
 
 /** Menyisipkan path yang sedang dilihat ke composer, lalu kembali ke halaman chat. */
@@ -435,8 +433,8 @@ function setTab(next: ChatTab): void {
 }
 
 function updateLauncher(): void {
-  launcherEyebrow.textContent = t('chat.launcherEyebrow');
-  launcherLabel.textContent = workspace?.name ?? t('chat.openWorkspace');
+  // Satu baris saja: nama workspace tidak ditulis lagi, path-nya pindah ke tooltip.
+  launcherLabel.textContent = workspace ? t('chat.launcherEyebrow') : t('chat.openWorkspace');
   launcher.title = workspace ? t('chat.launcherTitle', { path: workspace.path }) : t('chat.launcherTitleIdle');
   launcherStatus.dataset.state = bootLoading
     ? 'loading'

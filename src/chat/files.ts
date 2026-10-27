@@ -167,9 +167,14 @@ export function mountFiles(container: HTMLElement, hooks: FilesHooks = {}): File
   const viewer = el('section', 'files__viewer');
   viewer.hidden = true;
 
-  root.append(bar, messageEl, promptEl, list, viewer);
+  // Dua pane: daftar di kiri/atas, pratinjau di kanan/bawah. Mode split dipilih di Settings.
+  const panes = el('div', 'files__panes');
+  panes.append(list, viewer);
+
+  root.append(bar, messageEl, promptEl, panes);
   container.append(root);
   setMode('name');
+  applySplit();
 
   function note(text: string): HTMLElement {
     return el('p', 'files__note', text);
@@ -178,6 +183,10 @@ export function mountFiles(container: HTMLElement, hooks: FilesHooks = {}): File
   function paintMessage(): void {
     messageEl.textContent = message;
     messageEl.hidden = !message;
+  }
+
+  function applySplit(): void {
+    panes.classList.toggle('files__panes--side', prefs().previewSplit === 'vertical');
   }
 
   /* ---------------------------------- prompt inline ---------------------------------- */
@@ -602,6 +611,15 @@ export function mountFiles(container: HTMLElement, hooks: FilesHooks = {}): File
     }
 
     const actions = el('span', 'viewer__actions');
+    if (viewed) {
+      // Penanda hanya muncul kalau isinya memang dipotong atau bukan teks.
+      const flags = [
+        viewed.truncated ? t('viewer.truncated') : '',
+        viewed.binary && kind !== 'image' && kind !== 'pdf' ? t('viewer.binary') : '',
+      ].filter(Boolean);
+      if (flags.length) barEl.append(el('span', 'viewer__count', flags.join(' · ')));
+    }
+
     if (viewed && (kind === 'image' || kind === 'pdf')) {
       if (kind === 'image') actions.append(zoomButton('out'), zoomButton('in'));
       actions.append(openLinkButton(viewed.path));
@@ -789,15 +807,8 @@ export function mountFiles(container: HTMLElement, hooks: FilesHooks = {}): File
     viewer.append(tabStrip());
 
     const kind = previewKind(viewed.path);
-    const head = el('header', 'files__viewer-head');
-    head.append(el('span', 'files__viewer-path', viewed.path));
-    const info = [humanSize(viewed.size)];
-    if (viewed.truncated) info.push(t('viewer.truncated'));
-    if (viewed.binary && kind !== 'image' && kind !== 'pdf') info.push(t('viewer.binary'));
-    const lines = viewed.binary ? 0 : viewed.text.split('\n').length;
-    if (lines) info.push(t('viewer.lines', { count: lines }));
-    head.append(el('span', 'files__viewer-info', info.join(' · ')));
-    viewer.append(head, toolbar());
+    // Nama file ada di tab, path penuh di tooltip tab — tidak ada lagi baris judul.
+    viewer.append(toolbar());
 
     if (kind === 'image' || kind === 'pdf') {
       viewer.append(mediaBody(viewed.path, kind));
@@ -1090,6 +1101,7 @@ export function mountFiles(container: HTMLElement, hooks: FilesHooks = {}): File
 
   subscribePrefs(() => {
     wrap = prefs().wrap;
+    applySplit();
     if (viewed) renderViewer();
     void redraw();
   });

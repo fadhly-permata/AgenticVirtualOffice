@@ -35,6 +35,13 @@ export const settings: Catalog = {
     'Apa yang muncul saat file diklik.',
     'What opens when a file is clicked.',
   ],
+  split: ['Letak jendela pratinjau', 'Preview window layout'],
+  splitHint: [
+    'Berlaku saat jendela chat diperbesar: horizontal menumpuk di bawah daftar, vertikal berdampingan dengannya.',
+    'Applies while the chat window is maximized: horizontal stacks under the list, vertical sits beside it.',
+  ],
+  splitHorizontal: ['Horizontal', 'Horizontal'],
+  splitVertical: ['Vertikal', 'Vertical'],
   scripts: ['Izinkan skrip di pratinjau HTML', 'Allow scripts in HTML preview'],
   scriptsHint: [
     'Berisiko: halaman workspace bisa menjalankan kode saat pratinjau dibuka.',

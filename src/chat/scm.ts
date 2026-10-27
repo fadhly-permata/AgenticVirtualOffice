@@ -1,6 +1,7 @@
 import { subscribeLocale, t } from '../i18n';
 import { chatApi } from './client';
 import { ICON, el, icon, iconButton } from './dom';
+import { prefs, subscribePrefs } from './prefs';
 import type { ScmBranch, ScmBranches, ScmDiff, ScmFile, ScmLogEntry, ScmStatus, WorkspaceInfo } from './types';
 
 export interface ScmHooks {
@@ -192,8 +193,20 @@ export function mountScm(container: HTMLElement, hooks: ScmHooks = {}): ScmPanel
   const viewer = el('section', 'scm__viewer');
   viewer.hidden = true;
 
-  root.append(head, picker, compose, messageEl, list, historyBox, viewer);
+  // Dua pane: daftar perubahan + riwayat di satu sisi, diff di sisi lain. Mode split dipilih di Settings.
+  const side = el('div', 'scm__side');
+  side.append(list, historyBox);
+
+  const panes = el('div', 'scm__panes');
+  panes.append(side, viewer);
+
+  root.append(head, picker, compose, messageEl, panes);
   container.append(root);
+  panes.classList.toggle('scm__panes--side', prefs().previewSplit === 'vertical');
+
+  subscribePrefs(() => {
+    panes.classList.toggle('scm__panes--side', prefs().previewSplit === 'vertical');
+  });
 
   function say(text: string, bad = false): void {
     message = text;

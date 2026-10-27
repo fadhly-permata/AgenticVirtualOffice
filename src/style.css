@@ -330,21 +330,14 @@ body.is-ready #scene {
   flex: 1;
 }
 
-.launcher__eyebrow {
-  font-size: 8px;
-  font-weight: 600;
-  letter-spacing: 0.2em;
-  text-transform: uppercase;
-  color: var(--ink-dim);
-}
-
 .launcher__label {
   overflow: hidden;
   white-space: nowrap;
   text-overflow: ellipsis;
-  font-size: 12px;
-  font-weight: 600;
-  letter-spacing: 0.01em;
+  font-size: 13px;
+  font-weight: 650;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
 }
 
 .launcher__dot {
@@ -524,14 +517,16 @@ body.chat-open .launcher,
   color: var(--ink-dim);
 }
 
-.chat__folder {
+/* Batang judul cuma menyimpan satu baris, jadi label eyebrow yang naik jadi judul. */
+.chat__titles .chat__eyebrow {
   margin: 0;
   overflow: hidden;
-  white-space: nowrap;
-  text-overflow: ellipsis;
-  font-size: 12.5px;
+  color: var(--ink);
+  font-size: 13px;
   font-weight: 650;
-  letter-spacing: 0.01em;
+  letter-spacing: 0.14em;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .chat__head-actions {
@@ -918,6 +913,43 @@ body.chat-open .launcher,
   color: var(--accent);
 }
 
+/* ---------- pane ganda: daftar + pratinjau ---------- */
+
+.files__panes,
+.scm__panes {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-height: 0;
+}
+
+.scm__side {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+}
+
+.chat--max .files__panes > .files__list,
+.chat--max .scm__side {
+  min-width: 0;
+}
+
+/* Mode 'vertikal' hanya berlaku saat jendela diperbesar; yang sempit tetap menumpuk. */
+.chat--max .files__panes--side,
+.chat--max .scm__panes--side {
+  flex-direction: row;
+}
+
+.chat--max .files__panes--side > .files__viewer,
+.chat--max .scm__panes--side > .scm__viewer {
+  flex: 0 0 56%;
+  min-width: 0;
+  border-top: 0;
+  border-left: 1px solid var(--border, rgba(255, 255, 255, 0.1));
+}
+
 .files__viewer {
   display: flex;
   flex: 0 0 46%;
@@ -929,37 +961,6 @@ body.chat-open .launcher,
 
 .files__viewer[hidden] {
   display: none;
-}
-
-.files__viewer-head {
-  flex: none;
-  display: flex;
-  gap: 8px;
-  align-items: center;
-  padding: 7px 9px 7px 12px;
-  border-bottom: 1px solid var(--border, rgba(255, 255, 255, 0.06));
-}
-
-.files__viewer-path {
-  min-width: 0;
-  overflow: hidden;
-  color: var(--ink);
-  font-size: 12px;
-  font-family: ui-monospace, 'SF Mono', 'Cascadia Mono', monospace;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.files__viewer-info {
-  flex: none;
-  color: var(--ink-dim);
-  font-size: 11px;
-}
-
-.files__viewer-actions {
-  display: flex;
-  gap: 2px;
-  margin-left: auto;
 }
 
 .files__code {
@@ -1790,11 +1791,14 @@ body.chat-open .launcher,
   line-height: 1.55;
 }
 
+/* Panel pemilih: sesi selebar baris, model dan agent berbagi baris kedua. Garis bawah memisahkannya dari chat. */
 .chat__selects {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 88px 96px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 7px;
-  padding: 10px 12px 0;
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--border, rgba(255, 255, 255, 0.08));
+  background: var(--glass, rgba(255, 255, 255, 0.025));
 }
 
 .field {

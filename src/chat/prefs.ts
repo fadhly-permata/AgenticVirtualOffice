@@ -2,6 +2,7 @@
 import { readStored, writeStored } from '../core/storage';
 
 export type FileView = 'raw' | 'preview';
+export type SplitMode = 'horizontal' | 'vertical';
 
 export interface Prefs {
   wrap: boolean;
@@ -9,6 +10,8 @@ export interface Prefs {
   syntax: boolean;
   defaultView: FileView;
   scriptedPreview: boolean;
+  /** 'horizontal' = daftar di atas pratinjau; 'vertical' = berdampingan saat jendela diperbesar. */
+  previewSplit: SplitMode;
 }
 
 const STORAGE_PREFS = 'virtoOffice.previewPrefs';
@@ -19,6 +22,7 @@ export const DEFAULT_PREFS: Prefs = {
   syntax: true,
   defaultView: 'raw',
   scriptedPreview: false,
+  previewSplit: 'horizontal',
 };
 
 type Listener = (prefs: Prefs) => void;
@@ -42,6 +46,7 @@ function read(): Prefs {
         typeof parsed.scriptedPreview === 'boolean'
           ? parsed.scriptedPreview
           : DEFAULT_PREFS.scriptedPreview,
+      previewSplit: parsed.previewSplit === 'vertical' ? 'vertical' : 'horizontal',
     };
   } catch {
     return { ...DEFAULT_PREFS };

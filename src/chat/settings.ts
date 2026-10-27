@@ -2,7 +2,7 @@ import { locale, LOCALES, setLocale, subscribeLocale, t } from '../i18n';
 import type { Locale } from '../i18n/types';
 import { setTheme, subscribeTheme, swatch, theme, THEMES } from '../theme';
 import { prefs, resetPrefs, setPref, subscribePrefs } from './prefs';
-import type { FileView, Prefs } from './prefs';
+import type { FileView, Prefs, SplitMode } from './prefs';
 import { el } from './dom';
 
 export interface SettingsPanel {
@@ -135,6 +135,18 @@ export function mountSettings(container: HTMLElement, hooks: SettingsHooks): Set
             ],
             options.defaultView,
             (value) => setPref('defaultView', value)
+          )
+        ),
+        row(
+          t('settings.split'),
+          t('settings.splitHint'),
+          segmented<SplitMode>(
+            [
+              { value: 'horizontal', label: t('settings.splitHorizontal') },
+              { value: 'vertical', label: t('settings.splitVertical') },
+            ],
+            options.previewSplit,
+            (value) => setPref('previewSplit', value)
           )
         ),
         row(t('settings.wrap'), t('settings.wrapHint'), toggle('wrap', options.wrap)),

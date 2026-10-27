@@ -4,7 +4,6 @@ export const chat: Catalog = {
   // Composer & pencarian
   searchSessions: ['Cari sesi…', 'Search sessions…'],
   searchModels: ['Cari model…', 'Search models…'],
-  placeholderWorkspace: ['Minta OpenCode mengerjakan sesuatu di {name}…', 'Ask OpenCode to work on something in {name}…'],
   placeholderNoWorkspace: ['Buka workspace untuk mulai…', 'Open a workspace to start…'],
 
   // Peluncur & judul jendela
