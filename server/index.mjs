@@ -3,6 +3,7 @@ import fs from 'node:fs/promises';
 import http from 'node:http';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { createEntry, deleteEntry, readFileAt, renameEntry, searchIn, treeAt } from './files.mjs';
 import { HttpError, readJson, sendError, sendJson } from './http.mjs';
 import {
   buildAgentList,
@@ -181,6 +182,50 @@ async function handleApi(req, res, url) {
 
   if (pathname === '/api/workspace/browse' && method === 'GET') {
     return sendJson(res, 200, await browseDirectory(searchParams.get('path')));
+  }
+
+  if (pathname === '/api/chat/tree' && method === 'GET') {
+    return sendJson(res, 200, await treeAt(workspaceOrThrow(), searchParams.get('path') ?? ''));
+  }
+
+  if (pathname === '/api/chat/file' && method === 'GET') {
+    return sendJson(
+      res,
+      200,
+      await readFileAt(
+        workspaceOrThrow(),
+        searchParams.get('path') ?? '',
+        searchParams.get('maxBytes') ?? undefined
+      )
+    );
+  }
+
+  if (pathname === '/api/chat/search' && method === 'GET') {
+    return sendJson(
+      res,
+      200,
+      await searchIn(
+        workspaceOrThrow(),
+        searchParams.get('q'),
+        searchParams.get('mode') ?? 'name',
+        searchParams.get('limit') ?? undefined
+      )
+    );
+  }
+
+  if (pathname === '/api/chat/files' && method === 'POST') {
+    const body = await readJson(req);
+    return sendJson(res, 201, await createEntry(workspaceOrThrow(), body.path, body.kind, body.text));
+  }
+
+  if (pathname === '/api/chat/files/rename' && method === 'POST') {
+    const body = await readJson(req);
+    return sendJson(res, 200, await renameEntry(workspaceOrThrow(), body.from, body.to));
+  }
+
+  if (pathname === '/api/chat/files/delete' && method === 'POST') {
+    const body = await readJson(req);
+    return sendJson(res, 200, await deleteEntry(workspaceOrThrow(), body.path));
   }
 
   if (pathname === '/api/chat/bootstrap' && method === 'GET') {
