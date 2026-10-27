@@ -8,6 +8,7 @@ import {
   sessionActivities,
   slugify,
 } from '../office/presence';
+import { mountAbout } from './about';
 import { chatApi } from './client';
 import { el, ICON, icon } from './dom';
 import { mountFiles, type FilesPanel } from './files';
@@ -93,7 +94,7 @@ const sendButton = byId<HTMLButtonElement>('chat-send');
 const STORAGE_TAB = 'virtoOffice.chatTab';
 
 /** Rail vertikal: satu halaman aktif, halaman lain tetap terpasang tapi tersembunyi. */
-const CHAT_TABS = ['agentic', 'files', 'scm', 'terminal', 'settings'] as const;
+const CHAT_TABS = ['agentic', 'files', 'scm', 'terminal', 'about', 'settings'] as const;
 type ChatTab = (typeof CHAT_TABS)[number];
 
 const tabButtons = new Map<ChatTab, HTMLButtonElement>(
@@ -297,6 +298,8 @@ export function installChat(officeApi: VirtOfficeApi): void {
   if (scmPage) scmPanel = mountScm(scmPage, { onReference: referenceToComposer, onOpenFile: openInViewer });
   const terminalPage = tabPages.get('terminal');
   if (terminalPage) terminalPanel = mountTerminal(terminalPage);
+  const aboutPage = tabPages.get('about');
+  if (aboutPage) mountAbout(aboutPage);
 
   for (const [tab, button] of tabButtons) button.addEventListener('click', () => setTab(tab));
 

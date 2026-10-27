@@ -1,7 +1,7 @@
 /* Gaya komponen baru (Settings, menu konteks, toolbar pratinjau, pewarnaan sintaks).
    Diimpor setelah style.css supaya bisa menimpa seperlunya. */
 
-/* Gear dipatok ke dasar rail: margin-top auto mendorongnya menjauh dari tab. */
+/* Tentang + gear dipatok ke dasar rail: margin-top auto mendorongnya menjauh dari tab. */
 .chat__rail-btn--tail {
   margin-top: auto;
 }
@@ -744,4 +744,103 @@
 
 .settings__notice[hidden] {
   display: none;
+}
+
+/* ---------- halaman Tentang ---------- */
+
+.about__hero {
+  flex-direction: row;
+  align-items: center;
+  gap: 14px;
+  background: linear-gradient(
+    135deg,
+    var(--accent-soft, rgba(226, 180, 74, 0.12)),
+    var(--surface-2, rgba(255, 255, 255, 0.03))
+  );
+}
+
+.about__mark {
+  display: grid;
+  flex: none;
+  place-items: center;
+  width: 46px;
+  height: 46px;
+  border: 1px solid var(--panel-border, rgba(255, 255, 255, 0.12));
+  border-radius: 13px;
+  background: var(--sunken, rgba(0, 0, 0, 0.25));
+  color: var(--accent, #e2b44a);
+}
+
+.about__name {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0;
+  font-size: 15px;
+  font-weight: 650;
+  letter-spacing: 0.01em;
+}
+
+.about__value {
+  flex: none;
+  padding: 1px 7px;
+  border: 1px solid var(--border, rgba(255, 255, 255, 0.12));
+  border-radius: 999px;
+  background: var(--sunken, rgba(0, 0, 0, 0.22));
+  color: var(--ink-faint, rgba(244, 239, 230, 0.55));
+  font-family: ui-monospace, 'SF Mono', 'Cascadia Mono', monospace;
+  font-size: 10.5px;
+  font-weight: 500;
+  letter-spacing: 0;
+}
+
+/* Tautan penulis: seluruh kartu bisa diklik, bukan hanya teks URL-nya. */
+.about__link {
+  display: flex;
+  align-items: center;
+  gap: 11px;
+  padding: 8px 10px;
+  border: 1px solid var(--border, rgba(255, 255, 255, 0.08));
+  border-radius: 11px;
+  background: var(--sunken, rgba(0, 0, 0, 0.16));
+  color: var(--ink, #f4efe6);
+  text-decoration: none;
+  transition: border-color 120ms ease, background 120ms ease;
+}
+
+.about__link > svg {
+  flex: none;
+  color: var(--ink-faint, rgba(244, 239, 230, 0.45));
+}
+
+.about__link:hover,
+.about__link:focus-visible {
+  border-color: var(--accent, #e2b44a);
+  background: var(--accent-soft, rgba(226, 180, 74, 0.1));
+}
+
+.about__link:hover > svg {
+  color: var(--accent, #e2b44a);
+}
+
+.about__link-text {
+  flex: 1;
+  min-width: 0;
+}
+
+.about__link-url {
+  margin: 2px 0 0;
+  overflow: hidden;
+  color: var(--accent, #e2b44a);
+  font-family: ui-monospace, 'SF Mono', 'Cascadia Mono', monospace;
+  font-size: 10.5px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.about__link .settings__row-hint {
+  flex: none;
+  max-width: 45%;
+  margin: 0;
+  text-align: right;
 }

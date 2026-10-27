@@ -201,8 +201,24 @@
               </svg>
             </button>
             <button
-              id="chat-tab-settings"
+              id="chat-tab-about"
               class="chat__rail-btn chat__rail-btn--tail"
+              type="button"
+              role="tab"
+              aria-selected="false"
+              aria-controls="chat-page-about"
+              data-i18n-title="shell.tabAbout"
+              title="Tentang"
+              aria-label="Tentang"
+            >
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">
+                <circle cx="12" cy="12" r="9" />
+                <path d="M12 11v6M12 7.6h.01" />
+              </svg>
+            </button>
+            <button
+              id="chat-tab-settings"
+              class="chat__rail-btn"
               type="button"
               role="tab"
               aria-selected="false"
@@ -301,6 +317,14 @@
               class="chat__page"
               role="tabpanel"
               aria-labelledby="chat-tab-terminal"
+              tabindex="-1"
+              hidden
+            ></section>
+            <section
+              id="chat-page-about"
+              class="chat__page"
+              role="tabpanel"
+              aria-labelledby="chat-tab-about"
               tabindex="-1"
               hidden
             ></section>

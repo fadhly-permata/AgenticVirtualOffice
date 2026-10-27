@@ -1,5 +1,6 @@
 import { readStored, writeStored } from '../core/storage';
 import type { Catalog, Locale, Params, Pair } from './types';
+import { about } from './ns/about';
 import { chat } from './ns/chat';
 import { errors } from './ns/errors';
 import { files } from './ns/files';
@@ -21,6 +22,7 @@ const STORAGE_LOCALE = 'virtoOffice.locale';
 export const LOCALES: Locale[] = ['id', 'en'];
 
 const NAMESPACES: Record<string, Catalog> = {
+  about,
   chat,
   errors,
   files,
