@@ -3,6 +3,7 @@ import type {
   BrowseResult,
   ModelKey,
   PermissionReply,
+  RuleState,
   RunActivity,
   SessionMessages,
   SessionSummary,
@@ -70,7 +71,10 @@ export const chatApi = {
     ),
   openWorkspace: (target: string) =>
     request<WorkspaceState>('/api/workspace', { method: 'POST', body: JSON.stringify({ path: target }) }),
-  bootstrap: () => request<Bootstrap>('/api/chat/bootstrap', {}, 120_000),
+  bootstrap: (delayMs: number) =>
+    request<Bootstrap>(`/api/chat/bootstrap?delay=${Math.max(0, Math.round(delayMs))}`, {}, 120_000),
+  setRules: (delayMs: number) =>
+    request<RuleState>('/api/chat/rules', { method: 'POST', body: JSON.stringify({ delayMs }) }),
   status: () => request<{ statuses: Record<string, { type?: string }> }>('/api/chat/status'),
   activity: (ids: string[]) =>
     request<{ activities: Record<string, RunActivity> }>(

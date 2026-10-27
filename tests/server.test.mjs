@@ -3,6 +3,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import { buildAgentList, buildAgentRoster, buildModelCatalog, buildSessionActivity, buildSessionList, readableError } from '../server/opencode.mjs';
+import { upsertToolRules } from '../server/rules.mjs';
 import { WorkspaceStore, browseDirectory, workspaceName } from '../server/workspace.mjs';
 
 const temps = [];
@@ -219,5 +220,54 @@ describe('workspace helpers', () => {
     await reloaded.load();
     expect(reloaded.snapshot().workspace.path).toBe(second);
     expect(reloaded.snapshot().recents).toHaveLength(2);
+  });
+});
+
+describe('tool rules', () => {
+  it('appends a managed block and refreshes it in place', async () => {
+    const dir = await tempDir('virtoffice-rules-');
+    const file = path.join(dir, 'AGENTS.md');
+    await fs.writeFile(file, '# Proyek\n\nAturan lama milik user.\n', 'utf8');
+
+    const first = await upsertToolRules('opencode', dir, { delayMs: 2000 });
+    expect(first).toMatchObject({ ok: true, supported: true, changed: true, file: 'AGENTS.md' });
+    expect(await fs.readFile(file, 'utf8')).toContain('Aturan lama milik user.');
+
+    const second = await upsertToolRules('opencode', dir, { delayMs: 1500 });
+    expect(second.changed).toBe(true);
+    const text = await fs.readFile(file, 'utf8');
+    expect(text).toContain('sleep 1.5');
+    expect(text).not.toContain('sleep 2');
+    expect(text.match(/virtoffice:rules:start/g)).toHaveLength(1);
+    expect(text).toContain('Aturan lama milik user.');
+
+    const again = await upsertToolRules('opencode', dir, { delayMs: 1500 });
+    expect(again.changed).toBe(false);
+  });
+
+  it('creates the file when the workspace has none', async () => {
+    const dir = await tempDir('virtoffice-rules-new-');
+    const result = await upsertToolRules('opencode', dir, { delayMs: 2000 });
+    expect(result.ok).toBe(true);
+    expect(await fs.readFile(path.join(dir, 'AGENTS.md'), 'utf8')).toContain('sleep 2');
+  });
+
+  it('drops the block again when the delay is turned off', async () => {
+    const dir = await tempDir('virtoffice-rules-off-');
+    const file = path.join(dir, 'AGENTS.md');
+    await fs.writeFile(file, '# Proyek\n', 'utf8');
+    await upsertToolRules('opencode', dir, { delayMs: 2000 });
+
+    const removed = await upsertToolRules('opencode', dir, { delayMs: 0 });
+    expect(removed.changed).toBe(true);
+    const text = await fs.readFile(file, 'utf8');
+    expect(text).not.toContain('virtoffice:rules:start');
+    expect(text).toContain('# Proyek');
+  });
+
+  it('reports tools without an adapter instead of guessing', async () => {
+    const dir = await tempDir('virtoffice-rules-other-');
+    const result = await upsertToolRules('cursor', dir, { delayMs: 2000 });
+    expect(result).toMatchObject({ ok: false, supported: false });
   });
 });

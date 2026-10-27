@@ -70,6 +70,16 @@ export interface RunActivity {
   detail: string;
 }
 
+/** Result of writing the delegation-pacing rule into the workspace. */
+export interface RuleState {
+  tool: string;
+  file: string | null;
+  delayMs: number;
+  ok: boolean;
+  supported: boolean;
+  changed: boolean;
+}
+
 export interface Bootstrap {
   workspace: WorkspaceInfo;
   models: ModelGroup[];
@@ -77,6 +87,7 @@ export interface Bootstrap {
   agents: AgentChoice[];
   roster: AgentRosterEntry[];
   sessions: SessionSummary[];
+  rules?: RuleState;
 }
 
 export interface ToolState {

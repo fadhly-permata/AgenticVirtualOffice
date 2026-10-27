@@ -12,6 +12,7 @@ import {
   buildSessionList,
   OpenCodeBridge,
 } from './opencode.mjs';
+import { upsertToolRules } from './rules.mjs';
 import { browseDirectory, WorkspaceStore } from './workspace.mjs';
 
 const APP_DIR = path.resolve(fileURLToPath(new URL('..', import.meta.url)));
@@ -56,6 +57,26 @@ function sessionId(value) {
 function requestId(value) {
   if (!/^[A-Za-z0-9_]+$/.test(value)) throw new HttpError(400, 'ID permintaan tidak valid.');
   return value;
+}
+
+const DEFAULT_RULE_DELAY = 2000;
+const MAX_RULE_DELAY = 10_000;
+
+/** Jeda delegasi datang dari jendela chat; bulatkan dan jaga di rentang wajar. */
+function ruleDelay(value) {
+  if (value === null || value === undefined || value === '') return DEFAULT_RULE_DELAY;
+  const ms = Number(value);
+  if (!Number.isFinite(ms)) return DEFAULT_RULE_DELAY;
+  return Math.min(Math.max(Math.round(ms), 0), MAX_RULE_DELAY);
+}
+
+/** Workspace read-only bukan alasan bootstrap gagal; laporkan saja ke UI. */
+async function applyRules(directory, delayMs) {
+  try {
+    return await upsertToolRules('opencode', directory, { delayMs });
+  } catch {
+    return { tool: 'opencode', file: 'AGENTS.md', delayMs, ok: false, supported: true, changed: false };
+  }
 }
 
 const catalogCache = new Map();
@@ -165,10 +186,12 @@ async function handleApi(req, res, url) {
   if (pathname === '/api/chat/bootstrap' && method === 'GET') {
     const directory = workspaceOrThrow();
     const query = { directory };
-    const [catalog, agents, sessions] = await Promise.all([
+    const delayMs = ruleDelay(searchParams.get('delay'));
+    const [catalog, agents, sessions, rules] = await Promise.all([
       loadModelCatalog(directory),
       bridge.request('/agent', { query }),
       bridge.request('/session', { query }).catch(() => []),
+      applyRules(directory, delayMs),
     ]);
     return sendJson(res, 200, {
       workspace: store.snapshot().workspace,
@@ -177,7 +200,14 @@ async function handleApi(req, res, url) {
       agents: buildAgentList(agents),
       roster: buildAgentRoster(agents),
       sessions: buildSessionList(sessions),
+      rules,
     });
+  }
+
+  if (pathname === '/api/chat/rules' && method === 'POST') {
+    const directory = workspaceOrThrow();
+    const body = await readJson(req);
+    return sendJson(res, 200, await applyRules(directory, ruleDelay(body.delayMs)));
   }
 
   if (pathname === '/api/chat/status' && method === 'GET') {

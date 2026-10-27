@@ -36,6 +36,22 @@ import type {
 
 const STORAGE_MODEL = 'virtoOffice.chatModel';
 const STORAGE_AGENT = 'virtoOffice.chatAgent';
+const STORAGE_DELAY = 'virtoOffice.ruleDelay';
+
+/** Jeda sebelum & sesudah kerja delegasi, ditulis ke aturan workspace. */
+const DEFAULT_RULE_DELAY = 2000;
+const MAX_RULE_DELAY = 10_000;
+
+function clampRuleDelay(ms: number): number {
+  if (!Number.isFinite(ms)) return DEFAULT_RULE_DELAY;
+  return Math.min(Math.max(Math.round(ms), 0), MAX_RULE_DELAY);
+}
+
+function storedRuleDelay(): number {
+  const raw = localStorage.getItem(STORAGE_DELAY);
+  if (raw === null) return DEFAULT_RULE_DELAY;
+  return clampRuleDelay(Number(raw));
+}
 
 function byId<T extends HTMLElement>(id: string): T {
   const node = document.getElementById(id);
@@ -57,6 +73,7 @@ const chatClose = byId<HTMLButtonElement>('chat-close');
 const sessionSelect = byId<HTMLSelectElement>('chat-session');
 const modelSelect = byId<HTMLSelectElement>('chat-model');
 const agentSelect = byId<HTMLSelectElement>('chat-agent');
+const delayInput = byId<HTMLInputElement>('chat-delay');
 const noticeEl = byId<HTMLElement>('chat-notice');
 const messagesEl = byId<HTMLElement>('chat-messages');
 const promptsEl = byId<HTMLElement>('chat-prompts');
@@ -118,6 +135,7 @@ let officeChipLabel = '';
 let officeRoster: RosterAgent[] = [];
 let presenceTimer = 0;
 let presenceFailures = 0;
+let ruleDelay = storedRuleDelay();
 
 export function installChat(officeApi: VirtOfficeApi): void {
   office = officeApi;
@@ -197,6 +215,13 @@ export function installChat(officeApi: VirtOfficeApi): void {
       event.preventDefault();
       form.requestSubmit();
     }
+  });
+  delayInput.value = String(ruleDelay / 1000);
+  delayInput.addEventListener('change', () => {
+    ruleDelay = clampRuleDelay(Number(delayInput.value) * 1000);
+    delayInput.value = String(ruleDelay / 1000);
+    localStorage.setItem(STORAGE_DELAY, String(ruleDelay));
+    void applyRuleDelay();
   });
   stopButton.addEventListener('click', () => void stopResponse());
 
@@ -296,6 +321,17 @@ function setMaximized(next: boolean): void {
   chatMaximize.setAttribute('aria-label', label);
 }
 
+/** Setiap perubahan jeda langsung ditulis ulang ke aturan tool di workspace. */
+async function applyRuleDelay(): Promise<void> {
+  if (!workspace) return;
+  try {
+    const state = await chatApi.setRules(ruleDelay);
+    if (!state.ok) setNotice('error', 'Aturan jeda delegasi tidak bisa ditulis ke workspace ini.');
+  } catch (error) {
+    setNotice('error', describeError(error) || 'Aturan jeda delegasi gagal ditulis.');
+  }
+}
+
 function openChat(): void {
   if (!workspace) {
     folderPicker?.show(null);
@@ -333,7 +369,7 @@ async function loadBootstrap(): Promise<void> {
   updateComposer();
 
   try {
-    const data = await chatApi.bootstrap();
+    const data = await chatApi.bootstrap(ruleDelay);
     if (generation !== workspaceGeneration) return;
 
     bootstrap = data;
@@ -353,6 +389,9 @@ async function loadBootstrap(): Promise<void> {
     renderSessionSelect();
 
     setNotice(null);
+    if (data.rules && !data.rules.ok) {
+      setNotice('error', 'Aturan jeda delegasi tidak bisa ditulis ke workspace ini.');
+    }
     const latest = sessions[0];
     if (latest) {
       await selectSession(latest, { initial: true });

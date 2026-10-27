@@ -546,7 +546,7 @@ body.chat-open .launcher,
 
 .chat__selects {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 88px;
+  grid-template-columns: minmax(0, 1fr) 88px 96px;
   gap: 7px;
   padding: 10px 12px 0;
 }
@@ -565,6 +565,28 @@ body.chat-open .launcher,
   letter-spacing: 0.18em;
   text-transform: uppercase;
   color: var(--ink-dim);
+}
+
+.field__number {
+  height: 28px;
+  padding: 0 7px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 8px;
+  background-color: #17222c;
+  color: var(--ink);
+  font: inherit;
+  font-size: 11.5px;
+  letter-spacing: 0.01em;
+  transition: border-color 140ms ease;
+}
+
+.field__number:hover {
+  border-color: rgba(226, 180, 74, 0.32);
+}
+
+.field__number:focus {
+  outline: none;
+  border-color: rgba(226, 180, 74, 0.5);
 }
 
 .field--session {
@@ -2003,7 +2025,7 @@ body.chat-open .launcher,
   }
 
   .chat__selects {
-    grid-template-columns: minmax(0, 1fr) 78px;
+    grid-template-columns: minmax(0, 1fr) 72px 80px;
   }
 
   .chat__composer {
