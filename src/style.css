@@ -1116,6 +1116,71 @@ body.chat-open .launcher,
   display: none;
 }
 
+/* Kolom tempel: jalan di webview yang memblok navigator.clipboard sekalipun. */
+.term__pad {
+  display: flex;
+  flex: none;
+  gap: 8px;
+  align-items: stretch;
+  padding: 9px 11px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.07);
+  background: rgba(226, 180, 74, 0.07);
+}
+
+.term__pad[hidden] {
+  display: none;
+}
+
+.term__pad-input {
+  flex: 1;
+  min-width: 0;
+  height: 54px;
+  padding: 7px 9px;
+  border: 1px solid rgba(226, 180, 74, 0.4);
+  border-radius: 8px;
+  background: #0d141b;
+  color: var(--ink);
+  font-family: ui-monospace, 'SF Mono', 'Cascadia Mono', monospace;
+  font-size: 12px;
+  line-height: 1.45;
+  resize: vertical;
+}
+
+.term__pad-input:focus {
+  outline: none;
+  border-color: rgba(226, 180, 74, 0.75);
+}
+
+.term__pad-send {
+  flex: none;
+  align-self: flex-end;
+  padding: 8px 14px;
+  border: 1px solid rgba(226, 180, 74, 0.55);
+  border-radius: 8px;
+  background: rgba(226, 180, 74, 0.16);
+  color: var(--ink);
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.term__pad-send:hover {
+  background: rgba(226, 180, 74, 0.26);
+}
+
+/* Hanya dipakai sesaat supaya execCommand('copy') punya teks yang bisa diblok. */
+.term__clip {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 1px;
+  height: 1px;
+  border: 0;
+  opacity: 0;
+  pointer-events: none;
+  z-index: -1;
+}
+
 .term__stages {
   position: relative;
   flex: 1;

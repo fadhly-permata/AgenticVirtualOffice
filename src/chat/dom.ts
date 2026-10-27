@@ -20,6 +20,7 @@ export const ICON = {
   folderPlus: 'M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2ZM12 11v6M9 14h6',
   up: 'M12 20V6M6 12l6-6 6 6',
   chevronDown: 'm6 9 6 6 6-6',
+  paste: 'M9 4h6v3H9zM15 5h2a1 1 0 0 1 1 1v13a1 1 0 0 1-1 1H7a1 1 0 0 1-1-1V6a1 1 0 0 1 1-1h2M12 10v6M9.5 13.5 12 16l2.5-2.5',
 };
 
 export function icon(d: string, size = 16): SVGSVGElement {

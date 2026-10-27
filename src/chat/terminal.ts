@@ -81,15 +81,36 @@ export function mountTerminal(container: HTMLElement): TerminalPanel {
   picker.setAttribute('aria-label', 'Shell untuk terminal baru');
 
   const addButton = iconButton('Terminal baru', ICON.plus, () => void create());
+  const copyButton = iconButton('Salin pilihan ke clipboard', ICON.copy, () => void copySelection());
+  const pasteButton = iconButton('Tempel dari clipboard', ICON.paste, () => void pasteClipboard());
   const closeButton = iconButton('Tutup terminal ini', ICON.trash, () => {
     if (active) void destroy(active);
   });
 
   const bar = el('div', 'term__bar');
-  bar.append(tabs, picker, addButton, closeButton);
+  bar.append(tabs, picker, copyButton, pasteButton, addButton, closeButton);
 
   const messageEl = el('p', 'term__message');
   messageEl.setAttribute('role', 'status');
+
+  const pad = el('div', 'term__pad');
+  pad.hidden = true;
+  const padInput = el('textarea', 'term__pad-input');
+  padInput.placeholder = 'Tempel teks di sini (Ctrl+V atau menu klik kanan), lalu Enter untuk menyisipkan ke terminal.';
+  padInput.setAttribute('aria-label', 'Kolom tempel ke terminal');
+  padInput.title = 'Enter untuk menyisipkan, Esc untuk menutup';
+  const padSend = el('button', 'term__pad-send', 'Tempel');
+  padSend.type = 'button';
+  pad.append(padInput, padSend);
+  padSend.addEventListener('click', submitPad);
+  padInput.addEventListener('keydown', (event) => {
+    if (event.key === 'Enter' && !event.shiftKey) {
+      event.preventDefault();
+      submitPad();
+    } else if (event.key === 'Escape') {
+      closePad();
+    }
+  });
 
   const stages = el('div', 'term__stages');
 
@@ -100,9 +121,11 @@ export function mountTerminal(container: HTMLElement): TerminalPanel {
   );
 
   const hint = el('p', 'term__hint');
-  hint.textContent = 'Terminal ini memakai pipe, bukan PTY: baris dikirim setelah Enter, Ctrl+C dan aplikasi layar penuh tidak tersedia.';
+  hint.textContent =
+    'Terminal ini memakai pipe, bukan PTY: baris dikirim setelah Enter dan aplikasi layar penuh tidak tersedia. ' +
+    'Salin: blok lalu Ctrl+C / Ctrl+Shift+C / tombol Salin. Tempel: Ctrl+V / Ctrl+Shift+V / tombol Tempel.';
 
-  root.append(bar, messageEl, stages, empty, hint);
+  root.append(bar, messageEl, pad, stages, empty, hint);
   container.append(root);
 
   function render(): void {
@@ -111,7 +134,11 @@ export function mountTerminal(container: HTMLElement): TerminalPanel {
     empty.hidden = views.length > 0;
     stages.hidden = views.length === 0;
     closeButton.disabled = !active;
+    const live = Boolean(active && !active.dead && active.term);
+    copyButton.disabled = !live;
+    pasteButton.disabled = !live;
     picker.disabled = shells.length === 0;
+    if (!live) pad.hidden = true;
     for (const view of views) {
       const on = view === active;
       view.stage.hidden = !on;
@@ -273,6 +300,8 @@ export function mountTerminal(container: HTMLElement): TerminalPanel {
   function onKeys(view: View, raw: string): void {
     if (view.dead || !view.term) return;
 
+    if (raw === '\u0003' && view.term.hasSelection()) return void copySelection();
+
     // PowerShell dan bash mengulang sendiri, jadi tombol diteruskan apa adanya.
     if (view.session.echo === 'shell') {
       send(view, raw.replace(/\r\n/g, '\n').replace(/\r/g, '\n'));
@@ -289,7 +318,8 @@ export function mountTerminal(container: HTMLElement): TerminalPanel {
     if (raw === '\u001b[A' || raw === '\u001b[B') return recall(view, raw === '\u001b[A' ? -1 : 1);
     if (raw.startsWith('\u001b')) return;
 
-    const chunks = raw.replace(/\r\n/g, '\n').split('\n');
+    // xterm meratakan newline hasil paste menjadi CR tunggal, jadi normalisasi di sini.
+    const chunks = raw.replace(/\r\n/g, '\n').replace(/\r/g, '\n').split('\n');
     chunks.forEach((chunk, index) => {
       if (index > 0) submit(view);
       const text = chunk.replace(CONTROL_CHARS, '');
@@ -323,6 +353,110 @@ export function mountTerminal(container: HTMLElement): TerminalPanel {
     view.line = view.history[view.historyAt] ?? '';
     view.term?.write(`\r\u001b[K${view.line}`);
   }
+
+  /** Jalur tanpa izin: textarea terkubur + execCommand masih diterima banyak webview. */
+  function copyViaExec(text: string): boolean {
+    const holder = el('textarea', 'term__clip');
+    holder.value = text;
+    document.body.append(holder);
+    holder.select();
+    let ok = false;
+    try {
+      ok = document.execCommand('copy');
+    } catch {
+      ok = false;
+    }
+    holder.remove();
+    return ok;
+  }
+
+  async function copySelection(): Promise<void> {
+    const term = active?.term;
+    if (!term || active?.dead) return;
+    const text = term.getSelection();
+    if (!text) {
+      message = 'Blok teks di terminal lebih dulu, baru salin.';
+      render();
+      return;
+    }
+    const lines = text.split('\n').filter(Boolean).length;
+    if (copyViaExec(text)) {
+      message = `${lines} baris tersalin ke clipboard.`;
+      render();
+      return;
+    }
+    try {
+      await navigator.clipboard.writeText(text);
+      message = `${lines} baris tersalin ke clipboard.`;
+    } catch {
+      message = 'Browser menolak akses clipboard — klik kanan lalu pilih Salin.';
+    }
+    render();
+  }
+
+  function openPad(): void {
+    if (!active?.term || active.dead) return;
+    padInput.value = '';
+    pad.hidden = false;
+    padInput.focus();
+  }
+
+  function closePad(): void {
+    pad.hidden = true;
+    padInput.value = '';
+    active?.term?.focus();
+  }
+
+  function submitPad(): void {
+    const term = active?.term;
+    if (!term || active?.dead) {
+      closePad();
+      return;
+    }
+    const text = padInput.value;
+    if (!text) return;
+    // Sama seperti tempel biasa: baris terakhir baru jalan setelah Enter di terminal.
+    term.paste(text);
+    closePad();
+    message = 'Teks masuk ke terminal — tekan Enter untuk menjalankan baris terakhir.';
+    render();
+  }
+
+  async function pasteClipboard(): Promise<void> {
+    const term = active?.term;
+    if (!term || active?.dead) return;
+    let text: string;
+    try {
+      text = await navigator.clipboard.readText();
+    } catch {
+      message = 'Browser menolak baca clipboard — tempel di kolom di bawah.';
+      openPad();
+      render();
+      return;
+    }
+    if (!text) {
+      message = 'Clipboard kosong.';
+      render();
+      return;
+    }
+    // term.paste() menormalisasi newline lalu mengirimnya lewat jalur onData yang sama dengan ketikan.
+    term.paste(text);
+    message = '';
+    render();
+  }
+
+  stages.addEventListener(
+    'keydown',
+    (event) => {
+      if (!(event.ctrlKey || event.metaKey) || !event.shiftKey) return;
+      const key = event.key.toLowerCase();
+      if (key !== 'c' && key !== 'v') return;
+      event.preventDefault();
+      event.stopPropagation();
+      void (key === 'c' ? copySelection() : pasteClipboard());
+    },
+    true
+  );
 
   async function create(): Promise<void> {
     if (!workspace) {
