@@ -260,6 +260,43 @@ export function claudeProviderPayload() {
 
 export const CLAUDE_CONFIG = { model: 'claude/sonnet' };
 
+/** Pertanyaan pilihan ganda Claude dipetakan ke bentuk QuestionRequest milik OpenCode. */
+export function askUserQuestions(input) {
+  const list = Array.isArray(input?.questions) ? input.questions : [];
+  return list
+    .filter((question) => question && typeof question.question === 'string' && question.question.trim())
+    .map((question) => ({
+      question: question.question.trim(),
+      header:
+        typeof question.header === 'string' && question.header.trim() ? question.header.trim() : 'Pertanyaan',
+      options: Array.isArray(question.options)
+        ? question.options
+            .filter((option) => option && typeof option.label === 'string' && option.label.trim())
+            .map((option) => ({
+              label: option.label.trim(),
+              description: typeof option.description === 'string' ? option.description : '',
+            }))
+        : [],
+      multiple: question.multiSelect === true,
+      custom: true,
+    }));
+}
+
+/** Jawaban per pertanyaan digabung jadi satu peta "teks pertanyaan" -> "label". */
+export function claudeAnswers(questions, answers) {
+  const map = {};
+  let count = 0;
+  questions.forEach((question, index) => {
+    const values = (Array.isArray(answers?.[index]) ? answers[index] : [])
+      .map((value) => (typeof value === 'string' ? value.trim() : ''))
+      .filter(Boolean);
+    if (!values.length) return;
+    map[question.question] = values.join(', ');
+    count += 1;
+  });
+  return { answers: map, count };
+}
+
 function publicSession(session) {
   return {
     id: session.id,
@@ -279,6 +316,14 @@ function publicPermission(pending) {
     patterns: pending.patterns,
     always: [],
     metadata: pending.metadata,
+  };
+}
+
+function publicQuestion(pending) {
+  return {
+    id: pending.id,
+    sessionID: pending.sessionID,
+    questions: pending.questions,
   };
 }
 
@@ -421,7 +466,12 @@ export class ClaudeBridge {
     if (pathname === '/provider' && method === 'GET') return claudeProviderPayload();
     if (pathname === '/config' && method === 'GET') return CLAUDE_CONFIG;
     if (pathname === '/agent' && method === 'GET') return this.#rosterFor(directory);
-    if (pathname === '/question' && method === 'GET') return [];
+    if (pathname === '/question' && method === 'GET') return this.#pendingQuestions();
+
+    const questionMatch = /^\/question\/([^/]+)\/reply$/.exec(pathname);
+    if (questionMatch && method === 'POST') {
+      return this.#replyQuestion(questionMatch[1], body?.answers);
+    }
 
     const permissionMatch = /^\/permission\/([^/]+)\/reply$/.exec(pathname);
     if (permissionMatch && method === 'POST') {
@@ -538,6 +588,7 @@ export class ClaudeBridge {
       messages: [],
       parts: new Map(),
       permissions: new Map(),
+      questions: new Map(),
       subagents: new Map(),
       stderr: '',
       abortTimer: null,
@@ -832,6 +883,7 @@ export class ClaudeBridge {
     session.busy = false;
     session.updated = Date.now();
 
+    this.#rejectQuestions(session);
     for (const pending of session.permissions.values()) {
       this.#emit({ type: 'permission.replied', properties: { sessionID: session.id, requestID: pending.id } });
     }
@@ -853,6 +905,10 @@ export class ClaudeBridge {
   #onControlRequest(session, event) {
     const request = event.request ?? {};
     if (request.subtype !== 'can_use_tool') return;
+    if (request.tool_name === 'AskUserQuestion') {
+      this.#onQuestion(session, event, request);
+      return;
+    }
     const pending = {
       id: String(event.request_id),
       sessionID: session.id,
@@ -878,6 +934,74 @@ export class ClaudeBridge {
         metadata: pending.metadata,
       },
     });
+  }
+
+  #pendingQuestions() {
+    const pending = [];
+    for (const session of this.#sessions.values()) {
+      for (const request of session.questions.values()) pending.push(publicQuestion(request));
+    }
+    return pending;
+  }
+
+  #onQuestion(session, event, request) {
+    const questions = askUserQuestions(request.input);
+    if (!questions.length) {
+      this.#writeControl(session, String(event.request_id), {
+        behavior: 'deny',
+        message: 'Pertanyaan tidak berisi pilihan yang bisa ditampilkan.',
+      });
+      return;
+    }
+    const pending = {
+      id: String(event.request_id),
+      sessionID: session.id,
+      toolUseID: typeof request.tool_use_id === 'string' ? request.tool_use_id : null,
+      input: request.input ?? {},
+      questions,
+    };
+    session.questions.set(pending.id, pending);
+    this.#emit({ type: 'question.asked', properties: publicQuestion(pending) });
+  }
+
+  #writeControl(session, id, response) {
+    try {
+      session.child?.stdin.write(
+        `${JSON.stringify({ type: 'control_response', response: { subtype: 'success', request_id: id, response } })}\n`
+      );
+    } catch {
+      // Proses sudah mati; kartu pertanyaan tetap dibersihkan.
+    }
+  }
+
+  #replyQuestion(id, answers) {
+    for (const session of this.#sessions.values()) {
+      const pending = session.questions.get(id);
+      if (!pending) continue;
+      const mapped = claudeAnswers(pending.questions, answers);
+      if (!mapped.count) {
+        this.#writeControl(session, id, { behavior: 'deny', message: 'Tidak dijawab dari VirtOffice.' });
+        session.questions.delete(id);
+        this.#emit({ type: 'question.rejected', properties: { sessionID: session.id, requestID: id } });
+        return null;
+      }
+      this.#writeControl(session, id, {
+        behavior: 'allow',
+        updatedInput: { ...pending.input, answers: mapped.answers },
+      });
+      session.questions.delete(id);
+      this.#emit({ type: 'question.replied', properties: { sessionID: session.id, requestID: id } });
+      return null;
+    }
+    throw new HttpError(404, 'Pertanyaan tidak ditemukan.');
+  }
+
+  #rejectQuestions(session) {
+    for (const pending of session.questions.values()) {
+      this.#writeControl(session, pending.id, { behavior: 'deny', message: 'Pertanyaan dibatalkan.' });
+      this.#emit({ type: 'question.rejected', properties: { sessionID: session.id, requestID: pending.id } });
+    }
+    session.questions.clear();
   }
 
   #subagentStart(session, toolUseId, name) {
@@ -917,6 +1041,7 @@ export class ClaudeBridge {
     const session = this.#sessions.get(id);
     if (!session?.busy) return;
     session.aborting = true;
+    this.#rejectQuestions(session);
     if (session.child) {
       try {
         session.child.stdin.write(
@@ -970,6 +1095,7 @@ export class ClaudeBridge {
     const child = session.child;
     session.child = null;
     if (child) child.kill();
+    this.#rejectQuestions(session);
     for (const pending of session.permissions.values()) {
       this.#emit({ type: 'permission.replied', properties: { sessionID: session.id, requestID: pending.id } });
     }

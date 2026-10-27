@@ -3,8 +3,10 @@ import os from 'node:os';
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';
 import {
+  askUserQuestions,
   assistantParts,
   buildTranscriptMessages,
+  claudeAnswers,
   claudeProjectSlug,
   claudeProviderPayload,
   claudeSpawnArgs,
@@ -153,6 +155,51 @@ describe('roster', () => {
       mode: 'primary',
       description: '',
     });
+  });
+});
+
+describe('pertanyaan AskUserQuestion', () => {
+  it('memetakan input Claude ke QuestionRequest milik FE', () => {
+    const mapped = askUserQuestions({
+      questions: [
+        {
+          question: 'Warna apa yang kamu suka?',
+          header: 'Warna',
+          multiSelect: true,
+          options: [
+            { label: 'Merah', description: 'Merah' },
+            { label: 'Biru' },
+          ],
+        },
+      ],
+    });
+    expect(mapped).toEqual([
+      {
+        question: 'Warna apa yang kamu suka?',
+        header: 'Warna',
+        options: [
+          { label: 'Merah', description: 'Merah' },
+          { label: 'Biru', description: '' },
+        ],
+        multiple: true,
+        custom: true,
+      },
+    ]);
+  });
+
+  it('menggabungkan jawaban multi-select dan melewati pertanyaan kosong', () => {
+    const questions = askUserQuestions({
+      questions: [{ question: 'Warna?' }, { question: 'Ukuran?' }],
+    });
+    expect(claudeAnswers(questions, [['Merah', 'Biru'], []])).toEqual({
+      answers: { 'Warna?': 'Merah, Biru' },
+      count: 1,
+    });
+  });
+
+  it('menerima jawaban kustom teks bebas', () => {
+    const questions = askUserQuestions({ questions: [{ question: 'Warna?' }] });
+    expect(claudeAnswers(questions, [['  ungu  ']])).toEqual({ answers: { 'Warna?': 'ungu' }, count: 1 });
   });
 });
 
