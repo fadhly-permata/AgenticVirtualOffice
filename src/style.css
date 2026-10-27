@@ -571,6 +571,440 @@ body.chat-open .launcher,
   cursor: default;
 }
 
+/* ------------------------------------------------------- rail & pages --- */
+
+.chat__body {
+  display: flex;
+  flex: 1;
+  min-height: 0;
+}
+
+.chat__rail {
+  flex: none;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  padding: 10px 6px;
+  border-right: 1px solid rgba(255, 255, 255, 0.07);
+  background: rgba(6, 11, 16, 0.32);
+}
+
+.chat__rail-btn {
+  position: relative;
+  display: grid;
+  place-items: center;
+  width: 30px;
+  height: 32px;
+  padding: 0;
+  border: 0;
+  border-radius: 9px;
+  background: transparent;
+  color: rgba(244, 239, 230, 0.48);
+  cursor: pointer;
+  transition: color 140ms ease, background 140ms ease;
+}
+
+.chat__rail-btn svg {
+  width: 18px;
+  height: 18px;
+}
+
+.chat__rail-btn:hover {
+  color: var(--ink);
+  background: rgba(255, 255, 255, 0.07);
+}
+
+.chat__rail-btn:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.chat__rail-btn[aria-selected='true'] {
+  color: var(--accent);
+  background: rgba(226, 180, 74, 0.13);
+}
+
+/* Tanda di tepi kiri rail: tab mana yang sedang terbuka terlihat sekilas. */
+.chat__rail-btn[aria-selected='true']::after {
+  content: '';
+  position: absolute;
+  left: -6px;
+  top: 50%;
+  width: 3px;
+  height: 17px;
+  border-radius: 0 3px 3px 0;
+  background: var(--accent);
+  transform: translateY(-50%);
+}
+
+.chat__pages {
+  display: flex;
+  flex: 1;
+  min-width: 0;
+}
+
+.chat__page {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+}
+
+.chat__page[hidden] {
+  display: none;
+}
+
+.chat__stub {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 8px;
+  align-items: center;
+  justify-content: center;
+  padding: 28px 24px;
+  text-align: center;
+}
+
+.chat__stub-title {
+  margin: 0;
+  color: var(--ink);
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.chat__stub-body {
+  margin: 0;
+  max-width: 300px;
+  color: var(--ink-dim);
+  font-size: 12.5px;
+  line-height: 1.55;
+}
+
+/* ---------------------------------------------------------- file list --- */
+
+.files {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-height: 0;
+}
+
+.files__bar {
+  flex: none;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 9px 11px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.07);
+}
+
+.files__searchbar {
+  display: flex;
+  gap: 5px;
+  align-items: center;
+}
+
+.files__search {
+  flex: 1;
+  min-width: 0;
+  padding: 6px 9px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 9px;
+  background: rgba(255, 255, 255, 0.04);
+  color: var(--ink);
+  font: inherit;
+  font-size: 12.5px;
+}
+
+.files__search:focus {
+  outline: none;
+  border-color: rgba(226, 180, 74, 0.55);
+  background: rgba(255, 255, 255, 0.07);
+}
+
+.files__search::placeholder {
+  color: rgba(244, 239, 230, 0.35);
+}
+
+.files__mode {
+  flex: none;
+  padding: 5px 9px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 9px;
+  background: transparent;
+  color: var(--ink-dim);
+  font: inherit;
+  font-size: 11.5px;
+  cursor: pointer;
+}
+
+.files__mode[aria-pressed='true'] {
+  border-color: rgba(226, 180, 74, 0.5);
+  color: var(--accent);
+  background: rgba(226, 180, 74, 0.1);
+}
+
+/* Tombol X hanya muncul saat isinya tidak kosong. */
+.files__search:placeholder-shown + .files__mode + .files__clear {
+  display: none;
+}
+
+.files__tools {
+  display: flex;
+  gap: 4px;
+}
+
+.files__message {
+  margin: 0;
+  padding: 6px 11px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+  background: rgba(224, 122, 95, 0.12);
+  color: #f6b39f;
+  font-size: 12px;
+}
+
+.files__message[hidden] {
+  display: none;
+}
+
+.files__prompt {
+  display: flex;
+  flex: none;
+  flex-wrap: wrap;
+  gap: 6px;
+  align-items: center;
+  padding: 9px 11px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.07);
+  background: rgba(255, 255, 255, 0.04);
+}
+
+.files__prompt[hidden] {
+  display: none;
+}
+
+.files__prompt--danger {
+  background: rgba(224, 122, 95, 0.13);
+}
+
+.files__prompt-label {
+  color: var(--ink);
+  font-size: 12.5px;
+  font-weight: 600;
+}
+
+.files__prompt-hint {
+  color: var(--ink-dim);
+  font-size: 11.5px;
+}
+
+.files__prompt-input {
+  flex: 1 1 160px;
+  min-width: 0;
+  padding: 5px 8px;
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  border-radius: 8px;
+  background: rgba(6, 11, 16, 0.5);
+  color: var(--ink);
+  font: inherit;
+  font-size: 12.5px;
+}
+
+.files__prompt-input:focus {
+  outline: none;
+  border-color: rgba(226, 180, 74, 0.6);
+}
+
+.files__prompt-ok,
+.files__prompt-cancel {
+  padding: 5px 11px;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.06);
+  color: var(--ink);
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.files__prompt-ok {
+  border-color: rgba(226, 180, 74, 0.55);
+  background: rgba(226, 180, 74, 0.16);
+  color: var(--accent);
+}
+
+.files__prompt--danger .files__prompt-ok {
+  border-color: rgba(224, 122, 95, 0.6);
+  background: rgba(224, 122, 95, 0.2);
+  color: #f6b39f;
+}
+
+.files__list {
+  flex: 1;
+  min-height: 0;
+  padding: 4px 0 10px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(255, 255, 255, 0.16) transparent;
+}
+
+.files__row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  /* Isi folder terbuka mengikuti kedalaman pohon, tanpa nested div. */
+  padding: 4px 10px 4px calc(10px + var(--depth, 0) * 13px);
+  cursor: pointer;
+  transition: background 120ms ease;
+}
+
+.files__row:hover {
+  background: rgba(255, 255, 255, 0.05);
+}
+
+.files__row--active {
+  background: rgba(226, 180, 74, 0.1);
+}
+
+.files__twist {
+  flex: none;
+  width: 11px;
+  color: rgba(244, 239, 230, 0.4);
+  font-size: 10px;
+  text-align: center;
+}
+
+.files__glyph {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 16px;
+  color: rgba(244, 239, 230, 0.55);
+}
+
+.files__row--hit .files__glyph,
+.files__row--active .files__glyph {
+  color: var(--accent);
+}
+
+.files__name {
+  flex: 0 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  color: var(--ink);
+  font-size: 12.5px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.files__meta {
+  flex: none;
+  color: rgba(244, 239, 230, 0.42);
+  font-size: 11px;
+  font-family: ui-monospace, 'SF Mono', 'Cascadia Mono', monospace;
+}
+
+.files__preview {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  margin-left: auto;
+  color: rgba(244, 239, 230, 0.45);
+  font-size: 11px;
+  text-align: right;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.files__actions {
+  flex: none;
+  display: flex;
+  gap: 2px;
+  margin-left: auto;
+  opacity: 0;
+  transition: opacity 120ms ease;
+}
+
+.files__row:hover .files__actions,
+.files__row--active .files__actions,
+.files__actions:focus-within {
+  opacity: 1;
+}
+
+.files__note,
+.files__result-head {
+  margin: 6px 12px;
+  color: var(--ink-dim);
+  font-size: 12px;
+}
+
+.files__result-head {
+  color: var(--accent);
+}
+
+.files__viewer {
+  display: flex;
+  flex: 0 0 46%;
+  flex-direction: column;
+  min-height: 0;
+  border-top: 1px solid rgba(255, 255, 255, 0.1);
+  background: rgba(6, 11, 16, 0.42);
+}
+
+.files__viewer[hidden] {
+  display: none;
+}
+
+.files__viewer-head {
+  flex: none;
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  padding: 7px 9px 7px 12px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.files__viewer-path {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--ink);
+  font-size: 12px;
+  font-family: ui-monospace, 'SF Mono', 'Cascadia Mono', monospace;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.files__viewer-info {
+  flex: none;
+  color: var(--ink-dim);
+  font-size: 11px;
+}
+
+.files__viewer-actions {
+  display: flex;
+  gap: 2px;
+  margin-left: auto;
+}
+
+.files__code {
+  flex: 1;
+  min-height: 0;
+  margin: 0;
+  padding: 9px 12px;
+  overflow: auto;
+  color: rgba(244, 239, 230, 0.9);
+  font-size: 11.5px;
+  font-family: ui-monospace, 'SF Mono', 'Cascadia Mono', monospace;
+  line-height: 1.55;
+  tab-size: 2;
+  white-space: pre;
+  overscroll-behavior: contain;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(255, 255, 255, 0.16) transparent;
+}
+
 .chat__selects {
   display: grid;
   grid-template-columns: minmax(0, 1fr) 88px 96px;

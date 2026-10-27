@@ -9,6 +9,7 @@ import {
 } from '../office/presence';
 import { chatApi } from './client';
 import { el, ICON, icon } from './dom';
+import { mountFiles, type FilesPanel } from './files';
 import { FolderPicker } from './folder';
 import { cancelPendingDiagrams, renderMarkdown } from './markdown';
 import { SearchSelect } from './select';
@@ -86,6 +87,33 @@ const statusEl = byId<HTMLElement>('chat-status');
 const form = byId<HTMLFormElement>('chat-form');
 const input = byId<HTMLTextAreaElement>('chat-input');
 const sendButton = byId<HTMLButtonElement>('chat-send');
+
+const STORAGE_TAB = 'virtoOffice.chatTab';
+
+/** Rail vertikal: satu halaman aktif, halaman lain tetap terpasang tapi tersembunyi. */
+const CHAT_TABS = ['agentic', 'files', 'scm', 'terminal'] as const;
+type ChatTab = (typeof CHAT_TABS)[number];
+
+const tabButtons = new Map<ChatTab, HTMLButtonElement>(
+  CHAT_TABS.map((tab) => [tab, byId<HTMLButtonElement>(`chat-tab-${tab}`)])
+);
+const tabPages = new Map<ChatTab, HTMLElement>(
+  CHAT_TABS.map((tab) => [tab, byId<HTMLElement>(`chat-page-${tab}`)])
+);
+const chatRail = byId<HTMLElement>('chat-rail');
+let activeTab: ChatTab = 'agentic';
+let filesPanel: FilesPanel | null = null;
+
+const STUB_COPY: Record<'scm' | 'terminal', { title: string; body: string }> = {
+  scm: {
+    title: 'Source Control',
+    body: 'Belum aktif. Halaman ini akan menampilkan branch, perubahan yang belum di-commit, dan diff per file.',
+  },
+  terminal: {
+    title: 'Terminal',
+    body: 'Belum aktif. Halaman ini akan membuka beberapa shell sekaligus di dalam workspace aktif.',
+  },
+};
 
 /** Model tidak tahu chat ini bisa menggambar, jadi permintaan visual dibawai catatan format. */
 const MERMAID_DIRECTIVE =
@@ -178,7 +206,7 @@ export function installChat(officeApi: VirtOfficeApi): void {
     // Perbesar selalu mulai dari tepi layar, bukan dari posisi hasil seretan.
     if (next) setBox(null);
     setMaximized(next);
-    if (window.innerWidth > 760) input.focus();
+    if (window.innerWidth > 760 && activeTab === 'agentic') input.focus();
   });
   chatHead.addEventListener('pointerdown', dragChat);
   chatHead.addEventListener('dblclick', () => setBox(null));
@@ -271,6 +299,35 @@ export function installChat(officeApi: VirtOfficeApi): void {
     else void sendMessage();
   });
 
+  const filesPage = tabPages.get('files');
+  if (filesPage) {
+    filesPanel = mountFiles(filesPage, {
+      onReference: (path) => {
+        const mention = `@${path}`;
+        input.value = input.value.trim() ? `${input.value.trim()} ${mention}` : mention;
+        setTab('agentic');
+        resizeInput();
+        updateComposer();
+        input.focus();
+      },
+    });
+  }
+  for (const [tab, button] of tabButtons) button.addEventListener('click', () => setTab(tab));
+  chatRail.addEventListener('keydown', (event) => {
+    const step =
+      event.key === 'ArrowDown' || event.key === 'ArrowRight'
+        ? 1
+        : event.key === 'ArrowUp' || event.key === 'ArrowLeft'
+          ? -1
+          : 0;
+    if (!step) return;
+    event.preventDefault();
+    const next = CHAT_TABS[(CHAT_TABS.indexOf(activeTab) + step + CHAT_TABS.length) % CHAT_TABS.length];
+    setTab(next);
+    tabButtons.get(next)?.focus();
+  });
+  setTab(storedTab());
+
   updateLauncher();
   updateChatFolder();
   renderMessages({ forceBottom: true });
@@ -321,6 +378,7 @@ function applyWorkspace(next: WorkspaceInfo | null): void {
   setNotice(null);
 
   updateChatFolder();
+  filesPanel?.setWorkspace(next);
   updateLauncher();
   renderSessionSelect();
   renderModelSelect();
@@ -340,6 +398,34 @@ function updateChatFolder(): void {
   input.placeholder = workspace
     ? `Minta OpenCode mengerjakan sesuatu di ${workspace.name}…`
     : 'Buka workspace untuk mulai…';
+}
+
+function storedTab(): ChatTab {
+  const raw = localStorage.getItem(STORAGE_TAB);
+  return CHAT_TABS.includes(raw as ChatTab) ? (raw as ChatTab) : 'agentic';
+}
+
+/** Placeholder jujur: halamannya sudah ada, isinya masih tahap berikutnya. */
+function renderStub(tab: 'scm' | 'terminal'): void {
+  const page = tabPages.get(tab);
+  if (!page || page.childElementCount > 0) return;
+  const copy = STUB_COPY[tab];
+  const wrap = el('div', 'chat__stub');
+  wrap.append(el('p', 'chat__stub-title', copy.title), el('p', 'chat__stub-body', copy.body));
+  page.append(wrap);
+}
+
+function setTab(next: ChatTab): void {
+  activeTab = next;
+  localStorage.setItem(STORAGE_TAB, next);
+  for (const [tab, button] of tabButtons) {
+    button.setAttribute('aria-selected', String(tab === next));
+    button.tabIndex = tab === next ? 0 : -1;
+  }
+  for (const [tab, page] of tabPages) page.hidden = tab !== next;
+  if (next === 'scm' || next === 'terminal') renderStub(next);
+  // Pindah ke daftar file berarti membaca ulang workspace, bukan memakai salinan tadi.
+  if (next === 'files') filesPanel?.refresh();
 }
 
 function updateLauncher(): void {
@@ -494,7 +580,7 @@ function openChat(): void {
     ensureStream();
     renderMessages({ forceBottom: true });
   }
-  if (window.innerWidth > 760) {
+  if (window.innerWidth > 760 && activeTab === 'agentic') {
     window.setTimeout(() => input.focus(), 80);
   }
 }
@@ -734,7 +820,10 @@ function startNewChat(focus: boolean): void {
   renderPrompts();
   renderMessages({ forceBottom: true });
   updateComposer();
-  if (focus) input.focus();
+  if (focus) {
+    setTab('agentic');
+    input.focus();
+  }
 }
 
 async function sendMessage(): Promise<void> {

@@ -103,72 +103,173 @@
           </div>
         </header>
 
-        <div class="chat__selects">
-          <div class="field field--session">
-            <span>Sesi</span>
-            <select id="chat-session" hidden></select>
-          </div>
-          <div class="field">
-            <span>Model</span>
-            <select id="chat-model" hidden></select>
-          </div>
-          <div class="field field--agent">
-            <span>Agent</span>
-            <select id="chat-agent" hidden></select>
-          </div>
-          <div class="field field--delay">
-            <span>Jeda (s)</span>
-            <input
-              id="chat-delay"
-              class="field__number"
-              type="number"
-              min="0"
-              max="10"
-              step="0.5"
-              inputmode="decimal"
-              title="Jeda sebelum dan sesudah pekerjaan yang didelegasikan"
-              aria-label="Jeda delegasi dalam detik"
-            />
-          </div>
-        </div>
-
         <div id="chat-notice" class="chat__notice" role="status" hidden></div>
 
-        <div id="chat-messages" class="chat__messages" role="log" aria-live="polite"></div>
-        <div id="chat-prompts" class="chat__prompts"></div>
-
-        <div class="chat__statusbar">
-          <span id="chat-agent-chip" class="chat__agent-chip" hidden></span>
-          <span id="chat-status" class="chat__status">Siap</span>
-        </div>
-
-        <form id="chat-form" class="chat__composer">
-          <textarea
-            id="chat-input"
-            rows="1"
-            placeholder="Minta OpenCode mengerjakan sesuatu…"
-            autocomplete="off"
-            spellcheck="false"
-            aria-label="Pesan untuk OpenCode"
-          ></textarea>
-          <div class="chat__composer-actions">
+        <div class="chat__body">
+          <nav id="chat-rail" class="chat__rail" role="tablist" aria-orientation="vertical" aria-label="Bagian chat">
             <button
-              id="chat-send"
-              class="chat__send"
+              id="chat-tab-agentic"
+              class="chat__rail-btn"
               type="button"
-              data-mode="send"
-              title="Kirim"
-              aria-label="Kirim pesan"
+              role="tab"
+              aria-selected="true"
+              aria-controls="chat-page-agentic"
+              title="Agentic"
+              aria-label="Agentic"
             >
-              <svg class="icon-send" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round">
-                <path d="M12 19V5M6 11l6-6 6 6" />
-              </svg>
-              <svg class="icon-stop" viewBox="0 0 24 24" fill="currentColor" stroke="none">
-                <rect x="7" y="7" width="10" height="10" rx="2.4" />
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M21 11.5a8.4 8.4 0 0 1-8.5 8.3H7.4L3 23v-6.1A8.4 8.4 0 0 1 12.5 3 8.4 8.4 0 0 1 21 11.5Z" />
+                <path d="M8.5 11h7M8.5 14.5h4" />
               </svg>
             </button>
+            <button
+              id="chat-tab-files"
+              class="chat__rail-btn"
+              type="button"
+              role="tab"
+              aria-selected="false"
+              aria-controls="chat-page-files"
+              title="File List"
+              aria-label="File List"
+            >
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2Z" />
+                <path d="M7 13h8M7 16h5" />
+              </svg>
+            </button>
+            <button
+              id="chat-tab-scm"
+              class="chat__rail-btn"
+              type="button"
+              role="tab"
+              aria-selected="false"
+              aria-controls="chat-page-scm"
+              title="Source Control"
+              aria-label="Source Control"
+            >
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M6 3v12" />
+                <path d="M18 9a3 3 0 1 0-3-3 3 3 0 0 0 3 3Z" />
+                <path d="M6 21a3 3 0 1 0 0-6 3 3 0 0 0 0 6Z" />
+                <path d="M15 6a9 9 0 0 1-9 9" />
+              </svg>
+            </button>
+            <button
+              id="chat-tab-terminal"
+              class="chat__rail-btn"
+              type="button"
+              role="tab"
+              aria-selected="false"
+              aria-controls="chat-page-terminal"
+              title="Terminal"
+              aria-label="Terminal"
+            >
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">
+                <path d="m5 7 4 5-4 5M12 17h7" />
+              </svg>
+            </button>
+          </nav>
+
+          <div class="chat__pages">
+            <section
+              id="chat-page-agentic"
+              class="chat__page"
+              role="tabpanel"
+              aria-labelledby="chat-tab-agentic"
+              tabindex="-1"
+            >
+              <div class="chat__selects">
+                <div class="field field--session">
+                  <span>Sesi</span>
+                  <select id="chat-session" hidden></select>
+                </div>
+                <div class="field">
+                  <span>Model</span>
+                  <select id="chat-model" hidden></select>
+                </div>
+                <div class="field field--agent">
+                  <span>Agent</span>
+                  <select id="chat-agent" hidden></select>
+                </div>
+                <div class="field field--delay">
+                  <span>Jeda (s)</span>
+                  <input
+                    id="chat-delay"
+                    class="field__number"
+                    type="number"
+                    min="0"
+                    max="10"
+                    step="0.5"
+                    inputmode="decimal"
+                    title="Jeda sebelum dan sesudah pekerjaan yang didelegasikan"
+                    aria-label="Jeda delegasi dalam detik"
+                  />
+                </div>
+              </div>
+
+              <div id="chat-messages" class="chat__messages" role="log" aria-live="polite"></div>
+              <div id="chat-prompts" class="chat__prompts"></div>
+
+              <div class="chat__statusbar">
+                <span id="chat-agent-chip" class="chat__agent-chip" hidden></span>
+                <span id="chat-status" class="chat__status">Siap</span>
+              </div>
+
+              <form id="chat-form" class="chat__composer">
+                <textarea
+                  id="chat-input"
+                  rows="1"
+                  placeholder="Minta OpenCode mengerjakan sesuatu…"
+                  autocomplete="off"
+                  spellcheck="false"
+                  aria-label="Pesan untuk OpenCode"
+                ></textarea>
+                <div class="chat__composer-actions">
+                  <button
+                    id="chat-send"
+                    class="chat__send"
+                    type="button"
+                    data-mode="send"
+                    title="Kirim"
+                    aria-label="Kirim pesan"
+                  >
+                    <svg class="icon-send" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round">
+                      <path d="M12 19V5M6 11l6-6 6 6" />
+                    </svg>
+                    <svg class="icon-stop" viewBox="0 0 24 24" fill="currentColor" stroke="none">
+                      <rect x="7" y="7" width="10" height="10" rx="2.4" />
+                    </svg>
+                  </button>
+                </div>
+              </form>
+            </section>
+
+            <section
+              id="chat-page-files"
+              class="chat__page"
+              role="tabpanel"
+              aria-labelledby="chat-tab-files"
+              tabindex="-1"
+              hidden
+            ></section>
+            <section
+              id="chat-page-scm"
+              class="chat__page"
+              role="tabpanel"
+              aria-labelledby="chat-tab-scm"
+              tabindex="-1"
+              hidden
+            ></section>
+            <section
+              id="chat-page-terminal"
+              class="chat__page"
+              role="tabpanel"
+              aria-labelledby="chat-tab-terminal"
+              tabindex="-1"
+              hidden
+            ></section>
           </div>
-        </form>
+        </div>
       </section>
 
       <div id="folder-modal" class="modal" hidden>

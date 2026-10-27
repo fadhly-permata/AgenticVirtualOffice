@@ -1,12 +1,17 @@
 import type {
   Bootstrap,
   BrowseResult,
+  FileContent,
+  FileKind,
   ModelKey,
   PermissionReply,
   RuleState,
   RunActivity,
+  SearchMode,
+  SearchResult,
   SessionMessages,
   SessionSummary,
+  TreeResult,
   WorkspaceState,
 } from './types';
 
@@ -100,4 +105,26 @@ export const chatApi = {
       method: 'POST',
       body: JSON.stringify({ answers }),
     }),
+  tree: (path: string) =>
+    request<TreeResult>(`/api/chat/tree?path=${encodeURIComponent(path)}`, {}, 20_000),
+  file: (path: string) =>
+    request<FileContent>(`/api/chat/file?path=${encodeURIComponent(path)}`, {}, 20_000),
+  search: (query: string, mode: SearchMode) =>
+    request<SearchResult>(
+      `/api/chat/search?q=${encodeURIComponent(query)}&mode=${mode}`,
+      {},
+      20_000
+    ),
+  createFile: (path: string, kind: FileKind, text = '') =>
+    request<{ path: string }>('/api/chat/files', {
+      method: 'POST',
+      body: JSON.stringify({ path, kind, text }),
+    }),
+  renameFile: (from: string, to: string) =>
+    request<{ from: string; to: string }>('/api/chat/files/rename', {
+      method: 'POST',
+      body: JSON.stringify({ from, to }),
+    }),
+  deleteFile: (path: string) =>
+    request<{ path: string }>('/api/chat/files/delete', { method: 'POST', body: JSON.stringify({ path }) }),
 };

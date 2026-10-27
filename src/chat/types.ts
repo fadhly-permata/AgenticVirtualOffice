@@ -195,3 +195,45 @@ export interface ChatEvent {
 export interface PermissionReply {
   reply: 'once' | 'always' | 'reject';
 }
+
+export type FileKind = 'file' | 'folder';
+export type SearchMode = 'name' | 'content';
+
+export interface TreeEntry {
+  name: string;
+  /** Relatif terhadap akar workspace, selalu dengan '/' sebagai pemisah. */
+  path: string;
+  dir: boolean;
+  size: number;
+  mtime: number;
+}
+
+export interface TreeResult {
+  root: string;
+  path: string;
+  entries: TreeEntry[];
+  truncated: boolean;
+}
+
+export interface FileContent {
+  path: string;
+  text: string;
+  size: number;
+  truncated: boolean;
+  binary: boolean;
+}
+
+export interface SearchMatch {
+  path: string;
+  dir?: boolean;
+  line?: number;
+  preview?: string;
+}
+
+export interface SearchResult {
+  mode: SearchMode;
+  query: string;
+  matches: SearchMatch[];
+  scanned: number;
+  stopped: 'limit' | 'done';
+}

@@ -13,6 +13,13 @@ export const ICON = {
   copy: 'M9 9h11v11H9zM4 15V4h11',
   plus: 'M12 5v14M5 12h14',
   minus: 'M5 12h14',
+  refresh: 'M22.5 4.5v6h-6M20 15a9 9 0 1 1-2.1-9.4l4.6 4.4',
+  pencil: 'M12 20h9M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z',
+  trash: 'M3 6h18M8 6V4a1 1 0 0 1 1-1h6a1 1 0 0 1 1 1v2m2 0v13a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2V6M10 11v6M14 11v6',
+  filePlus: 'M14 3v5h5M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8ZM12 11v6M9 14h6',
+  folderPlus: 'M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2ZM12 11v6M9 14h6',
+  up: 'M12 20V6M6 12l6-6 6 6',
+  chevronDown: 'm6 9 6 6 6-6',
 };
 
 export function icon(d: string, size = 16): SVGSVGElement {
