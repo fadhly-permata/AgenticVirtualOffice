@@ -6,6 +6,8 @@ import type { ScmBranch, ScmBranches, ScmDiff, ScmFile, ScmLogEntry, ScmStatus, 
 export interface ScmHooks {
   /** Dipakai untuk menyisipkan path file ke composer chat. */
   onReference?: (path: string) => void;
+  /** Dipakai header diff untuk membuka berkas di viewer Files. */
+  onOpenFile?: (path: string, line?: number) => void;
 }
 
 export interface ScmPanel {
@@ -42,6 +44,15 @@ function labelButton(button: HTMLButtonElement, label: string): void {
 
 function describeError(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
+}
+
+/** Baris sisi baru dari hunk pertama, jadi diff bisa dibuka tepat di baris yang berubah. */
+function firstHunkLine(lines: string[]): number {
+  for (const line of lines) {
+    const matched = /^@@ -\d+(?:,\d+)? \+(\d+)(?:,\d+)? @@/.exec(line);
+    if (matched) return Number(matched[1]);
+  }
+  return 0;
 }
 
 function inGroup(file: ScmFile, key: GroupKey): boolean {
@@ -515,6 +526,13 @@ export function mountScm(container: HTMLElement, hooks: ScmHooks = {}): ScmPanel
     }
     if (hooks.onReference && !diff.untracked) {
       actions.append(iconButton(t('scm.insertRef'), ICON.plus, () => hooks.onReference?.(diff?.path ?? '')));
+    }
+    if (hooks.onOpenFile && !diff.untracked) {
+      actions.append(
+        iconButton(t('viewer.openFile'), ICON.expand, () =>
+          hooks.onOpenFile?.(diff?.path ?? '', firstHunkLine(diff?.lines ?? []))
+        )
+      );
     }
     actions.append(iconButton(t('scm.closeDiff'), ICON.close, closeViewer));
     headRow.append(actions);

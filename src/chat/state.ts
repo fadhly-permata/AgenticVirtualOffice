@@ -162,6 +162,40 @@ export function toolTitle(part: Part): string {
   return typeof title === 'string' && title.trim() ? title.trim() : prettyToolName(part.tool);
 }
 
+/** Path absolut OpenCode dipangkas jadi path relatif ruang kerja; kosong kalau di luarnya. */
+export function workspaceRelative(root: string, absolute: string): string {
+  if (!root || !absolute) return '';
+  const flat = absolute.replace(/\\/g, '/');
+  const base = root.replace(/\\/g, '/').replace(/\/+$/, '');
+  const lowerFlat = flat.toLowerCase();
+  const lowerBase = base.toLowerCase();
+  if (lowerFlat !== lowerBase && !lowerFlat.startsWith(`${lowerBase}/`)) return '';
+  return flat.slice(base.length).replace(/^\/+/, '');
+}
+
+/** Berkas yang disentuh sebuah tool plus baris tujuannya, untuk tautan ke viewer Files. */
+export function toolFileTarget(root: string, part: Part): { path: string; line: number } | null {
+  const input = (part.state?.input ?? {}) as Record<string, unknown>;
+  const meta = (part.state?.metadata ?? {}) as Record<string, unknown>;
+  const rawPath = [input.filePath, input.path, meta.filePath, meta.filepath].find(
+    (value) => typeof value === 'string' && value.length > 0
+  ) as string | undefined;
+  if (!rawPath) return null;
+  const path = workspaceRelative(root, rawPath);
+  if (!path) return null;
+
+  const locations = meta.locations;
+  const firstLine = Number(Array.isArray(locations) ? (locations[0] as Record<string, unknown>)?.line : 0);
+  const offset = Number(input.offset);
+  const line =
+    Number.isInteger(firstLine) && firstLine > 0
+      ? firstLine
+      : Number.isInteger(offset) && offset > 0
+        ? offset
+        : 0;
+  return { path, line };
+}
+
 const BUBBLE_LIMIT = 46;
 
 function clampBubble(text: string): string {

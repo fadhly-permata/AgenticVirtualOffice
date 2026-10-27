@@ -8,8 +8,10 @@ import {
   prettyToolName,
   rawToLive,
   relativeTime,
+  toolFileTarget,
   toolTitle,
   truncate,
+  workspaceRelative,
 } from '../src/chat/state';
 import type { RunActivity } from '../src/chat/types';
 
@@ -342,5 +344,52 @@ describe('chat helpers', () => {
     expect(truncate('abc', 10)).toBe('abc');
     const long = 'x'.repeat(20);
     expect(truncate(long, 10)).toContain('10 karakter lagi');
+  });
+});
+
+describe('lompat ke baris dari kartu tool', () => {
+  const root = String.raw`D:\- Repo\proj`;
+
+  it('memangkas path absolut jadi relatif ruang kerja', () => {
+    expect(workspaceRelative(root, String.raw`D:\- Repo\proj\src\chat\files.ts`)).toBe('src/chat/files.ts');
+    expect(workspaceRelative(root, 'D:/- Repo/proj/README.md')).toBe('README.md');
+    expect(workspaceRelative(root, String.raw`D:\- REPO\PROJ\x.ts`)).toBe('x.ts');
+    expect(workspaceRelative(root, String.raw`D:\- Repo\lain\x.ts`)).toBe('');
+    expect(workspaceRelative('', String.raw`D:\- Repo\proj\x.ts`)).toBe('');
+  });
+
+  it('memakai baris dari metadata edit, lalu offset baca sebagai cadangan', () => {
+    const edit = {
+      id: 'p1',
+      type: 'tool',
+      tool: 'edit',
+      state: {
+        status: 'completed',
+        input: { filePath: `${root}\\src\\chat\\files.ts` },
+        metadata: { locations: [{ path: 'files.ts', line: 812 }] },
+      },
+    } as const;
+    expect(toolFileTarget(root, edit as never)).toEqual({ path: 'src/chat/files.ts', line: 812 });
+
+    const read = {
+      id: 'p2',
+      type: 'tool',
+      tool: 'read',
+      state: { status: 'completed', input: { filePath: `${root}\\README.md`, offset: 40 } },
+    } as const;
+    expect(toolFileTarget(root, read as never)).toEqual({ path: 'README.md', line: 40 });
+  });
+
+  it('mengabaikan tool yang tidak menyentuh file ruang kerja', () => {
+    const bash = { id: 'p3', type: 'tool', tool: 'bash', state: { status: 'completed', input: { command: 'ls' } } } as const;
+    expect(toolFileTarget(root, bash as never)).toBeNull();
+
+    const luar = {
+      id: 'p4',
+      type: 'tool',
+      tool: 'read',
+      state: { status: 'completed', input: { path: String.raw`C:\Windows\win.ini` } },
+    } as const;
+    expect(toolFileTarget(root, luar as never)).toBeNull();
   });
 });

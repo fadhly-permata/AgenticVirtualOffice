@@ -21,6 +21,8 @@ export interface FilesHooks {
 export interface FilesPanel {
   setWorkspace(next: WorkspaceInfo | null): void;
   refresh(): void;
+  /** Dipakai kartu tool dan header diff untuk membuka berkas pada baris tertentu. */
+  openPath(path: string, line?: number): void;
 }
 
 function humanSize(bytes: number): string {
@@ -38,16 +40,39 @@ function describeError(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
 }
 
-type PreviewKind = 'markdown' | 'html' | null;
+type PreviewKind = 'markdown' | 'html' | 'image' | 'pdf' | null;
+
+/** Satu file yang terbuka di viewer; mode, zoom, dan barisnya diingat per tab. */
+interface ViewTab {
+  path: string;
+  content: FileContent;
+  mode: 'raw' | 'preview';
+  zoom: number;
+  line: number;
+}
+
+const MAX_TABS = 8;
+const IMAGE_EXTS = new Set(['png', 'jpg', 'jpeg', 'gif', 'webp', 'avif', 'bmp', 'ico', 'svg']);
+
+function extensionOf(path: string): string {
+  return path.slice(path.lastIndexOf('.') + 1).toLowerCase();
+}
 
 function previewKind(path: string): PreviewKind {
-  const ext = path.slice(path.lastIndexOf('.') + 1).toLowerCase();
+  const ext = extensionOf(path);
   if (ext === 'md' || ext === 'markdown' || ext === 'mdx') return 'markdown';
   if (ext === 'html' || ext === 'htm' || ext === 'xhtml') return 'html';
+  if (IMAGE_EXTS.has(ext)) return 'image';
+  if (ext === 'pdf') return 'pdf';
   return null;
 }
 
-/** URL asset workspace supaya gambar/CSS relatif di pratinjau HTML bisa dimuat. */
+/** URL berkas mentah; dipakai aset relatif pratinjau HTML dan sisipan gambar/PDF. */
+function rawUrl(path: string): string {
+  return `/api/chat/raw/${path.split('/').map(encodeURIComponent).join('/')}`;
+}
+
+/** URL akar folder file, supaya `<base href>` bisa menurunkan path relatif. */
 function assetBase(path: string): string {
   const dir = parentOf(path);
   const prefix = dir ? `${dir.split('/').map(encodeURIComponent).join('/')}/` : '';
@@ -69,11 +94,17 @@ export function mountFiles(container: HTMLElement, hooks: FilesHooks = {}): File
   const children = new Map<string, TreeEntry[]>();
   const expanded = new Set<string>();
   let selected = '';
+  const tabs: ViewTab[] = [];
+  let activePath = '';
   let viewed: FileContent | null = null;
   let viewLine = 0;
   let viewMode: 'raw' | 'preview' = 'raw';
   let wrap = prefs().wrap;
   let zoom = 1;
+  let findValue = '';
+  let hits: HTMLElement[] = [];
+  let hitIndex = -1;
+  let findCount: HTMLElement | null = null;
   let results: SearchResult | null = null;
   let prompt: Prompt | null = null;
   let busy = false;
@@ -463,9 +494,60 @@ export function mountFiles(container: HTMLElement, hooks: FilesHooks = {}): File
 
   /* -------------------------------------- pratinjau -------------------------------------- */
 
+  function current(): ViewTab | null {
+    return tabs.find((tab) => tab.path === activePath) ?? null;
+  }
+
+  /** State viewer yang lagi tampil dikembalikan ke tab-nya sebelum berpindah. */
+  function saveTab(): void {
+    const tab = current();
+    if (!tab) return;
+    tab.mode = viewMode;
+    tab.zoom = zoom;
+    tab.line = viewLine;
+  }
+
+  function activate(tab: ViewTab | null): void {
+    saveTab();
+    findValue = '';
+    hits = [];
+    hitIndex = -1;
+    if (!tab) {
+      activePath = '';
+      viewed = null;
+      renderViewer();
+      return;
+    }
+    activePath = tab.path;
+    viewed = tab.content;
+    viewMode = tab.mode;
+    zoom = tab.zoom;
+    viewLine = tab.line;
+    wrap = prefs().wrap;
+    selected = tab.path;
+    renderViewer();
+  }
+
+  function closeTab(path: string): void {
+    const index = tabs.findIndex((tab) => tab.path === path);
+    if (index < 0) return;
+    const wasActive = tabs[index].path === activePath;
+    tabs.splice(index, 1);
+    if (!wasActive) {
+      renderViewer();
+      return;
+    }
+    const next = tabs[Math.min(index, tabs.length - 1)] ?? null;
+    activePath = '';
+    activate(next);
+  }
+
   function closeViewer(): void {
+    tabs.length = 0;
+    activePath = '';
     viewed = null;
     viewLine = 0;
+    findValue = '';
     renderViewer();
   }
 
@@ -474,11 +556,40 @@ export function mountFiles(container: HTMLElement, hooks: FilesHooks = {}): File
     renderViewer();
   }
 
+  function tabStrip(): HTMLElement {
+    const strip = el('div', 'viewer__tabs');
+    strip.setAttribute('role', 'tablist');
+    for (const tab of tabs) {
+      const button = el('button', 'viewer__tab');
+      button.type = 'button';
+      button.setAttribute('role', 'tab');
+      button.setAttribute('aria-selected', String(tab.path === activePath));
+      button.title = tab.path;
+      const name = tab.path.split('/').pop() ?? tab.path;
+      button.append(el('span', 'viewer__tab-name', name));
+      const close = el('span', 'viewer__tab-close', '×');
+      close.setAttribute('role', 'button');
+      close.setAttribute('aria-label', t('viewer.tabClose', { name }));
+      close.addEventListener('click', (event) => {
+        event.stopPropagation();
+        closeTab(tab.path);
+      });
+      button.append(close);
+      button.addEventListener('click', () => activate(tab));
+      strip.append(button);
+    }
+    const clear = iconButton(t('viewer.close'), ICON.close, closeViewer);
+    clear.className = 'viewer__icon viewer__icon--tail';
+    strip.append(clear);
+    return strip;
+  }
+
   function toolbar(): HTMLElement {
     const barEl = el('div', 'viewer__bar');
     const kind = viewed ? previewKind(viewed.path) : null;
 
-    if (kind && viewed && !viewed.binary) {
+    // Seg hanya untuk teks yang bisa tampil dua wajah; gambar dan PDF selalu satu wajah.
+    if (viewed && !viewed.binary && (kind === 'markdown' || kind === 'html')) {
       const seg = el('div', 'viewer__seg');
       for (const option of ['raw', 'preview'] as const) {
         const button = el('button', 'viewer__seg-btn', t(option === 'raw' ? 'viewer.raw' : 'viewer.preview'));
@@ -491,7 +602,10 @@ export function mountFiles(container: HTMLElement, hooks: FilesHooks = {}): File
     }
 
     const actions = el('span', 'viewer__actions');
-    if (viewed && !viewed.binary) {
+    if (viewed && (kind === 'image' || kind === 'pdf')) {
+      if (kind === 'image') actions.append(zoomButton('out'), zoomButton('in'));
+      actions.append(openLinkButton(viewed.path));
+    } else if (viewed && !viewed.binary) {
       const wrapButton = el('button', 'viewer__icon');
       wrapButton.type = 'button';
       wrapButton.title = t(wrap ? 'viewer.wrapOn' : 'viewer.wrapOff');
@@ -500,26 +614,6 @@ export function mountFiles(container: HTMLElement, hooks: FilesHooks = {}): File
       wrapButton.append(icon(ICON.wrap, 15));
       wrapButton.addEventListener('click', () => {
         wrap = !wrap;
-        renderViewer();
-      });
-
-      const zoomOut = el('button', 'viewer__icon');
-      zoomOut.type = 'button';
-      zoomOut.title = t('viewer.zoomOut');
-      zoomOut.setAttribute('aria-label', zoomOut.title);
-      zoomOut.append(icon(ICON.minus, 15));
-      zoomOut.addEventListener('click', () => {
-        zoom = Math.max(0.7, Number((zoom - 0.1).toFixed(2)));
-        renderViewer();
-      });
-
-      const zoomIn = el('button', 'viewer__icon');
-      zoomIn.type = 'button';
-      zoomIn.title = t('viewer.zoomIn');
-      zoomIn.setAttribute('aria-label', zoomIn.title);
-      zoomIn.append(icon(ICON.plus, 15));
-      zoomIn.addEventListener('click', () => {
-        zoom = Math.min(1.8, Number((zoom + 0.1).toFixed(2)));
         renderViewer();
       });
 
@@ -547,34 +641,173 @@ export function mountFiles(container: HTMLElement, hooks: FilesHooks = {}): File
           iconButton(t('menu.reference'), ICON.plus, () => hooks.onReference?.(viewed?.path ?? ''))
         );
       }
-      actions.append(wrapButton, zoomOut, zoomIn, copy);
+      actions.append(wrapButton, zoomButton('out'), zoomButton('in'), copy);
+      barEl.append(findControl());
     }
-    actions.append(iconButton(t('viewer.close'), ICON.close, closeViewer));
     barEl.append(el('span', 'viewer__spacer'), actions);
     return barEl;
   }
 
+  function zoomButton(direction: 'in' | 'out'): HTMLButtonElement {
+    const button = el('button', 'viewer__icon');
+    button.type = 'button';
+    button.title = direction === 'in' ? t('viewer.zoomIn') : t('viewer.zoomOut');
+    button.setAttribute('aria-label', button.title);
+    button.append(icon(direction === 'in' ? ICON.plus : ICON.minus, 15));
+    button.addEventListener('click', () => {
+      zoom =
+        direction === 'in'
+          ? Math.min(1.8, Number((zoom + 0.1).toFixed(2)))
+          : Math.max(0.7, Number((zoom - 0.1).toFixed(2)));
+      renderViewer();
+    });
+    return button;
+  }
+
+  /** pranala ke berkas mentah; gambar/PDF tidak bisa disisipkan lebih dari ini. */
+  function openLinkButton(path: string): HTMLAnchorElement {
+    const link = el('a', 'viewer__icon');
+    link.href = rawUrl(path);
+    link.target = '_blank';
+    link.rel = 'noopener noreferrer';
+    link.title = t('viewer.openInTab');
+    link.setAttribute('aria-label', link.title);
+    link.append(icon(ICON.expand, 15));
+    return link;
+  }
+
+  function findControl(): HTMLElement {
+    const box = el('div', 'viewer__findbox');
+    const input = el('input', 'viewer__find');
+    input.type = 'search';
+    input.placeholder = t('viewer.findPlaceholder');
+    input.setAttribute('aria-label', t('viewer.findPlaceholder'));
+    input.value = findValue;
+    const count = el('span', 'viewer__find-count');
+    findCount = count;
+
+    const arrow = (key: 'findPrev' | 'findNext', glyph: string): HTMLButtonElement => {
+      const button = el('button', 'viewer__find-btn', glyph);
+      button.type = 'button';
+      button.title = t(`viewer.${key}`);
+      button.setAttribute('aria-label', button.title);
+      button.addEventListener('click', () => step(key === 'findNext' ? 1 : -1));
+      return button;
+    };
+
+    input.addEventListener('input', () => {
+      findValue = input.value;
+      runFind();
+    });
+    input.addEventListener('keydown', (event) => {
+      if (event.key === 'Enter') {
+        event.preventDefault();
+        step(event.shiftKey ? -1 : 1);
+      } else if (event.key === 'Escape') {
+        input.value = '';
+        findValue = '';
+        runFind();
+      }
+    });
+
+    box.append(input, arrow('findPrev', '↑'), arrow('findNext', '↓'), count);
+    return box;
+  }
+
+  function runFind(): void {
+    const body = viewer.querySelector<HTMLElement>('[data-view="code"]');
+    const rows = body ? Array.from(body.querySelectorAll<HTMLElement>('.code__row')) : [];
+    for (const row of rows) row.classList.remove('code__row--hit', 'code__row--active');
+    hits = [];
+    hitIndex = -1;
+
+    if (!findValue || !rows.length) {
+      paintFindCount();
+      return;
+    }
+
+    if (findValue.startsWith(':')) {
+      const target = Number(findValue.slice(1));
+      if (Number.isInteger(target) && target >= 1 && target <= rows.length) {
+        rows[target - 1].classList.add('code__row--active');
+        body?.scrollTo({ top: Math.max(0, rows[target - 1].offsetTop - 40) });
+      } else {
+        message = t('viewer.gotoMissing', { line: Number.isFinite(target) ? target : 0, count: rows.length });
+        paintMessage();
+      }
+      paintFindCount();
+      return;
+    }
+
+    const needle = findValue.toLowerCase();
+    hits = rows.filter((row) => (row.querySelector('.code__text')?.textContent ?? '').toLowerCase().includes(needle));
+    for (const row of hits) row.classList.add('code__row--hit');
+    if (hits.length) {
+      hitIndex = 0;
+      focusHit();
+    }
+    paintFindCount();
+  }
+
+  function step(delta: number): void {
+    if (!hits.length) {
+      runFind();
+      return;
+    }
+    hitIndex = (hitIndex + delta + hits.length) % hits.length;
+    focusHit();
+    paintFindCount();
+  }
+
+  function focusHit(): void {
+    for (const row of hits) row.classList.remove('code__row--active');
+    const row = hits[hitIndex];
+    if (!row) return;
+    row.classList.add('code__row--active');
+    row.scrollIntoView({ block: 'center' });
+  }
+
+  function paintFindCount(): void {
+    if (!findCount) return;
+    if (!findValue || findValue.startsWith(':')) {
+      findCount.textContent = '';
+      return;
+    }
+    if (!hits.length) {
+      findCount.textContent = t('viewer.findEmpty');
+      return;
+    }
+    findCount.textContent = t('viewer.findCount', { index: hitIndex + 1, total: hits.length });
+  }
+
   function renderViewer(): void {
     viewer.textContent = '';
-    viewer.hidden = !viewed;
+    findCount = null;
+    viewer.hidden = tabs.length === 0;
     if (!viewed) return;
 
+    viewer.append(tabStrip());
+
+    const kind = previewKind(viewed.path);
     const head = el('header', 'files__viewer-head');
     head.append(el('span', 'files__viewer-path', viewed.path));
     const info = [humanSize(viewed.size)];
     if (viewed.truncated) info.push(t('viewer.truncated'));
-    if (viewed.binary) info.push(t('viewer.binary'));
+    if (viewed.binary && kind !== 'image' && kind !== 'pdf') info.push(t('viewer.binary'));
     const lines = viewed.binary ? 0 : viewed.text.split('\n').length;
     if (lines) info.push(t('viewer.lines', { count: lines }));
     head.append(el('span', 'files__viewer-info', info.join(' · ')));
     viewer.append(head, toolbar());
 
+    if (kind === 'image' || kind === 'pdf') {
+      viewer.append(mediaBody(viewed.path, kind));
+      return;
+    }
     if (viewed.binary) {
       viewer.append(el('p', 'viewer__note', t('viewer.binaryBody')));
       return;
     }
 
-    const kind = previewKind(viewed.path);
     if (viewMode === 'preview' && kind === 'markdown') {
       const box = el('div', 'viewer__md');
       box.setAttribute('tabindex', '-1');
@@ -589,6 +822,25 @@ export function mountFiles(container: HTMLElement, hooks: FilesHooks = {}): File
 
     viewer.append(codeBody(viewed.text, viewed.path));
     if (viewLine > 1) scrollToOneLine(viewLine);
+    if (findValue) runFind();
+  }
+
+  function mediaBody(path: string, kind: 'image' | 'pdf'): HTMLElement {
+    const box = el('div', 'viewer__media');
+    if (kind === 'image') {
+      const image = el('img', 'viewer__img');
+      image.src = rawUrl(path);
+      image.alt = t('viewer.imageAlt', { name: path.split('/').pop() ?? path });
+      // Tanpa lazy: kotaknya belum punya ukuran intrinsik, jadi pemuatan malas tidak pernah dimulai.
+      image.decoding = 'async';
+      image.style.transform = `scale(${zoom})`;
+      const frame = el('div', 'viewer__media-frame');
+      frame.append(image);
+      box.append(frame);
+      return box;
+    }
+    box.append(el('p', 'viewer__note', t('viewer.pdfBody')));
+    return box;
   }
 
   function htmlFrame(source: string, path: string): HTMLIFrameElement {
@@ -748,18 +1000,35 @@ export function mountFiles(container: HTMLElement, hooks: FilesHooks = {}): File
     path: string,
     options: { mode?: 'raw' | 'preview'; line?: number } = {}
   ): Promise<void> {
+    const existing = tabs.find((tab) => tab.path === path);
+    if (existing) {
+      if (options.mode) existing.mode = options.mode;
+      existing.line = options.line ?? 0;
+      if (existing.path === activePath) {
+        viewMode = existing.mode;
+        viewLine = existing.line;
+        renderViewer();
+      } else {
+        activate(existing);
+      }
+      return;
+    }
+
     const token = (renderToken += 1);
     message = '';
     try {
       const content = await chatApi.file(path);
       if (token !== renderToken) return;
-      viewed = content;
-      viewLine = options.line ?? 0;
-      viewMode = options.mode ?? 'raw';
-      wrap = prefs().wrap;
-      zoom = 1;
-      selected = path;
-      renderViewer();
+      const tab: ViewTab = {
+        path,
+        content,
+        mode: options.mode ?? 'raw',
+        zoom: 1,
+        line: options.line ?? 0,
+      };
+      tabs.push(tab);
+      if (tabs.length > MAX_TABS) tabs.shift();
+      activate(tab);
       paintMessage();
     } catch (error) {
       if (token !== renderToken) return;
@@ -836,7 +1105,11 @@ export function mountFiles(container: HTMLElement, hooks: FilesHooks = {}): File
       children.clear();
       expanded.clear();
       selected = '';
+      tabs.length = 0;
+      activePath = '';
       viewed = null;
+      findValue = '';
+      hits = [];
       results = null;
       prompt = null;
       searchInput.value = '';
@@ -844,5 +1117,8 @@ export function mountFiles(container: HTMLElement, hooks: FilesHooks = {}): File
       void redraw();
     },
     refresh,
+    openPath(path, line) {
+      void openFile(path, { mode: prefs().defaultView, line: line ?? 0 });
+    },
   };
 }

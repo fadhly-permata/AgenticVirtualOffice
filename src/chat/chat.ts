@@ -24,6 +24,7 @@ import {
   isAbortError,
   prettyToolName,
   rawToLive,
+  toolFileTarget,
   truncate,
 } from './state';
 import type {
@@ -291,7 +292,7 @@ export function installChat(officeApi: VirtOfficeApi): void {
   const filesPage = tabPages.get('files');
   if (filesPage) filesPanel = mountFiles(filesPage, { onReference: referenceToComposer });
   const scmPage = tabPages.get('scm');
-  if (scmPage) scmPanel = mountScm(scmPage, { onReference: referenceToComposer });
+  if (scmPage) scmPanel = mountScm(scmPage, { onReference: referenceToComposer, onOpenFile: openInViewer });
   const terminalPage = tabPages.get('terminal');
   if (terminalPage) terminalPanel = mountTerminal(terminalPage);
   const settingsPage = tabPages.get('settings');
@@ -1553,6 +1554,22 @@ function renderTool(part: Part): HTMLElement {
   const title = el('span', 'tool__title', typeof state?.title === 'string' ? state.title : '');
   const badge = el('span', 'tool__badge', toolStatusLabel(status));
   summary.append(mark, name, title, badge);
+
+  const target = toolFileTarget(workspace?.path ?? '', part);
+  if (target) {
+    const open = el('button', 'tool__open');
+    open.type = 'button';
+    open.title = t('viewer.openFile');
+    open.setAttribute('aria-label', open.title);
+    open.append(icon(ICON.expand, 12));
+    open.addEventListener('click', (event) => {
+      // Tanpa dua baris ini, klik tombol ikut membuka/menutup detail kartu tool.
+      event.preventDefault();
+      event.stopPropagation();
+      openInViewer(target.path, target.line);
+    });
+    summary.append(open);
+  }
   details.append(summary);
 
   const body = el('div', 'tool__body');
@@ -1577,6 +1594,12 @@ function renderTool(part: Part): HTMLElement {
   }
   if (body.childElementCount) details.append(body);
   return details;
+}
+
+/** Lompat ke halaman Files sambil membuka berkas pada baris yang dimaksud. */
+function openInViewer(path: string, line = 0): void {
+  setTab('files');
+  filesPanel?.openPath(path, line);
 }
 
 function toolStatusLabel(status: string): string {
