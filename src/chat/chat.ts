@@ -91,7 +91,8 @@ const sendButton = byId<HTMLButtonElement>('chat-send');
 const MERMAID_DIRECTIVE =
   '[format] Chat VirtOffice merender markdown dan menggambar blok ```mermaid menjadi diagram ' +
   '(flowchart, sequence, gantt, class, er, state, mindmap, timeline) atau chart (pie, xychart-beta). ' +
-  'Untuk bagan, skema, grafik, atau chart: jawab dengan blok ```mermaid, bukan ASCII art/box-drawing.';
+  'Untuk bagan, skema, grafik, atau chart: jawab dengan blok ```mermaid, bukan ASCII art/box-drawing. ' +
+  'Sintaksnya harus bisa di-parse: beri tanda kutip untuk label, dan tulis nilai sebagai angka tanpa tanda persen.';
 
 const VISUAL_REQUEST = /diagram|flow ?chart|chart|graph|grafik|bagan|skema|visual|mind ?map|gantt|sequence|pie|xychart/i;
 

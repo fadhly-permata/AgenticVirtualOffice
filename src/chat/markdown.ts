@@ -148,19 +148,39 @@ function buildDiagram(source: string): HTMLElement {
   return figure;
 }
 
+/** Model sering menulis nilai pie sebagai "40%" — lexer mermaid menolak persen di baris angka. */
+const PERCENT_VALUE = /^(\s*"[^"]*"\s*:\s*\d+(?:[.,]\d+)?)\s*%\s*$/gm;
+
 async function draw(figure: HTMLElement, source: string): Promise<void> {
   let result: Diagram;
   try {
     const mermaid = await loadMermaid();
-    const id = `virtoDiagram${(diagramSeq += 1)}`;
-    const { svg } = await mermaid.render(id, source);
-    document.getElementById(`d${id}`)?.remove();
-    result = { svg: cleanSvg(svg) };
+    try {
+      result = { svg: await renderSvg(mermaid, source) };
+    } catch (error) {
+      const repaired = source.replace(PERCENT_VALUE, '$1');
+      if (repaired === source) throw error;
+      result = { svg: await renderSvg(mermaid, repaired) };
+    }
   } catch (error) {
-    result = { error: error instanceof Error ? error.message : String(error) };
+    result = { error: briefError(error) };
   }
   remember(diagramCache, DIAGRAM_CACHE_LIMIT, source, result);
   if (figure.isConnected) paint(figure, result);
+}
+
+async function renderSvg(mermaid: MermaidApi, source: string): Promise<string> {
+  const id = `virtoDiagram${(diagramSeq += 1)}`;
+  const { svg } = await mermaid.render(id, source);
+  document.getElementById(`d${id}`)?.remove();
+  return cleanSvg(svg);
+}
+
+/** Pesan mermaid tiga baris bertele-tele; yang berguna cuma bagian setelah "Parsing failed". */
+function briefError(error: unknown): string {
+  const text = (error instanceof Error ? error.message : String(error)).replace(/\s+/g, ' ').trim();
+  const detail = /Parsing failed:\s*([\s\S]*)$/i.exec(text)?.[1] ?? text.replace(/^Syntax error in text\s+mermaid version \S+\s*/i, '');
+  return (detail.trim() || text).slice(0, 220);
 }
 
 function paint(figure: HTMLElement, result: Diagram | null): void {
