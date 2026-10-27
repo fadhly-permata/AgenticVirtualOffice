@@ -157,6 +157,11 @@ export function mountFiles(container: HTMLElement, hooks: FilesHooks = {}): File
   const messageEl = el('p', 'files__message');
   messageEl.setAttribute('role', 'status');
 
+  // Path lengkap workspace aktif, supaya tidak perlu menebak folder mana yang sedang dibuka.
+  const rootBar = el('div', 'files__root');
+  const rootPath = el('span', 'files__root-path');
+  rootBar.append(icon(ICON.folder, 13), rootPath);
+
   const promptEl = el('div', 'files__prompt');
   promptEl.hidden = true;
 
@@ -171,10 +176,18 @@ export function mountFiles(container: HTMLElement, hooks: FilesHooks = {}): File
   const panes = el('div', 'files__panes');
   panes.append(list, viewer);
 
-  root.append(bar, messageEl, promptEl, panes);
+  root.append(rootBar, bar, messageEl, promptEl, panes);
   container.append(root);
   setMode('name');
   applySplit();
+  paintRoot();
+
+  function paintRoot(): void {
+    const path = workspace?.path ?? '';
+    rootBar.hidden = !path;
+    rootPath.textContent = path;
+    rootBar.title = path ? t('files.rootHint', { path }) : '';
+  }
 
   function note(text: string): HTMLElement {
     return el('p', 'files__note', text);
@@ -1107,6 +1120,7 @@ export function mountFiles(container: HTMLElement, hooks: FilesHooks = {}): File
   });
 
   subscribeLocale(() => {
+    paintRoot();
     if (viewed) renderViewer();
     void redraw();
   });
@@ -1114,6 +1128,7 @@ export function mountFiles(container: HTMLElement, hooks: FilesHooks = {}): File
   return {
     setWorkspace(next) {
       workspace = next;
+      paintRoot();
       children.clear();
       expanded.clear();
       selected = '';

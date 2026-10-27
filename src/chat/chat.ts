@@ -71,10 +71,12 @@ function byId<T extends HTMLElement>(id: string): T {
 
 const launcher = byId<HTMLButtonElement>('chat-launcher');
 const launcherLabel = byId<HTMLElement>('launcher-label');
+const launcherFolder = byId<HTMLElement>('launcher-folder');
 const launcherStatus = byId<HTMLElement>('launcher-status');
 
 const chatWindow = byId<HTMLElement>('chat-window');
 const chatChangeFolder = byId<HTMLButtonElement>('chat-change-folder');
+const chatFolder = byId<HTMLElement>('chat-folder');
 const chatNew = byId<HTMLButtonElement>('chat-new');
 const chatMaximize = byId<HTMLButtonElement>('chat-maximize');
 const chatHead = byId<HTMLElement>('chat-head');
@@ -397,8 +399,18 @@ function applyWorkspace(next: WorkspaceInfo | null): void {
   if (workspace) void loadBootstrap();
 }
 
+/** Nama folder terakhir dari path absolut; path akar memakai path itu sendiri. */
+function folderName(path: string): string {
+  const trimmed = path.replace(/[\\/]+$/, '');
+  return trimmed.split(/[\\/]/).pop() || path;
+}
+
 function updateChatFolder(): void {
-  // Nama workspace tidak lagi ditulis di batang judul; path-nya tetap bisa dibaca di tooltip.
+  // Nama folder kembali ditulis di batang judul supaya jelas folder mana yang aktif.
+  const name = workspace ? folderName(workspace.path) : '';
+  chatFolder.textContent = name;
+  chatFolder.hidden = !name;
+  chatFolder.title = workspace?.path ?? '';
   chatChangeFolder.title = workspace
     ? `${t('shell.changeWorkspace')} — ${workspace.path}`
     : t('shell.changeWorkspace');
@@ -436,8 +448,12 @@ function setTab(next: ChatTab): void {
 }
 
 function updateLauncher(): void {
-  // Satu baris saja: nama workspace tidak ditulis lagi, path-nya pindah ke tooltip.
+  // Nama folder ikut tampil di peluncur, jadi folder aktif terbaca walau jendela ditutup.
+  const name = workspace ? folderName(workspace.path) : '';
   launcherLabel.textContent = workspace ? t('chat.launcherEyebrow') : t('chat.openWorkspace');
+  launcherFolder.textContent = name;
+  launcherFolder.hidden = !name;
+  launcherFolder.title = workspace?.path ?? '';
   launcher.title = workspace ? t('chat.launcherTitle', { path: workspace.path }) : t('chat.launcherTitleIdle');
   launcherStatus.dataset.state = bootLoading
     ? 'loading'

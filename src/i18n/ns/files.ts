@@ -13,6 +13,7 @@ export const files: Catalog = {
   newFile: ['File baru', 'New file'],
   newFolder: ['Folder baru', 'New folder'],
   treeAria: ['Isi workspace', 'Workspace contents'],
+  rootHint: ['Folder workspace aktif: {path}', 'Active workspace folder: {path}'],
   rename: ['Ganti nama', 'Rename'],
   remove: ['Hapus', 'Delete'],
   emptyDir: ['Kosong', 'Empty'],
