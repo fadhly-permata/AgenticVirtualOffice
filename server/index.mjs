@@ -14,7 +14,21 @@ import {
   OpenCodeBridge,
 } from './opencode.mjs';
 import { upsertToolRules } from './rules.mjs';
-import { fileDiff, repoStatus } from './scm.mjs';
+import {
+  branchInfo,
+  commitChanges,
+  commitHistory,
+  createBranch,
+  deleteBranch,
+  discardChanges,
+  fileDiff,
+  pullChanges,
+  pushChanges,
+  repoStatus,
+  setStaged,
+  setStagedAll,
+  switchBranch,
+} from './scm.mjs';
 import { TerminalHub } from './terminal.mjs';
 import { browseDirectory, WorkspaceStore } from './workspace.mjs';
 
@@ -288,6 +302,57 @@ async function handleApi(req, res, url) {
       200,
       await fileDiff(workspaceOrThrow(), searchParams.get('path') ?? '', searchParams.get('staged') === '1')
     );
+  }
+
+  if (pathname === '/api/chat/scm/branches' && method === 'GET') {
+    return sendJson(res, 200, await branchInfo(workspaceOrThrow()));
+  }
+
+  if (pathname === '/api/chat/scm/history' && method === 'GET') {
+    return sendJson(res, 200, { entries: await commitHistory(workspaceOrThrow(), searchParams.get('limit') ?? '') });
+  }
+
+  if (pathname === '/api/chat/scm/stage' && method === 'POST') {
+    const body = await readJson(req);
+    return sendJson(res, 200, await setStaged(workspaceOrThrow(), body.paths, body.staged !== false));
+  }
+
+  if (pathname === '/api/chat/scm/stage/all' && method === 'POST') {
+    const body = await readJson(req);
+    return sendJson(res, 200, await setStagedAll(workspaceOrThrow(), body.staged !== false));
+  }
+
+  if (pathname === '/api/chat/scm/commit' && method === 'POST') {
+    const body = await readJson(req);
+    return sendJson(res, 200, await commitChanges(workspaceOrThrow(), body.message, Boolean(body.amend)));
+  }
+
+  if (pathname === '/api/chat/scm/discard' && method === 'POST') {
+    const body = await readJson(req);
+    return sendJson(res, 200, await discardChanges(workspaceOrThrow(), body.paths));
+  }
+
+  if (pathname === '/api/chat/scm/branch/switch' && method === 'POST') {
+    const body = await readJson(req);
+    return sendJson(res, 200, await switchBranch(workspaceOrThrow(), body.name));
+  }
+
+  if (pathname === '/api/chat/scm/branch/create' && method === 'POST') {
+    const body = await readJson(req);
+    return sendJson(res, 200, await createBranch(workspaceOrThrow(), body.name, body.checkout !== false));
+  }
+
+  if (pathname === '/api/chat/scm/branch/delete' && method === 'POST') {
+    const body = await readJson(req);
+    return sendJson(res, 200, await deleteBranch(workspaceOrThrow(), body.name));
+  }
+
+  if (pathname === '/api/chat/scm/push' && method === 'POST') {
+    return sendJson(res, 200, await pushChanges(workspaceOrThrow()));
+  }
+
+  if (pathname === '/api/chat/scm/pull' && method === 'POST') {
+    return sendJson(res, 200, await pullChanges(workspaceOrThrow()));
   }
 
   if (pathname === '/api/chat/terminal/shells' && method === 'GET') {
