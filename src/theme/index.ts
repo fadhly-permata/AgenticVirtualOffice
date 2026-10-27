@@ -139,8 +139,23 @@ export function setTheme(next: string): void {
   if (changed) for (const listener of Array.from(listeners)) listener(def.id);
 }
 
+/** Warna yang mewakili palet satu tema, dipakai sebagai strip pratinjau di Pengaturan. */
 export function swatch(def: ThemeDef): string[] {
-  return [def.bg, def.accent, def.keyword, def.string, def.ink];
+  return [
+    def.bg,
+    def.panel,
+    def.sunken,
+    def.line,
+    def.accent,
+    def.keyword,
+    def.string,
+    def.number,
+    def.fn,
+    def.type,
+    def.add,
+    def.del,
+    def.ink,
+  ];
 }
 
 /** Dipanggil sekali saat boot supaya tema aktif langsung benar sebelum render pertama. */

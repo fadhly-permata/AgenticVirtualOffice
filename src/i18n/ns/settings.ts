@@ -14,6 +14,8 @@ export const settings: Catalog = {
     'Tema mengatur panel, pratinjau file, dan pewarnaan sintaks.',
     'A theme drives panels, file previews, and syntax colours.',
   ],
+  themeSearch: ['Cari tema…', 'Search themes…'],
+  themeEmpty: ['Tema tidak ditemukan.', 'No themes found.'],
   preview: ['Pratinjau file', 'File preview'],
   other: ['Lainnya', 'Other'],
   wrap: ['Wrap kata', 'Word wrap'],
