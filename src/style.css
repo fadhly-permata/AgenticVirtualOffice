@@ -1246,16 +1246,6 @@ body.chat-open .launcher,
   line-height: 1.55;
 }
 
-.term__hint {
-  flex: none;
-  margin: 0;
-  padding: 6px 11px 9px;
-  border-top: 1px solid rgba(255, 255, 255, 0.07);
-  color: rgba(244, 239, 230, 0.42);
-  font-size: 11px;
-  line-height: 1.45;
-}
-
 .chat__selects {
   display: grid;
   grid-template-columns: minmax(0, 1fr) 88px 96px;

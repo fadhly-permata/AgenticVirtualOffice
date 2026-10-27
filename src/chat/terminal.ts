@@ -120,12 +120,7 @@ export function mountTerminal(container: HTMLElement): TerminalPanel {
     el('p', 'term__empty-body', 'Buka shell di folder workspace aktif. Beberapa tab bisa berjalan bersamaan.')
   );
 
-  const hint = el('p', 'term__hint');
-  hint.textContent =
-    'Terminal ini memakai pipe, bukan PTY: baris dikirim setelah Enter dan aplikasi layar penuh tidak tersedia. ' +
-    'Salin: blok lalu Ctrl+C / Ctrl+Shift+C / tombol Salin. Tempel: Ctrl+V / Ctrl+Shift+V / tombol Tempel.';
-
-  root.append(bar, messageEl, pad, stages, empty, hint);
+  root.append(bar, messageEl, pad, stages, empty);
   container.append(root);
 
   function render(): void {
@@ -157,11 +152,33 @@ export function mountTerminal(container: HTMLElement): TerminalPanel {
     );
   }
 
+  let shellsPromise: Promise<void> | null = null;
+
   async function ensureShells(): Promise<void> {
     if (shells.length) return;
-    const state = await chatApi.terminalShells();
-    shells = state.shells;
-    fillPicker();
+    if (!shellsPromise) {
+      shellsPromise = chatApi
+        .terminalShells()
+        .then((state) => {
+          shells = state.shells;
+          fillPicker();
+        })
+        .finally(() => {
+          shellsPromise = null;
+        });
+    }
+    await shellsPromise;
+  }
+
+  /** Dropdown diisi begitu halaman terminal dibuka, bukan setelah terminal pertama dibuat. */
+  function loadShells(): void {
+    if (!workspace || shells.length) return;
+    void ensureShells()
+      .then(render)
+      .catch((error: unknown) => {
+        message = describeError(error);
+        render();
+      });
   }
 
   function buildView(session: TerminalSession): View {
@@ -530,9 +547,11 @@ export function mountTerminal(container: HTMLElement): TerminalPanel {
       const changed = (next?.path ?? '') !== (workspace?.path ?? '');
       workspace = next;
       if (changed) closeAll();
+      loadShells();
       render();
     },
     refresh() {
+      loadShells();
       if (!views.length && workspace && !loading) void create();
       else render();
     },
