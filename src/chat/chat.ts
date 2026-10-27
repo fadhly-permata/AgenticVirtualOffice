@@ -87,6 +87,17 @@ const form = byId<HTMLFormElement>('chat-form');
 const input = byId<HTMLTextAreaElement>('chat-input');
 const sendButton = byId<HTMLButtonElement>('chat-send');
 
+/** Model tidak tahu chat ini bisa menggambar, jadi permintaan visual dibawai catatan format. */
+const MERMAID_DIRECTIVE =
+  '[format] Chat VirtOffice merender markdown dan menggambar blok ```mermaid menjadi diagram ' +
+  '(flowchart, sequence, gantt, class, er, state, mindmap, timeline) atau chart (pie, xychart-beta). ' +
+  'Untuk bagan, skema, grafik, atau chart: jawab dengan blok ```mermaid, bukan ASCII art/box-drawing.';
+
+const VISUAL_REQUEST = /diagram|flow ?chart|chart|graph|grafik|bagan|skema|visual|mind ?map|gantt|sequence|pie|xychart/i;
+
+/** Dipotong lagi saat render supaya gelembung user tetap berisi teks aslinya. */
+const DIRECTIVE_TAIL = /\n{2,}\[format\][^\n]*\s*$/;
+
 type NoticeKind = 'info' | 'error' | 'retry' | 'disconnect';
 
 let office: VirtOfficeApi | null = null;
@@ -759,7 +770,8 @@ async function sendMessage(): Promise<void> {
 
     await connected;
     fatalAborts.delete(session.id);
-    await chatApi.send(session.id, text, model, agent);
+    const prompt = VISUAL_REQUEST.test(text) ? `${text}\n\n${MERMAID_DIRECTIVE}` : text;
+    await chatApi.send(session.id, prompt, model, agent);
     if (generation !== workspaceGeneration || currentSession?.id !== session.id) return;
 
     input.value = '';
@@ -1272,7 +1284,7 @@ function renderMessage(message: LiveMessage, runningLast: boolean): HTMLElement 
     const bubble = el('div', 'msg__bubble');
     const text = message.parts
       .filter((part) => part.type === 'text' && typeof part.text === 'string')
-      .map((part) => part.text as string)
+      .map((part) => (part.text as string).replace(DIRECTIVE_TAIL, ''))
       .join('\n')
       .trim();
     if (text) renderMarkdown(bubble, text);
