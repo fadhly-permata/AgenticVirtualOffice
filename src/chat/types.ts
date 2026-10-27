@@ -308,3 +308,26 @@ export interface ScmDiff {
   total: number;
   note?: string;
 }
+
+export interface ScmBranch {
+  name: string;
+  sha: string;
+  current: boolean;
+  upstream: string;
+  ahead: number;
+  behind: number;
+  when: string;
+}
+
+export interface ScmBranches {
+  current: string;
+  local: ScmBranch[];
+  remote: ScmBranch[];
+}
+
+export interface ScmLogEntry {
+  sha: string;
+  author: string;
+  when: string;
+  subject: string;
+}

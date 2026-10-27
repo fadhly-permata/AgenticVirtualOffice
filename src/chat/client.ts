@@ -7,7 +7,9 @@ import type {
   PermissionReply,
   RuleState,
   RunActivity,
+  ScmBranches,
   ScmDiff,
+  ScmLogEntry,
   ScmStatus,
   SearchMode,
   SearchResult,
@@ -138,6 +140,25 @@ export const chatApi = {
       {},
       20_000
     ),
+  scmStage: (paths: string[], staged: boolean) =>
+    request<ScmStatus>('/api/chat/scm/stage', { method: 'POST', body: JSON.stringify({ paths, staged }) }, 60_000),
+  scmStageAll: (staged: boolean) =>
+    request<ScmStatus>('/api/chat/scm/stage/all', { method: 'POST', body: JSON.stringify({ staged }) }, 60_000),
+  scmCommit: (message: string, amend: boolean) =>
+    request<ScmStatus>('/api/chat/scm/commit', { method: 'POST', body: JSON.stringify({ message, amend }) }, 60_000),
+  scmDiscard: (paths: string[]) =>
+    request<ScmStatus>('/api/chat/scm/discard', { method: 'POST', body: JSON.stringify({ paths }) }, 60_000),
+  scmBranches: () => request<ScmBranches>('/api/chat/scm/branches', {}, 20_000),
+  scmBranchSwitch: (name: string) =>
+    request<ScmBranches>('/api/chat/scm/branch/switch', { method: 'POST', body: JSON.stringify({ name }) }, 60_000),
+  scmBranchCreate: (name: string, checkout: boolean) =>
+    request<ScmBranches>('/api/chat/scm/branch/create', { method: 'POST', body: JSON.stringify({ name, checkout }) }, 60_000),
+  scmBranchDelete: (name: string) =>
+    request<ScmBranches>('/api/chat/scm/branch/delete', { method: 'POST', body: JSON.stringify({ name }) }, 60_000),
+  scmHistory: (limit: number) =>
+    request<{ entries: ScmLogEntry[] }>(`/api/chat/scm/history?limit=${limit}`, {}, 20_000),
+  scmPush: () => request<{ note: string }>('/api/chat/scm/push', { method: 'POST' }, 180_000),
+  scmPull: () => request<{ note: string }>('/api/chat/scm/pull', { method: 'POST' }, 180_000),
   terminalShells: () => request<{ shells: ShellInfo[] }>('/api/chat/terminal/shells', {}, 20_000),
   createTerminal: (shell: string | null) =>
     request<TerminalSession>('/api/chat/terminal', { method: 'POST', body: JSON.stringify({ shell }) }, 20_000),
