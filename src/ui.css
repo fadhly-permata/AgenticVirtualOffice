@@ -6,11 +6,11 @@
   margin-top: auto;
 }
 
-/* Garis pemisah antara Mobile dan Tentang. */
+/* Garis pemisah antara Mobile dan Tentang, di tengah celah 4px antar tombol. */
 .chat__rail-btn--sep::before {
   content: '';
   position: absolute;
-  top: -8px;
+  top: -3px;
   left: 5px;
   right: 5px;
   height: 1px;
