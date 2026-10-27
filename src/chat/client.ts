@@ -4,6 +4,7 @@ import type {
   BrowseResult,
   FileContent,
   FileKind,
+  LanInfo,
   ModelKey,
   PermissionReply,
   RuleState,
@@ -75,6 +76,7 @@ async function request<T>(pathname: string, init: RequestInit = {}, timeoutMs = 
 
 export const chatApi = {
   workspace: () => request<WorkspaceState>('/api/workspace'),
+  lan: () => request<LanInfo>('/api/lan', {}, 10_000),
   browse: (target?: string | null) =>
     request<BrowseResult>(
       target ? `/api/workspace/browse?path=${encodeURIComponent(target)}` : '/api/workspace/browse'

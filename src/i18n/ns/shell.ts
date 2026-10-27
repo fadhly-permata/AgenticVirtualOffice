@@ -35,6 +35,7 @@ export const shell: Catalog = {
   tabFiles: ['Daftar File', 'File List'],
   tabScm: ['Kontrol Sumber', 'Source Control'],
   tabTerminal: ['Terminal', 'Terminal'],
+  tabMobile: ['Mobile', 'Mobile'],
   tabAbout: ['Tentang', 'About'],
   tabSettings: ['Pengaturan', 'Settings'],
 

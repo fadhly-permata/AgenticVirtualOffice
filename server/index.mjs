@@ -5,6 +5,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { createEntry, deleteEntry, readFileAt, readRawAt, renameEntry, resolveInside, searchIn, treeAt } from './files.mjs';
 import { HttpError, readJson, sendError, sendJson } from './http.mjs';
+import { lanInfo } from './network.mjs';
 import {
   buildAgentList,
   buildAgentRoster,
@@ -40,7 +41,8 @@ const isDev = argv.includes('--dev');
 const portFlag = argv.indexOf('--port');
 // Jauh dari 5173/4173 supaya Vite yang lupa dimatikan tidak bisa menyamar jadi bridge ini.
 const PORT = Number(process.env.PORT ?? (portFlag >= 0 ? argv[portFlag + 1] : isDev ? 5199 : 4180));
-const HOST = process.env.HOST ?? '127.0.0.1';
+// Bind semua antarmuka supaya halaman Mobile bisa membuka app lewat IP LAN.
+const HOST = process.env.HOST ?? '0.0.0.0';
 
 const MIME = {
   '.css': 'text/css; charset=utf-8',
@@ -241,6 +243,10 @@ async function handleApi(req, res, url) {
 
   if (pathname === '/api/health' && method === 'GET') {
     return sendJson(res, 200, { ok: true, opencode: bridge.running ? 'running' : 'stopped', url: bridge.url ?? null, dev: isDev });
+  }
+
+  if (pathname === '/api/lan' && method === 'GET') {
+    return sendJson(res, 200, lanInfo(PORT, HOST));
   }
 
   if (pathname === '/api/workspace' && method === 'GET') {
@@ -704,8 +710,9 @@ function logReady() {
   if (readyLogged) return;
   readyLogged = true;
   const mode = isDev ? 'dev' : 'production';
-  console.log(`VirtOffice ${mode} server berjalan di http://${HOST}:${PORT}`);
-  console.log(`Buka di browser: http://localhost:${PORT} (sama saja dengan http://${HOST}:${PORT}).`);
+  console.log(`VirtOffice ${mode} server berjalan di http://localhost:${PORT} (bind ${HOST}:${PORT}).`);
+  const lan = lanInfo(PORT, HOST);
+  if (lan.url) console.log(`Dari ponsel di jaringan yang sama: ${lan.url}`);
   if (!isDev) console.log('Menyajikan hasil build dari dist/. Jalankan npm run build jika baru diubah.');
 }
 

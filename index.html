@@ -203,8 +203,25 @@
               </svg>
             </button>
             <button
-              id="chat-tab-about"
+              id="chat-tab-mobile"
               class="chat__rail-btn chat__rail-btn--tail"
+              type="button"
+              role="tab"
+              aria-selected="false"
+              aria-controls="chat-page-mobile"
+              data-i18n-title="shell.tabMobile"
+              title="Mobile"
+              aria-label="Mobile"
+            >
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M8 2.5h8A1.5 1.5 0 0 1 17.5 4v16a1.5 1.5 0 0 1-1.5 1.5H8A1.5 1.5 0 0 1 6.5 20V4A1.5 1.5 0 0 1 8 2.5Z" />
+                <path d="M10.5 18h3" />
+                <path d="M9.5 6.5h5v5h-5z" />
+              </svg>
+            </button>
+            <button
+              id="chat-tab-about"
+              class="chat__rail-btn chat__rail-btn--sep"
               type="button"
               role="tab"
               aria-selected="false"
@@ -319,6 +336,14 @@
               class="chat__page"
               role="tabpanel"
               aria-labelledby="chat-tab-terminal"
+              tabindex="-1"
+              hidden
+            ></section>
+            <section
+              id="chat-page-mobile"
+              class="chat__page"
+              role="tabpanel"
+              aria-labelledby="chat-tab-mobile"
               tabindex="-1"
               hidden
             ></section>

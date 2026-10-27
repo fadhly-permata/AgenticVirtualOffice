@@ -7,6 +7,7 @@ import { files } from './ns/files';
 import { folder } from './ns/folder';
 import { md } from './ns/md';
 import { menu } from './ns/menu';
+import { mobile } from './ns/mobile';
 import { office } from './ns/office';
 import { scm } from './ns/scm';
 import { select } from './ns/select';
@@ -29,6 +30,7 @@ const NAMESPACES: Record<string, Catalog> = {
   folder,
   md,
   menu,
+  mobile,
   office,
   scm,
   select,

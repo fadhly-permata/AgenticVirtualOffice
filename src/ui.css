@@ -1,12 +1,13 @@
 /* Gaya komponen baru (Settings, menu konteks, toolbar pratinjau, pewarnaan sintaks).
    Diimpor setelah style.css supaya bisa menimpa seperlunya. */
 
-/* Tentang + gear dipatok ke dasar rail: margin-top auto mendorongnya menjauh dari tab. */
+/* Mobile + Tentang + gear dipatok ke dasar rail: margin-top auto mendorongnya menjauh dari tab. */
 .chat__rail-btn--tail {
   margin-top: auto;
 }
 
-.chat__rail-btn--tail::before {
+/* Garis pemisah antara Mobile dan Tentang. */
+.chat__rail-btn--sep::before {
   content: '';
   position: absolute;
   top: -8px;
@@ -991,4 +992,115 @@
   font-size: 10.5px;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+/* ---------- halaman Mobile ---------- */
+
+.mobile__card {
+  align-items: center;
+  text-align: center;
+}
+
+/* Kartu QR selalu putih: kontras modul harus tetap tinggi di tema gelap mana pun. */
+.mobile__qr {
+  padding: 10px;
+  border-radius: 12px;
+  background: #fff;
+  box-shadow: 0 10px 26px rgba(0, 0, 0, 0.35);
+}
+
+.mobile__qr svg {
+  display: block;
+  width: 188px;
+  height: 188px;
+}
+
+.mobile__url {
+  max-width: 100%;
+  overflow-wrap: anywhere;
+  color: var(--accent, #e2b44a);
+  font-family: ui-monospace, 'SF Mono', 'Cascadia Mono', monospace;
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+  text-decoration: none;
+  user-select: all;
+}
+
+.mobile__url:hover,
+.mobile__url:focus-visible {
+  text-decoration: underline;
+}
+
+.mobile__refresh {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 12px;
+  border: 1px solid var(--border, rgba(255, 255, 255, 0.1));
+  border-radius: 999px;
+  background: var(--sunken, rgba(0, 0, 0, 0.2));
+  color: var(--ink-dim, rgba(244, 239, 230, 0.64));
+  font-size: 11.5px;
+  cursor: pointer;
+  transition: color 120ms ease, border-color 120ms ease;
+}
+
+.mobile__refresh:hover:not(:disabled),
+.mobile__refresh:focus-visible {
+  border-color: var(--accent, #e2b44a);
+  color: var(--ink, #f4efe6);
+}
+
+.mobile__refresh:disabled {
+  opacity: 0.55;
+  cursor: default;
+}
+
+.mobile__note {
+  margin: 0;
+  color: var(--ink-dim, rgba(244, 239, 230, 0.64));
+  font-size: 11.5px;
+  line-height: 1.55;
+  text-align: left;
+}
+
+.mobile__card .mobile__note {
+  text-align: center;
+}
+
+.mobile__others {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  width: 100%;
+  padding-top: 8px;
+  border-top: 1px solid var(--border, rgba(255, 255, 255, 0.06));
+}
+
+.mobile__others .settings__group-title {
+  margin-bottom: 1px;
+  text-align: left;
+}
+
+.mobile__alt {
+  color: var(--ink-dim, rgba(244, 239, 230, 0.64));
+  font-family: ui-monospace, 'SF Mono', 'Cascadia Mono', monospace;
+  font-size: 11.5px;
+  text-align: left;
+  text-decoration: none;
+}
+
+.mobile__alt:hover,
+.mobile__alt:focus-visible {
+  color: var(--accent, #e2b44a);
+}
+
+.mobile__warn {
+  border-color: rgba(226, 140, 74, 0.38);
+  background: rgba(226, 140, 74, 0.07);
+}
+
+.mobile__warn .settings__group-title {
+  color: #e28c4a;
 }

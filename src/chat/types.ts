@@ -331,3 +331,19 @@ export interface ScmLogEntry {
   when: string;
   subject: string;
 }
+
+export interface LanCandidate {
+  name: string;
+  address: string;
+  virtual: boolean;
+}
+
+/** Alamat yang bisa dibuka dari ponsel; url null kalau server dibatasi ke loopback. */
+export interface LanInfo {
+  port: number;
+  bind: string;
+  reachable: boolean;
+  address: string | null;
+  url: string | null;
+  candidates: LanCandidate[];
+}
