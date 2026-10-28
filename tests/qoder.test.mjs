@@ -16,6 +16,7 @@ import {
   readRoster,
   titleFromPrompt,
   toolTitle,
+  turnErrorMessage,
 } from '../server/qoder.mjs';
 import { buildModelCatalog } from '../server/opencode.mjs';
 
@@ -260,5 +261,35 @@ describe('eventSessionId', () => {
   it('memakai sesi sendiri untuk event tanpa penanda sidechain', () => {
     expect(eventSessionId(parent, { type: 'assistant' })).toBe('ses_1');
     expect(eventSessionId(parent, { type: 'user', parent_tool_use_id: null })).toBe('ses_1');
+  });
+});
+
+describe('turnErrorMessage', () => {
+  it('memakai errors[] dari result event dan menambah petunjuk katalog model', () => {
+    const message = turnErrorMessage({
+      type: 'result',
+      subtype: 'error_during_execution',
+      is_error: true,
+      errors: ['The selected Qoder model definition changed'],
+    });
+    expect(message).toContain('The selected Qoder model definition changed');
+    expect(message).toContain('kirim ulang pesan');
+  });
+
+  it('menjelaskan slash command yang tidak didukung mode headless', () => {
+    const message = turnErrorMessage({
+      type: 'result',
+      is_error: true,
+      result: 'ID [FatalInputError]: Exiting due to command result that is not supported in non-interactive mode.',
+    });
+    expect(message).toContain('not supported in non-interactive mode');
+    expect(message).toContain('dropdown panel chat');
+  });
+
+  it('jatuh ke stderr lalu ke subtype bila tidak ada detail lain', () => {
+    expect(turnErrorMessage({ is_error: true }, 'boom dari stderr')).toBe('boom dari stderr');
+    expect(turnErrorMessage({ is_error: true, subtype: 'error_during_execution' })).toBe(
+      'Qoder CLI mengakhiri giliran dengan error (error_during_execution).'
+    );
   });
 });

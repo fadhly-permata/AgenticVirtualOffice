@@ -130,6 +130,35 @@ function flattenResult(content) {
     .join('\n');
 }
 
+/** Sebab kegagalan giliran Qoder: result/errors/api_error_status, lalu stderr terakhir. */
+export function turnErrorMessage(event, stderr = '') {
+  const details = [];
+  const push = (value) => {
+    if (typeof value !== 'string') return;
+    const text = value.trim();
+    if (text && !details.includes(text)) details.push(text);
+  };
+  push(event?.result);
+  if (Array.isArray(event?.errors)) {
+    for (const item of event.errors) push(typeof item === 'string' ? item : item?.message);
+  }
+  push(event?.api_error_status);
+  if (details.length === 0) push(String(stderr ?? '').slice(-400));
+
+  const detail = details.join(' — ');
+  const hint = /model definition changed/i.test(detail)
+    ? 'Katalog model Qoder baru diperbarui di tengah giliran; kirim ulang pesan atau pilih ulang model.'
+    : /not supported in non-interactive mode/i.test(detail)
+      ? 'Perintah garis miring hanya berlaku di terminal; ganti model atau agen lewat dropdown panel chat.'
+      : '';
+
+  if (!detail) {
+    const subtype = event?.subtype ? ` (${event.subtype})` : '';
+    return `Qoder CLI mengakhiri giliran dengan error${subtype}.${hint ? ` ${hint}` : ''}`;
+  }
+  return hint ? `${detail}\n${hint}` : detail;
+}
+
 /** Satu blok tool_use Qoder jadi part tool OpenCode yang dirender FE. */
 export function toolPart(block, messageID, sessionID, at, root = '') {
   return {
@@ -938,10 +967,8 @@ export class QoderBridge {
     for (const toolUseId of [...session.subagents.keys()]) this.#subagentEnd(session, toolUseId);
 
     if (!aborted && event.is_error) {
-      const message =
-        (typeof event.result === 'string' && event.result.trim()) ||
-        (typeof event.api_error_status === 'string' ? event.api_error_status : '') ||
-        'Qoder CLI mengakhiri giliran dengan error.';
+      const message = turnErrorMessage(event, session.stderr);
+      console.error(`[qoder] giliran error: ${message.split('\n')[0]}`);
       this.#emit({ type: 'session.error', properties: { sessionID: session.id, error: { message } } });
     }
 

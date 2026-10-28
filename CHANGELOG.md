@@ -4,6 +4,12 @@ Semua perubahan penting pada VirtOffice dicatat di sini. Format mengikuti
 [Keep a Changelog](https://keepachangelog.com/id/1.1.0/) dan versi mengikuti
 [Semantic Versioning](https://semver.org/lang/id/).
 
+## [0.14.2] - 2026-10-28
+
+### Diperbaiki
+
+- Pesan `session.error` Qoder tidak lagi generik: bridge membaca `result`, `errors[]`, `api_error_status`, lalu `stderr` terakhir, dan menambahkan petunjuk untuk dua kasus nyata — katalog model Qoder yang berubah di tengah giliran ("The selected Qoder model definition changed") dan slash command seperti `/model` yang tidak didukung mode headless.
+
 ## [0.14.1] - 2026-10-28
 
 ### Ditambahkan
