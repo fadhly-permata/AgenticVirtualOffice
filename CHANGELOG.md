@@ -4,6 +4,12 @@ Semua perubahan penting pada VirtOffice dicatat di sini. Format mengikuti
 [Keep a Changelog](https://keepachangelog.com/id/1.1.0/) dan versi mengikuti
 [Semantic Versioning](https://semver.org/lang/id/).
 
+## [0.14.1] - 2026-10-28
+
+### Ditambahkan
+
+- Script `launch-dev.bat` / `launch-dev.sh` kini mematikan lebih dulu proses yang masih listening di port 5199 sebelum menyalakan server baru, dan pasangannya `stop-dev.bat` / `stop-dev.sh` menghentikan pohon proses tersebut. Script hanya menyasar PID pemilik port target, jadi `opencode serve` milik user di port 4096 tidak tersentuh.
+
 ## [0.14.0] - 2026-10-28
 
 ### Ditambahkan
