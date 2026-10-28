@@ -4,6 +4,14 @@ Semua perubahan penting pada VirtOffice dicatat di sini. Format mengikuti
 [Keep a Changelog](https://keepachangelog.com/id/1.1.0/) dan versi mengikuti
 [Semantic Versioning](https://semver.org/lang/id/).
 
+## [0.14.0] - 2026-10-28
+
+### Ditambahkan
+
+- Adapter **Qoder** sebagai tool agentik ketiga: bridge `server/qoder.mjs` memakai protokol `-p --input-format stream-json --output-format stream-json`, sesi `--session-id`/`--resume`, izin tool lewat `control_request`/`control_response` stdio, pertanyaan `AskUserQuestion`, interrupt, dan subagent — seluruhnya diverifikasi langsung terhadap Qoder CLI 1.1.80.
+- Pilihan tool membaca `VIRTOFFICE_TOOL=qoder`; katalog HUD menampilkan Qoder dengan model Auto/Ultimate/Fast/Efficient/DeepSeek-Flash/Qwen3.8-Flash, dan aturan workspace Qoder ditulis ke `AGENTS.md`.
+- Spawn Qoder di Windows memakai dispatcher JS paket npm (`qoder-npm-dispatcher.cjs`) karena Node tidak bisa menjalankan shim `.cmd`; env SDK Qoder Desktop dibersihkan agar CLI tidak masuk mode SDK.
+
 ## [0.13.2] - 2026-10-28
 
 ### Diperbaiki
