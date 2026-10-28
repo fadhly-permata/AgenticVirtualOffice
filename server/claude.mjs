@@ -709,13 +709,22 @@ export class ClaudeBridge {
     if (!session.messages.length) await this.#messages(id, directory);
 
     const modelID = body?.model?.modelID;
-    if (typeof modelID === 'string' && CLAUDE_MODELS.some((model) => model.id === modelID)) session.model = modelID;
-    if (typeof body?.agent === 'string' && body.agent.trim()) session.agent = body.agent.trim();
-
+    let changed = false;
+    if (typeof modelID === 'string' && CLAUDE_MODELS.some((model) => model.id === modelID) && session.model !== modelID) {
+      session.model = modelID;
+      changed = true;
+    }
+    const agent = typeof body?.agent === 'string' ? body.agent.trim() : '';
+    if (agent && session.agent !== agent) {
+      session.agent = agent;
+      changed = true;
+    }
     if (!session.title) {
       session.title = titleFromPrompt(text);
-      this.#emit({ type: 'session.updated', properties: { info: publicSession(session) } });
+      changed = true;
     }
+    // Sesi yang dipulihkan dari disk lahir tanpa agent; kirim ulang supaya kursi kantor tahu pemiliknya.
+    if (changed) this.#emit({ type: 'session.updated', properties: { info: publicSession(session) } });
 
     const now = Date.now();
     const messageID = `usr_${crypto.randomUUID()}`;
@@ -1113,6 +1122,7 @@ export class ClaudeBridge {
       this.#emit({ type: 'permission.replied', properties: { sessionID: session.id, requestID: pending.id } });
     }
     session.permissions.clear();
+    for (const toolUseId of [...session.subagents.keys()]) this.#subagentEnd(session, toolUseId);
     this.#emit({ type: 'session.error', properties: { sessionID: session.id, error: { message } } });
     this.#emit({ type: 'session.status', properties: { sessionID: session.id, status: { type: 'idle' } } });
     this.#emit({ type: 'session.idle', properties: { sessionID: session.id } });

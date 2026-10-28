@@ -4,6 +4,13 @@ Semua perubahan penting pada VirtOffice dicatat di sini. Format mengikuti
 [Keep a Changelog](https://keepachangelog.com/id/1.1.0/) dan versi mengikuti
 [Semantic Versioning](https://semver.org/lang/id/).
 
+## [0.13.2] - 2026-10-28
+
+### Diperbaiki
+
+- Sesi Claude yang dipulihkan dari disk kini melaporkan `agent` lagi saat di-prompt, sehingga agen utama tetap mendapat kursi dan bubble di kantor setelah dev server dimulai ulang (`session.updated` dulu hanya dikirim ketika judul masih kosong).
+- `#fail` (abort yang melewati batas waktu, CLI mati, atau gagal spawn) ikut menutup semua sesi subagent, jadi tidak ada karyawan hantu yang tersangkut "sibuk" di kantor setelah run gagal.
+
 ## [0.13.1] - 2026-10-28
 
 ### Diperbaiki
