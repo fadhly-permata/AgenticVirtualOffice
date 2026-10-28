@@ -82,6 +82,8 @@ export interface RuleState {
 
 export interface Bootstrap {
   workspace: WorkspaceInfo;
+  tool?: string;
+  toolName?: string;
   models: ModelGroup[];
   defaultModel: ModelKey | null;
   agents: AgentChoice[];
@@ -99,6 +101,28 @@ export interface ToolState {
   metadata?: Record<string, unknown>;
   time?: { start?: number; end?: number };
   [key: string]: unknown;
+}
+
+/** Satu adapter agentik yang bisa dipilih dari HUD. */
+export interface AgenticToolChoice {
+  id: string;
+  name: string;
+  available: boolean;
+  active: boolean;
+}
+
+export interface AgenticToolState {
+  tool: string;
+  toolName: string;
+  tools: AgenticToolChoice[];
+  busy: { id: string; title: string }[];
+}
+
+export interface ToolSwitchResult {
+  ok: true;
+  tool: string;
+  toolName: string;
+  previous: string;
 }
 
 export interface Part {

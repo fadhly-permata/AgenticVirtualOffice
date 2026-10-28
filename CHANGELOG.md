@@ -4,6 +4,28 @@ Semua perubahan penting pada VirtOffice dicatat di sini. Format mengikuti
 [Keep a Changelog](https://keepachangelog.com/id/1.1.0/) dan versi mengikuti
 [Semantic Versioning](https://semver.org/lang/id/).
 
+## [0.13.2] - 2026-10-28
+
+### Diperbaiki
+
+- Sesi Claude yang dipulihkan dari disk kini melaporkan `agent` lagi saat di-prompt, sehingga agen utama tetap mendapat kursi dan bubble di kantor setelah dev server dimulai ulang (`session.updated` dulu hanya dikirim ketika judul masih kosong).
+- `#fail` (abort yang melewati batas waktu, CLI mati, atau gagal spawn) ikut menutup semua sesi subagent, jadi tidak ada karyawan hantu yang tersangkut "sibuk" di kantor setelah run gagal.
+
+## [0.13.1] - 2026-10-28
+
+### Diperbaiki
+
+- Teks dan tool subagent Claude tidak lagi bocor ke transkrip induk: event sidechain yang membawa `parent_tool_use_id` diarahkan ke sesi sintetis subagent yang sama, dan sidechain tanpa sesi hidup dibuang alih-alih ditempel ke induk.
+- `GET /session/:id/message` untuk sesi sintetis tidak lagi mengembalikan daftar kosong, jadi bubble agen yang menerima delegasi mengutip pekerjaannya sendiri (mis. `Running command: sleep 2`), bukan kalimat induk.
+
+## [0.13.0] - 2026-10-28
+
+### Ditambahkan
+
+- Sakelar tool agentik langsung dari HUD: pill di panel brand membuka daftar adapter (OpenCode dan Claude aktif, Kilo/Phi/OpenClaw berlabel **Segera**), lengkap dengan tampilan konfirmasi, peringatan sesi yang masih bekerja beserta tombol **Hentikan & ganti**, status penggantian, dan toast dengan **Undo** selama 6 detik.
+- `GET /api/chat/tool` dan `POST /api/chat/tool` (dukungan `force` untuk menghentikan sesi yang sibuk), pilihan tool disimpan di `.virtoffice/tool.json` dan dilaporkan ulang oleh bootstrap, health, serta event SSE `tool.changed`.
+- Setelah berganti tool, seluruh kontrak chat dimuat ulang dari bridge baru (sesi, model, agent, roster kantor).
+
 ## [0.10.0] - 2026-10-28
 
 ### Diubah

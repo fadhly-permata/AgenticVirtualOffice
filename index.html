@@ -12,11 +12,82 @@
 
       <header class="panel panel--brand">
         <span class="brand__mark" aria-hidden="true"></span>
-        <div>
+        <div class="brand__text">
           <p class="brand__title" data-i18n="shell.brandTitle">VIRTUAL OFFICE</p>
           <p class="brand__sub" id="brand-version"></p>
         </div>
+        <button
+          id="tool-pill"
+          class="tool-pill"
+          type="button"
+          aria-haspopup="listbox"
+          aria-expanded="false"
+          aria-controls="tool-menu"
+          data-i18n-title="shell.toolSwitchTitle"
+          data-i18n-aria="shell.toolPillAria"
+          title="Ganti tool agentik"
+          aria-label="Agentic tool: OpenCode. Klik untuk mengganti."
+        >
+          <span class="tool-pill__dot" id="tool-pill-dot" data-tool="opencode" aria-hidden="true"></span>
+          <span class="tool-pill__spinner" aria-hidden="true"></span>
+          <span class="tool-pill__label" id="tool-pill-label">OpenCode</span>
+          <svg class="tool-pill__chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <path d="m6 9 6 6 6-6" />
+          </svg>
+        </button>
       </header>
+
+      <div id="tool-menu" class="tool-menu" hidden>
+        <div id="tool-menu-list" class="tool-menu__view">
+          <div class="tool-menu__head">
+            <span data-i18n="shell.toolMenuTitle">Agentic tool</span>
+            <span id="tool-menu-count"></span>
+          </div>
+          <div id="tool-menu-rows" class="tool-menu__list" role="listbox" aria-label="Pilih agentic tool"></div>
+          <p class="tool-menu__foot" data-i18n="shell.toolMenuFoot">
+            Daftar sesi, model, dan agen mengikuti tool yang aktif.
+          </p>
+        </div>
+
+        <div id="tool-confirm" class="tool-menu__view" hidden>
+          <button id="tool-confirm-back" class="tool-menu__back" type="button">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <path d="m15 18-6-6 6-6" />
+            </svg>
+            <span data-i18n="shell.toolBack">Kembali ke daftar</span>
+          </button>
+          <div class="tool-confirm">
+            <h3 class="tool-confirm__title" id="tool-confirm-title">Pindah ke Claude?</h3>
+            <div class="tool-confirm__card">
+              <span class="tool-mark" id="tool-confirm-mark">CL</span>
+              <div class="tool-confirm__identity">
+                <span class="tool-menu__name" id="tool-confirm-name">Claude</span>
+                <div class="tool-confirm__chips" id="tool-confirm-chips"></div>
+              </div>
+            </div>
+            <ul class="tool-confirm__caveats" id="tool-confirm-caveats"></ul>
+            <p class="tool-confirm__warn" id="tool-confirm-warn" hidden></p>
+            <div class="tool-confirm__actions">
+              <button class="button button--ghost" id="tool-confirm-cancel" type="button" data-i18n="shell.cancel">Batal</button>
+              <button class="button" id="tool-confirm-go" type="button">Ganti tool</button>
+            </div>
+          </div>
+        </div>
+
+        <div id="tool-switching" class="tool-menu__view" hidden>
+          <div class="tool-switching">
+            <div class="tool-switching__row">
+              <span class="tool-spinner" aria-hidden="true"></span>
+              <span id="tool-switching-title">Menghubungkan ke Claude…</span>
+            </div>
+            <div class="tool-switching__steps">
+              <span><i></i><span data-i18n="shell.toolStepBridge">Bridge lama dihentikan</span></span>
+              <span><i></i><span data-i18n="shell.toolStepLoad">Memuat sesi &amp; agen</span></span>
+            </div>
+            <div class="tool-menu__progress" aria-hidden="true"><i></i></div>
+          </div>
+        </div>
+      </div>
 
       <section class="panel panel--clock" data-i18n-aria="shell.clockAria" aria-label="Jam kantor">
         <p class="panel__label" data-i18n="shell.clockLabel">Waktu kantor</p>
@@ -381,7 +452,26 @@
             ></section>
           </div>
         </div>
+
+        <div id="tool-switching-overlay" class="chat__overlay" hidden>
+          <span class="tool-spinner" aria-hidden="true"></span>
+          <strong id="tool-overlay-title">Memuat sesi Claude…</strong>
+          <span data-i18n="shell.toolOverlayText">
+            Agen kantor disiapkan ulang dari adapter baru. Riwayat tool lama tetap aman.
+          </span>
+        </div>
       </section>
+
+      <div id="tool-toast" class="tool-toast" role="status" aria-live="polite" hidden>
+        <span class="tool-toast__icon" id="tool-toast-icon" aria-hidden="true">✓</span>
+        <div class="tool-toast__body">
+          <strong id="tool-toast-title"></strong>
+          <small id="tool-toast-detail"></small>
+        </div>
+        <button id="tool-toast-undo" class="tool-toast__undo" type="button" data-i18n="shell.toolUndo" hidden>
+          Undo
+        </button>
+      </div>
 
       <div id="folder-modal" class="modal" hidden>
         <div class="modal__backdrop" data-folder-close></div>

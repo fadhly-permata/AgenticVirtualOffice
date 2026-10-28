@@ -2,6 +2,7 @@ node_modules/
 dist/
 .chrome-tmp/
 .virtoffice/
+CLAUDE.md
 dom.txt
 chrome.log
 *.local

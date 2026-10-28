@@ -1,5 +1,5 @@
 import type { VirtOfficeApi } from '../api';
-import { applyStatic, subscribeLocale, t } from '../i18n';
+import { applyStatic, setToolName, subscribeLocale, t, toolName } from '../i18n';
 import {
   type Presence,
   type RosterAgent,
@@ -20,6 +20,7 @@ import { cancelPendingDiagrams, renderMarkdown } from './markdown';
 import { SearchSelect } from './select';
 import { mountSettings, type SettingsPanel } from './settings';
 import { notifyLayout } from './split';
+import { mountToolSwitch, type ToolSwitcher } from './toolswitch';
 import {
   applyChatEvent,
   bubbleCopy,
@@ -118,6 +119,7 @@ let filesPanel: FilesPanel | null = null;
 let scmPanel: ScmPanel | null = null;
 let terminalPanel: TerminalPanel | null = null;
 let settingsPanel: SettingsPanel | null = null;
+let toolSwitcher: ToolSwitcher | null = null;
 
 /** Model tidak tahu chat ini bisa menggambar, jadi permintaan visual dibawai catatan format. */
 // Dikirim ke model sebagai bagian prompt: instruksi format, JANGAN diterjemahkan.
@@ -190,6 +192,12 @@ let selectsCollapsed = localStorage.getItem(STORAGE_SELECTS) === '1';
 
 export function installChat(officeApi: VirtOfficeApi): void {
   office = officeApi;
+  // Ganti tool = muat ulang seluruh kontrak chat dari bridge baru.
+  toolSwitcher = mountToolSwitch({
+    onChanged: () => {
+      if (workspace) applyWorkspace(workspace);
+    },
+  });
   new SearchSelect(sessionSelect, { searchable: true, searchPlaceholder: t('chat.searchSessions') });
   new SearchSelect(modelSelect, { searchable: true, searchPlaceholder: t('chat.searchModels') });
   new SearchSelect(agentSelect);
@@ -353,6 +361,7 @@ export function installChat(officeApi: VirtOfficeApi): void {
   // Ganti bahasa: gambar ulang semua teks statis + dinamis chat, tanpa memaksa notice aktif.
   subscribeLocale(() => {
     applyStatic();
+    toolSwitcher?.refreshLabels();
     updateLauncher();
     updateChatFolder();
     renderModelSelect();
@@ -379,6 +388,7 @@ async function syncWorkspace(): Promise<void> {
 
 function applyWorkspace(next: WorkspaceInfo | null): void {
   workspaceGeneration += 1;
+  toolSwitcher?.dismiss();
   releaseOfficeAgent();
   window.clearTimeout(presenceTimer);
   presenceTimer = 0;
@@ -677,6 +687,9 @@ async function loadBootstrap(): Promise<void> {
     if (generation !== workspaceGeneration) return;
 
     bootstrap = data;
+    setToolName(data.toolName ?? 'OpenCode');
+    applyStatic();
+    toolSwitcher?.setActive(data.tool ?? 'opencode', data.toolName ?? 'OpenCode');
     workspace = data.workspace;
     models = data.models;
     agents = data.agents;
@@ -1103,6 +1116,14 @@ function handleEvent(event: ChatEvent): void {
       );
       return;
 
+    case 'tool.changed': {
+      toolSwitcher?.applyRemote(
+        typeof props.tool === 'string' ? props.tool : '',
+        typeof props.toolName === 'string' ? props.toolName : ''
+      );
+      return;
+    }
+
     case 'session.created':
     case 'session.updated': {
       const info = props.info as Record<string, unknown> | undefined;
@@ -1509,8 +1530,8 @@ function renderMessage(message: LiveMessage, runningLast: boolean): HTMLElement 
 function wrapAssistant(content: HTMLElement): HTMLElement {
   const article = el('article', 'msg msg--assistant');
   const head = el('header', 'msg__head');
-  const avatar = el('span', 'msg__avatar', 'OC');
-  const name = el('span', 'msg__name', 'OpenCode');
+  const avatar = el('span', 'msg__avatar', toolName() === 'OpenCode' ? 'OC' : toolName().slice(0, 1).toUpperCase());
+  const name = el('span', 'msg__name', toolName());
   head.append(avatar, name);
   article.append(head, content);
   return article;
@@ -1957,12 +1978,12 @@ async function activityCopy(presence: Presence[]): Promise<Record<string, string
 
 /** The employee the header chip follows: the agent that owns the open session. */
 function watchedEmployee(): string {
-  if (!office) return 'OpenCode';
+  if (!office) return toolName();
   const id = slugify(currentSession?.agent ?? selectedAgent);
   for (const agent of office.agents()) {
     if (agent.id === id) return agent.name;
   }
-  return 'OpenCode';
+  return toolName();
 }
 
 /** Header chip: the phase of the session being watched, plus its elapsed clock. */

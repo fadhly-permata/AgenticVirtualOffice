@@ -1,5 +1,6 @@
 import { t } from '../i18n';
 import type {
+  AgenticToolState,
   Bootstrap,
   BrowseResult,
   FileContent,
@@ -19,6 +20,7 @@ import type {
   SessionSummary,
   ShellInfo,
   TerminalSession,
+  ToolSwitchResult,
   TreeResult,
   WorkspaceState,
 } from './types';
@@ -85,6 +87,13 @@ export const chatApi = {
     request<WorkspaceState>('/api/workspace', { method: 'POST', body: JSON.stringify({ path: target }) }),
   bootstrap: (delayMs: number) =>
     request<Bootstrap>(`/api/chat/bootstrap?delay=${Math.max(0, Math.round(delayMs))}`, {}, 120_000),
+  tool: () => request<AgenticToolState>('/api/chat/tool'),
+  switchTool: (tool: string, force: boolean) =>
+    request<ToolSwitchResult>(
+      '/api/chat/tool',
+      { method: 'POST', body: JSON.stringify({ tool, force }) },
+      180_000
+    ),
   setRules: (delayMs: number) =>
     request<RuleState>('/api/chat/rules', { method: 'POST', body: JSON.stringify({ delayMs }) }),
   status: () => request<{ statuses: Record<string, { type?: string }> }>('/api/chat/status'),

@@ -9,6 +9,60 @@ export const shell: Catalog = {
   brandTitle: ['VIRTUAL OFFICE', 'VIRTUAL OFFICE'],
   brandVersion: ['Versi {version}', 'Version {version}'],
 
+  toolSwitchTitle: ['Ganti tool agentik', 'Change agentic tool'],
+  toolPillAria: ['Agentic tool: {tool}. Klik untuk mengganti.', 'Agentic tool: {tool}. Click to change.'],
+  toolMenuTitle: ['Agentic tool', 'Agentic tool'],
+  toolAdapters: ['{n} adapter', '{n} adapters'],
+  toolActive: ['Aktif', 'Active'],
+  toolReady: ['Siap', 'Ready'],
+  toolSoon: ['Segera', 'Soon'],
+  toolLoading: ['Memuat daftar tool…', 'Loading tools…'],
+  toolMenuFoot: [
+    'Daftar sesi, model, dan agen mengikuti tool yang aktif.',
+    'Sessions, models, and agents follow the active tool.',
+  ],
+  toolNoAdapter: ['belum ada adapter', 'no adapter yet'],
+  toolBack: ['Kembali ke daftar', 'Back to the list'],
+  toolConfirmTitle: ['Pindah ke {tool}?', 'Switch to {tool}?'],
+  toolCaveatSessions: [
+    'Sesi & agen {tool} dimuat ulang di kantor.',
+    '{tool} sessions & agents reload in the office.',
+  ],
+  toolCaveatHistory: [
+    'Riwayat {tool} tetap tersimpan — tidak ada sesi yang dihapus.',
+    '{tool} history stays saved — no sessions are deleted.',
+  ],
+  toolCaveatRules: ['Aturan workspace beralih ke {file}.', 'Workspace rules switch to {file}.'],
+  toolBusyWarn: [
+    '{n} sesi sedang bekerja. Turn itu akan dihentikan sebelum tool baru dimuat.',
+    '{n} sessions are working. They will be stopped before the new tool loads.',
+  ],
+  toolGo: ['Ganti tool', 'Switch tool'],
+  toolGoBusy: ['Hentikan & ganti', 'Stop & switch'],
+  toolConnecting: ['Menghubungkan ke {tool}…', 'Connecting to {tool}…'],
+  toolStopping: ['Menghentikan turn & menghubungkan ke {tool}…', 'Stopping turns & connecting to {tool}…'],
+  toolStepBridge: ['Bridge lama dihentikan', 'Old bridge stopped'],
+  toolStepLoad: ['Memuat sesi & agen', 'Loading sessions & agents'],
+  toolOverlayTitle: ['Memuat sesi {tool}…', 'Loading {tool} sessions…'],
+  toolOverlayText: [
+    'Agen kantor disiapkan ulang dari adapter baru. Riwayat tool lama tetap aman.',
+    'Office agents rebuild from the new adapter. The old tool’s history stays safe.',
+  ],
+  toolSwitched: ['Tool aktif: {tool}', 'Active tool: {tool}'],
+  toolSwitchedDetail: [
+    'Sesi & agen dimuat ulang · riwayat {previous} tetap tersimpan',
+    'Sessions & agents reloaded · {previous} history stays saved',
+  ],
+  toolRevertedDetail: ['Kembali ke pilihan sebelumnya', 'Back to the previous choice'],
+  toolRemoteDetail: ['Diubah dari tab lain', 'Changed from another tab'],
+  toolFailed: ['Gagal mengganti tool', 'Could not switch tools'],
+  toolUndo: ['Undo', 'Undo'],
+  toolUndoing: ['Kembali ke {tool}…', 'Returning to {tool}…'],
+  toolBusyRetry: [
+    'Sesi baru mulai bekerja. Cek peringatan lalu coba lagi.',
+    'A new session started working. Check the warning and try again.',
+  ],
+
   sceneAria: ['Diorama kantor isometrik 2.5D bergerak', 'Animated 2.5D isometric office diorama'],
 
   clockAria: ['Jam kantor', 'Office clock'],
@@ -48,8 +102,8 @@ export const shell: Catalog = {
   fieldModel: ['Model', 'Model'],
   fieldAgent: ['Agent', 'Agent'],
 
-  composerPlaceholder: ['Minta OpenCode mengerjakan sesuatu…', 'Ask OpenCode to work on something…'],
-  composerAria: ['Pesan untuk OpenCode', 'Message for OpenCode'],
+  composerPlaceholder: ['Minta {tool} mengerjakan sesuatu…', 'Ask {tool} to work on something…'],
+  composerAria: ['Pesan untuk {tool}', 'Message for {tool}'],
 
   folderEyebrow: ['Ruang kerja', 'Workspace'],
   folderTitle: ['Buka folder proyek', 'Open a project folder'],
