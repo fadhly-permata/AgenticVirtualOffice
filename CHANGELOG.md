@@ -4,6 +4,13 @@ Semua perubahan penting pada VirtOffice dicatat di sini. Format mengikuti
 [Keep a Changelog](https://keepachangelog.com/id/1.1.0/) dan versi mengikuti
 [Semantic Versioning](https://semver.org/lang/id/).
 
+## [0.13.1] - 2026-10-28
+
+### Diperbaiki
+
+- Teks dan tool subagent Claude tidak lagi bocor ke transkrip induk: event sidechain yang membawa `parent_tool_use_id` diarahkan ke sesi sintetis subagent yang sama, dan sidechain tanpa sesi hidup dibuang alih-alih ditempel ke induk.
+- `GET /session/:id/message` untuk sesi sintetis tidak lagi mengembalikan daftar kosong, jadi bubble agen yang menerima delegasi mengutip pekerjaannya sendiri (mis. `Running command: sleep 2`), bukan kalimat induk.
+
 ## [0.13.0] - 2026-10-28
 
 ### Ditambahkan

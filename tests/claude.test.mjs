@@ -10,6 +10,7 @@ import {
   claudeProjectSlug,
   claudeProviderPayload,
   claudeSpawnArgs,
+  eventSessionId,
   parseAgentDoc,
   readRoster,
   titleFromPrompt,
@@ -234,5 +235,22 @@ describe('claudeSpawnArgs', () => {
     const args = claudeSpawnArgs({ ...base, exists: false, effort: 'extreme' });
     expect(args).not.toContain('--effort');
     expect(args).not.toContain('--agent');
+  });
+});
+
+describe('eventSessionId', () => {
+  const parent = { id: 'ses_1', subagents: new Map([['toolu_A', 'sub_tooluA']]) };
+
+  it('menitipkan event sidechain ke sesi subagent, bukan induknya', () => {
+    expect(eventSessionId(parent, { type: 'assistant', parent_tool_use_id: 'toolu_A' })).toBe('sub_tooluA');
+  });
+
+  it('menjatuhkan sidechain yang subagent-nya sudah tutup', () => {
+    expect(eventSessionId(parent, { type: 'assistant', parent_tool_use_id: 'toolu_B' })).toBeNull();
+  });
+
+  it('memakai sesi sendiri untuk event tanpa penanda sidechain', () => {
+    expect(eventSessionId(parent, { type: 'assistant' })).toBe('ses_1');
+    expect(eventSessionId(parent, { type: 'user', parent_tool_use_id: null })).toBe('ses_1');
   });
 });

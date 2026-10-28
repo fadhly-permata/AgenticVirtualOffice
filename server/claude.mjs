@@ -211,6 +211,12 @@ export function buildTranscriptMessages(entries, sessionID, root = '') {
   return messages.sort((a, b) => a.info.time.created - b.info.time.created);
 }
 
+export function eventSessionId(session, event) {
+  const parentId = typeof event?.parent_tool_use_id === 'string' ? event.parent_tool_use_id : '';
+  if (!parentId) return session.id;
+  return session.subagents?.get(parentId) ?? null;
+}
+
 export function titleFromPrompt(text) {
   const line = String(text ?? '').replace(/\s+/g, ' ').trim();
   return line.length > TITLE_LIMIT ? `${line.slice(0, TITLE_LIMIT - 1)}…` : line;
@@ -655,7 +661,6 @@ export class ClaudeBridge {
 
   async #messages(id, directory) {
     const session = await this.#hydrate(id, directory);
-    if (session.synthetic) return [];
     if (session.messages.length) return session.messages;
 
     const file = path.join(projectDirectory(directory), `${id}.jsonl`);
@@ -804,11 +809,13 @@ export class ClaudeBridge {
         return;
       }
       case 'assistant': {
-        this.#onAssistant(session, event);
+        const target = this.#eventSession(session, event);
+        if (target) this.#onAssistant(target, event);
         return;
       }
       case 'user': {
-        this.#onToolResults(session, event);
+        const target = this.#eventSession(session, event);
+        if (target) this.#onToolResults(target, session, event);
         return;
       }
       case 'result': {
@@ -822,6 +829,12 @@ export class ClaudeBridge {
       default:
         return;
     }
+  }
+
+  // Teks subagent datang di stream induk dengan parent_tool_use_id: dibuang kalau
+  // sesi sintetisnya sudah tutup, supaya tidak menyamar jadi jawaban induk.
+  #eventSession(session, event) {
+    return this.#sessions.get(eventSessionId(session, event)) ?? null;
   }
 
   #onAssistant(session, event) {
@@ -854,7 +867,7 @@ export class ClaudeBridge {
     session.updated = Date.now();
   }
 
-  #onToolResults(session, event) {
+  #onToolResults(session, parent, event) {
     const content = event.message?.content;
     if (!Array.isArray(content)) return;
     const at = Date.parse(event.timestamp ?? '') || Date.now();
@@ -869,7 +882,7 @@ export class ClaudeBridge {
         time: { ...part.state?.time, end: at },
       };
       this.#emit({ type: 'message.part.updated', properties: { sessionID: session.id, part } });
-      this.#subagentEnd(session, block.tool_use_id);
+      this.#subagentEnd(parent, block.tool_use_id);
     }
   }
 
