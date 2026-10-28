@@ -4,6 +4,14 @@ Semua perubahan penting pada VirtOffice dicatat di sini. Format mengikuti
 [Keep a Changelog](https://keepachangelog.com/id/1.1.0/) dan versi mengikuti
 [Semantic Versioning](https://semver.org/lang/id/).
 
+## [0.13.0] - 2026-10-28
+
+### Ditambahkan
+
+- Sakelar tool agentik langsung dari HUD: pill di panel brand membuka daftar adapter (OpenCode dan Claude aktif, Kilo/Phi/OpenClaw berlabel **Segera**), lengkap dengan tampilan konfirmasi, peringatan sesi yang masih bekerja beserta tombol **Hentikan & ganti**, status penggantian, dan toast dengan **Undo** selama 6 detik.
+- `GET /api/chat/tool` dan `POST /api/chat/tool` (dukungan `force` untuk menghentikan sesi yang sibuk), pilihan tool disimpan di `.virtoffice/tool.json` dan dilaporkan ulang oleh bootstrap, health, serta event SSE `tool.changed`.
+- Setelah berganti tool, seluruh kontrak chat dimuat ulang dari bridge baru (sesi, model, agent, roster kantor).
+
 ## [0.10.0] - 2026-10-28
 
 ### Diubah

@@ -61,11 +61,62 @@ const MIME = {
   '.woff2': 'font/woff2',
 };
 
+const TOOL_FILE = path.join(APP_DIR, '.virtoffice', 'tool.json');
+
+/** Katalog tool agentik; yang belum punya bridge tetap tampil supaya arah dukungannya jelas. */
+const TOOLS = [
+  { id: 'opencode', name: 'OpenCode', available: true },
+  { id: 'claude', name: 'Claude', available: true },
+  { id: 'kilo', name: 'Kilo', available: false },
+  { id: 'phi', name: 'Phi', available: false },
+  { id: 'openclaw', name: 'OpenClaw', available: false },
+];
+
 const store = new WorkspaceStore(APP_DIR);
-const TOOL = process.env.VIRTOFFICE_TOOL === 'claude' ? 'claude' : 'opencode';
-const bridge =
-  TOOL === 'claude' ? new ClaudeBridge({ cwd: APP_DIR }) : new OpenCodeBridge({ cwd: APP_DIR });
 const terminals = new TerminalHub();
+const bridges = new Map();
+const eventClients = new Set();
+let TOOL = process.env.VIRTOFFICE_TOOL === 'claude' ? 'claude' : 'opencode';
+let bridge = null;
+let toolSwitch = null;
+
+function createBridge(tool) {
+  return tool === 'claude' ? new ClaudeBridge({ cwd: APP_DIR }) : new OpenCodeBridge({ cwd: APP_DIR });
+}
+
+/** Bridge yang ditinggal tetap hidup: sesi Claude hanya ada di memori instance-nya. */
+function bridgeFor(tool) {
+  let instance = bridges.get(tool);
+  if (!instance) {
+    instance = createBridge(tool);
+    bridges.set(tool, instance);
+  }
+  return instance;
+}
+
+function toolName(tool = TOOL) {
+  return TOOLS.find((entry) => entry.id === tool)?.name ?? tool;
+}
+
+function stopBridges() {
+  for (const instance of bridges.values()) instance.stop();
+}
+
+async function loadToolPreference() {
+  try {
+    const data = JSON.parse(await fs.readFile(TOOL_FILE, 'utf8'));
+    const saved = TOOLS.find((entry) => entry.id === data?.tool && entry.available);
+    if (saved) return saved.id;
+  } catch {
+    // Belum pernah memilih: ikuti env, lalu default.
+  }
+  return process.env.VIRTOFFICE_TOOL === 'claude' ? 'claude' : 'opencode';
+}
+
+async function saveToolPreference(tool) {
+  await fs.mkdir(path.dirname(TOOL_FILE), { recursive: true });
+  await fs.writeFile(TOOL_FILE, `${JSON.stringify({ tool }, null, 2)}\n`);
+}
 
 function workspaceOrThrow() {
   const { workspace } = store.snapshot();
@@ -139,6 +190,75 @@ function warmChat() {
   loadModelCatalog(workspace.path).catch(() => undefined);
 }
 
+/** Sesi yang masih bekerja, dibaca langsung dari bridge yang sedang aktif. */
+async function busySessionIds(directory) {
+  if (!directory) return [];
+  const statuses = await bridge
+    .request('/session/status', { query: { directory } })
+    .catch(() => ({}));
+  return Object.entries(statuses ?? {})
+    .filter(([, status]) => status?.type === 'busy' || status?.type === 'retry')
+    .map(([id]) => id);
+}
+
+async function busySessions(directory) {
+  const ids = await busySessionIds(directory);
+  if (!ids.length) return [];
+  const raw = await bridge.request('/session', { query: { directory } }).catch(() => []);
+  const titles = new Map(
+    (Array.isArray(raw) ? raw : []).map((session) => [
+      session?.id,
+      typeof session?.title === 'string' && session.title.trim() ? session.title : '',
+    ])
+  );
+  return ids.map((id) => ({ id, title: titles.get(id) ?? '' }));
+}
+
+function broadcastToolChanged(payload) {
+  for (const client of [...eventClients]) {
+    client.notify({ type: 'tool.changed', properties: payload });
+    client.stop();
+  }
+}
+
+async function switchTool(target, force) {
+  const previous = TOOL;
+  const { workspace } = store.snapshot();
+  const directory = workspace?.path ?? null;
+  const busy = await busySessions(directory);
+  if (busy.length && !force) {
+    throw new HttpError(409, `Masih ada ${busy.length} sesi yang bekerja.`);
+  }
+  if (busy.length) {
+    await Promise.all(
+      busy.map((session) =>
+        bridge.request(`/session/${session.id}/abort`, { method: 'POST', query: { directory } }).catch(() => undefined)
+      )
+    );
+  }
+
+  const parked = bridges.has(target);
+  const next = bridgeFor(target);
+  try {
+    await next.ensure();
+  } catch (error) {
+    // Bridge yang sudah pernah dipakai menyimpan sesi; jangan dibuang saat gagal sementara.
+    if (!parked) {
+      next.stop();
+      bridges.delete(target);
+    }
+    throw error;
+  }
+
+  TOOL = target;
+  bridge = next;
+  catalogCache.clear();
+  await saveToolPreference(target).catch(() => undefined);
+  warmChat();
+  broadcastToolChanged({ tool: target, toolName: toolName(target), previous });
+  return { ok: true, tool: target, toolName: toolName(target), previous };
+}
+
 async function streamEvents(req, res) {
   const directory = workspaceOrThrow();
   const upstream = await bridge.openEventStream(directory);
@@ -160,10 +280,21 @@ async function streamEvents(req, res) {
   const stop = () => {
     if (closed) return;
     closed = true;
+    eventClients.delete(client);
     clearInterval(heartbeat);
     upstream.abort();
     reader.cancel().catch(() => undefined);
   };
+
+  // Satu entri per klien supaya penggantian tool bisa memberi tahu lalu memutus stream.
+  const client = {
+    notify(event) {
+      if (closed || res.writableEnded) return;
+      res.write(`data: ${JSON.stringify(event)}\n\n`);
+    },
+    stop,
+  };
+  eventClients.add(client);
 
   res.on('close', stop);
   req.on('error', stop);
@@ -183,6 +314,7 @@ async function streamEvents(req, res) {
       res.write(`data: ${payload}\n\n`);
     }
   } finally {
+    eventClients.delete(client);
     clearInterval(heartbeat);
     if (!res.writableEnded) res.end();
   }
@@ -248,6 +380,7 @@ async function handleApi(req, res, url) {
     return sendJson(res, 200, {
       ok: true,
       tool: TOOL,
+      toolName: toolName(),
       opencode: bridge.running ? 'running' : 'stopped',
       url: bridge.url ?? null,
       dev: isDev,
@@ -445,6 +578,33 @@ async function handleApi(req, res, url) {
     return sendJson(res, 200, await terminals.close(terminalId(String(body.id ?? ''))));
   }
 
+  if (pathname === '/api/chat/tool' && method === 'GET') {
+    const { workspace } = store.snapshot();
+    return sendJson(res, 200, {
+      tool: TOOL,
+      toolName: toolName(),
+      tools: TOOLS.map((entry) => ({ ...entry, active: entry.id === TOOL })),
+      busy: await busySessions(workspace?.path ?? null),
+    });
+  }
+
+  if (pathname === '/api/chat/tool' && method === 'POST') {
+    const body = await readJson(req);
+    const target = TOOLS.find((entry) => entry.id === body.tool);
+    if (!target) throw new HttpError(400, 'Tool agentik tidak dikenal.');
+    if (!target.available) throw new HttpError(400, `${target.name} belum didukung.`);
+    if (target.id === TOOL) {
+      return sendJson(res, 200, { ok: true, tool: TOOL, toolName: toolName(), previous: TOOL });
+    }
+    if (toolSwitch) throw new HttpError(409, 'Penggantian tool lain sedang berjalan.');
+    toolSwitch = switchTool(target.id, body.force === true);
+    try {
+      return sendJson(res, 200, await toolSwitch);
+    } finally {
+      toolSwitch = null;
+    }
+  }
+
   if (pathname === '/api/chat/bootstrap' && method === 'GET') {
     const directory = workspaceOrThrow();
     const query = { directory };
@@ -458,7 +618,7 @@ async function handleApi(req, res, url) {
     return sendJson(res, 200, {
       workspace: store.snapshot().workspace,
       tool: TOOL,
-      toolName: TOOL === 'claude' ? 'Claude' : 'OpenCode',
+      toolName: toolName(),
       models: catalog.groups,
       defaultModel: catalog.defaultModel,
       agents: buildAgentList(agents),
@@ -640,6 +800,8 @@ async function serveStatic(req, res, pathname) {
 
 async function main() {
   await store.load();
+  TOOL = await loadToolPreference();
+  bridge = bridgeFor(TOOL);
 
   let vite = null;
   if (isDev) {
@@ -670,7 +832,7 @@ function serveLoopback(server) {
         ? `Port ${PORT} sudah dipakai proses lain. Hentikan server lama atau jalankan ulang dengan --port ${PORT + 1}.`
         : `Server gagal berjalan: ${error instanceof Error ? error.message : String(error)}`
     );
-    bridge.stop();
+    stopBridges();
     process.exit(1);
   });
 
@@ -738,7 +900,7 @@ function logReady() {
 
 function wireShutdown(server) {
   const shutdown = () => {
-    bridge.stop();
+    stopBridges();
     terminals.closeAll();
     server.close(() => process.exit(0));
     setTimeout(() => process.exit(0), 1_500).unref();
@@ -746,13 +908,13 @@ function wireShutdown(server) {
   process.once('SIGINT', shutdown);
   process.once('SIGTERM', shutdown);
   process.once('exit', () => {
-    bridge.stop();
+    stopBridges();
     terminals.closeAll();
   });
 }
 
 main().catch((error) => {
   console.error(error instanceof Error ? error.message : error);
-  bridge.stop();
+  stopBridges();
   process.exit(1);
 });

@@ -20,6 +20,7 @@ import { cancelPendingDiagrams, renderMarkdown } from './markdown';
 import { SearchSelect } from './select';
 import { mountSettings, type SettingsPanel } from './settings';
 import { notifyLayout } from './split';
+import { mountToolSwitch, type ToolSwitcher } from './toolswitch';
 import {
   applyChatEvent,
   bubbleCopy,
@@ -118,6 +119,7 @@ let filesPanel: FilesPanel | null = null;
 let scmPanel: ScmPanel | null = null;
 let terminalPanel: TerminalPanel | null = null;
 let settingsPanel: SettingsPanel | null = null;
+let toolSwitcher: ToolSwitcher | null = null;
 
 /** Model tidak tahu chat ini bisa menggambar, jadi permintaan visual dibawai catatan format. */
 // Dikirim ke model sebagai bagian prompt: instruksi format, JANGAN diterjemahkan.
@@ -190,6 +192,12 @@ let selectsCollapsed = localStorage.getItem(STORAGE_SELECTS) === '1';
 
 export function installChat(officeApi: VirtOfficeApi): void {
   office = officeApi;
+  // Ganti tool = muat ulang seluruh kontrak chat dari bridge baru.
+  toolSwitcher = mountToolSwitch({
+    onChanged: () => {
+      if (workspace) applyWorkspace(workspace);
+    },
+  });
   new SearchSelect(sessionSelect, { searchable: true, searchPlaceholder: t('chat.searchSessions') });
   new SearchSelect(modelSelect, { searchable: true, searchPlaceholder: t('chat.searchModels') });
   new SearchSelect(agentSelect);
@@ -353,6 +361,7 @@ export function installChat(officeApi: VirtOfficeApi): void {
   // Ganti bahasa: gambar ulang semua teks statis + dinamis chat, tanpa memaksa notice aktif.
   subscribeLocale(() => {
     applyStatic();
+    toolSwitcher?.refreshLabels();
     updateLauncher();
     updateChatFolder();
     renderModelSelect();
@@ -379,6 +388,7 @@ async function syncWorkspace(): Promise<void> {
 
 function applyWorkspace(next: WorkspaceInfo | null): void {
   workspaceGeneration += 1;
+  toolSwitcher?.dismiss();
   releaseOfficeAgent();
   window.clearTimeout(presenceTimer);
   presenceTimer = 0;
@@ -679,6 +689,7 @@ async function loadBootstrap(): Promise<void> {
     bootstrap = data;
     setToolName(data.toolName ?? 'OpenCode');
     applyStatic();
+    toolSwitcher?.setActive(data.tool ?? 'opencode', data.toolName ?? 'OpenCode');
     workspace = data.workspace;
     models = data.models;
     agents = data.agents;
@@ -1104,6 +1115,14 @@ function handleEvent(event: ChatEvent): void {
         typeof props.message === 'string' ? props.message : t('chat.bridgeDown')
       );
       return;
+
+    case 'tool.changed': {
+      toolSwitcher?.applyRemote(
+        typeof props.tool === 'string' ? props.tool : '',
+        typeof props.toolName === 'string' ? props.toolName : ''
+      );
+      return;
+    }
 
     case 'session.created':
     case 'session.updated': {
