@@ -67,21 +67,42 @@ export interface SessionRecord {
   parentID: string | null;
 }
 
+export interface SessionStatus {
+  type?: string;
+  /** Bridge yang tahu pemilik sesi; ikut dipakai supaya kursi tidak bergantung pada event. */
+  agent?: string | null;
+  parentID?: string | null;
+}
+
 /** A session in retry is still holding a chair: it is working, just badly. */
 export function isBusyStatus(type: string | undefined): boolean {
   return type === 'busy' || type === 'retry';
 }
 
+function slug(value: string | null | undefined): string | null {
+  return value ? slugify(value) : null;
+}
+
 export function sessionActivities(
   sessions: SessionRecord[],
-  statuses: Record<string, { type?: string }>,
+  statuses: Record<string, SessionStatus>,
 ): SessionActivity[] {
-  return sessions.map((session) => ({
+  const activities = sessions.map((session) => ({
     id: session.id,
-    agent: session.agent ? slugify(session.agent) : null,
-    parentID: session.parentID,
+    agent: slug(statuses[session.id]?.agent) ?? slug(session.agent),
+    parentID: session.parentID ?? statuses[session.id]?.parentID ?? null,
     busy: isBusyStatus(statuses[session.id]?.type),
   }));
+
+  // Sesi sibuk yang belum masuk daftar percakapan (event created hilang, daftar
+  // terpotong) tetap boleh menempati kursi; status dari bridge sudah lengkap.
+  const known = new Set(sessions.map((session) => session.id));
+  for (const [id, status] of Object.entries(statuses)) {
+    if (known.has(id) || !isBusyStatus(status.type)) continue;
+    activities.push({ id, agent: slug(status.agent), parentID: status.parentID ?? null, busy: true });
+  }
+
+  return activities;
 }
 
 /**

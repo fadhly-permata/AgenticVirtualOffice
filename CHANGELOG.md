@@ -4,6 +4,32 @@ Semua perubahan penting pada VirtOffice dicatat di sini. Format mengikuti
 [Keep a Changelog](https://keepachangelog.com/id/1.1.0/) dan versi mengikuti
 [Semantic Versioning](https://semver.org/lang/id/).
 
+## [0.14.6] - 2026-11-04
+
+### Ditambahkan
+
+- Jawaban Claude dan Qoder mengalir token per token. Keduanya di-spawn dengan `--include-partial-messages` dan bingkai `stream_event` diterjemahkan `server/partial.mjs` menjadi `message.part.updated` + `message.part.delta`, jadi gelembung muncul lebih dulu lalu terisi selagi giliran berjalan. Sebelumnya jawaban baru terlihat utuh di akhir giliran karena bridge hanya membaca event `assistant`. ID part yang dihasilkan (`<messageID>:t<index>` dan `:r<index>`) sama dengan punya `assistantParts`, jadi blok final hanya menambal teks yang sudah ada, tidak menambah gelembung kedua.
+- Perintah `/stop` di composer. Ia menekan tombol merah yang sama lewat `stopResponse()`, tidak pernah terkirim sebagai prompt; saat tidak ada sesi yang berjalan panel menampilkan "No session is running.".
+- Sesi percakapan bisa dihapus. Tombol sampah di kepala chat butuh dua klik (jeda 4 detik kembali sendiri), lalu `DELETE /api/chat/sessions/:id` memanggil abort bridge, menghapus transkrip JSONL milik sesi, dan menyiarkan `session.deleted`.
+
+### Diperbaiki
+
+- Lantai kantor tetap terisi untuk OpenCode. `GET /session/status` OpenCode hanya berisi `{type: "busy"}` tanpa pemilik sesi, jadi `withSessionOwners()` di `server/status.mjs` melengkapinya dari `GET /session` (agent dan parentID) sebelum `/api/chat/status` dikirim. Giliran `retry` ikut dihitung sibuk.
+- Chip karyawan di kantor ikut menampilkan status ulang coba, bukan lagi "bekerja": `runState()` memakai label `chat.statusWaitRetry` selama `noticeKind === "retry"`, dan baris status chat menampilkan teks yang sama.
+- Sesi yang dihapus saat giliran masih berjalan tidak lagi lahir kembali. Proses CLI yang sedang dimatikan menulis ulang transkripnya setelah `fs.rm` pertama, jadi `#deleteSession` menandai id di `#purged`; `#listSessions` melewati id itu dan menyapu file hantunya di daftar berikutnya.
+
+## [0.14.5] - 2026-11-04
+
+### Diperbaiki
+
+- Katalog model tidak lagi tertukar antar tool. Cache katalog di server dulu hanya dipisah per folder kerja, jadi `/provider` milik tool lama yang selesai *setelah* ganti tool tetap menulis hasilnya ke cache dan dropdown menampilkan model tool sebelumnya sampai 5 menit (giliran Claude lalu diam-diam memakai `sonnet` karena id model asing diabaikan bridge). Cache sekarang keyed `tool|folder` dan kunci itu sudah ditentukan saat permintaan dimulai, sehingga jawaban terlambat hanya bisa mendarat di entri tool aslinya.
+
+## [0.14.4] - 2026-11-04
+
+### Diperbaiki
+
+- Lantai kantor tidak lagi mati saat Claude/Qoder sedang bekerja. `GET /session/status` pada kedua bridge sekarang membawa `agent` dan `parentID` tiap sesi sibuk, dan `sessionActivities` memakainya sebagai sumber utama lalu melengkapi sesi sibuk yang tidak ada di daftar percakapan. Sebelumnya kursi hanya bisa diisi lewat event `session.updated`/`session.created`, jadi satu event yang hilang (stream SSE belum tersambung, `#emit` tanpa subscriber, atau sesi lama yang dipulihkan dari disk) membuat semua karyawan `idle` sementara panel chat tetap sibuk.
+
 ## [0.14.2] - 2026-10-28
 
 ### Diperbaiki

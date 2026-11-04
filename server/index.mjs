@@ -3,6 +3,8 @@ import fs from 'node:fs/promises';
 import http from 'node:http';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { createCatalogCache } from './catalog.mjs';
+import { withSessionOwners } from './status.mjs';
 import { ClaudeBridge } from './claude.mjs';
 import { QoderBridge } from './qoder.mjs';
 import { createEntry, deleteEntry, readFileAt, readRawAt, renameEntry, resolveInside, searchIn, treeAt } from './files.mjs';
@@ -168,29 +170,15 @@ async function applyRules(directory, delayMs) {
   }
 }
 
-const catalogCache = new Map();
+const modelCatalogs = createCatalogCache();
 
-async function loadModelCatalog(directory) {
-  const cached = catalogCache.get(directory);
-  if (cached?.data && Date.now() - cached.at < 5 * 60_000) return cached.data;
-  if (cached?.promise) return cached.promise;
-
-  const promise = Promise.all([
-    bridge.request('/provider', { query: { directory } }),
-    bridge.request('/config', { query: { directory } }),
-  ])
-    .then(([providers, config]) => {
-      const data = buildModelCatalog(providers, config);
-      catalogCache.set(directory, { at: Date.now(), data, promise: null });
-      return data;
-    })
-    .catch((error) => {
-      catalogCache.delete(directory);
-      throw error;
-    });
-
-  catalogCache.set(directory, { at: 0, data: null, promise });
-  return promise;
+function loadModelCatalog(directory) {
+  return modelCatalogs.load(`${TOOL}|${directory}`, () =>
+    Promise.all([
+      bridge.request('/provider', { query: { directory } }),
+      bridge.request('/config', { query: { directory } }),
+    ]).then(([providers, config]) => buildModelCatalog(providers, config))
+  );
 }
 
 function warmChat() {
@@ -261,7 +249,7 @@ async function switchTool(target, force) {
 
   TOOL = target;
   bridge = next;
-  catalogCache.clear();
+  modelCatalogs.clear();
   await saveToolPreference(target).catch(() => undefined);
   warmChat();
   broadcastToolChanged({ tool: target, toolName: toolName(target), previous });
@@ -646,7 +634,10 @@ async function handleApi(req, res, url) {
   if (pathname === '/api/chat/status' && method === 'GET') {
     const directory = workspaceOrThrow();
     const statuses = await bridge.request('/session/status', { query: { directory } }).catch(() => ({}));
-    return sendJson(res, 200, { statuses });
+    const owners = await withSessionOwners(statuses, () =>
+      bridge.request('/session', { query: { directory } })
+    );
+    return sendJson(res, 200, { statuses: owners });
   }
 
   if (pathname === '/api/chat/activity' && method === 'GET') {
@@ -724,6 +715,11 @@ async function handleApi(req, res, url) {
     if (action === '/abort' && method === 'POST') {
       await bridge.request(`/session/${id}/abort`, { method: 'POST', query: { directory } });
       return sendJson(res, 200, { ok: true });
+    }
+
+    if (!action && method === 'DELETE') {
+      await bridge.request(`/session/${id}`, { method: 'DELETE', query: { directory } });
+      return sendJson(res, 200, { id });
     }
   }
 

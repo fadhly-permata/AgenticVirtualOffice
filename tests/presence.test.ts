@@ -100,4 +100,34 @@ describe('presence engine', () => {
     expect(sessionActivities([{ id: 'c', agent: 'build', parentID: null }], { c: { type: 'idle' } })[0].busy).toBe(false);
     expect(isBusyStatus(undefined)).toBe(false);
   });
+
+  it('takes owner and lineage from the status map when the event stream missed them', () => {
+    const activities = sessionActivities(
+      [{ id: 'a', agent: null, parentID: null }],
+      { a: { type: 'busy', agent: 'Claude', parentID: null } }
+    );
+    expect(activities).toEqual([{ id: 'a', agent: 'claude', parentID: null, busy: true }]);
+  });
+
+  it('seats busy sessions the chat list never heard about', () => {
+    const activities = sessionActivities(
+      [{ id: 'a', agent: 'claude', parentID: null }],
+      {
+        a: { type: 'busy', agent: 'claude', parentID: null },
+        sub_1: { type: 'busy', agent: 'Explore', parentID: 'a' },
+        sub_2: { type: 'idle', agent: 'Plan', parentID: 'a' },
+      }
+    );
+    expect(activities).toHaveLength(2);
+    expect(activities[1]).toEqual({ id: 'sub_1', agent: 'explore', parentID: 'a', busy: true });
+
+    const presence = buildPresence(
+      [{ name: 'claude', mode: 'primary' }, { name: 'Explore', mode: 'subagent' }],
+      activities
+    );
+    expect(presence).toEqual([
+      { agent: 'claude', role: 'delegating', sessionID: 'a' },
+      { agent: 'explore', role: 'delegated', sessionID: 'sub_1' },
+    ]);
+  });
 });

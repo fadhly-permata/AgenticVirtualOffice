@@ -230,6 +230,8 @@ describe('qoderSpawnArgs', () => {
     expect(qoderSpawnArgs({ ...base, exists: false })).toContain('--session-id');
     expect(qoderSpawnArgs({ ...base, exists: false })).not.toContain('--resume');
     expect(qoderSpawnArgs({ ...base, exists: true })).toContain('--resume');
+    // Tanpa flag ini jawaban baru muncul sepotong di akhir giliran.
+    expect(qoderSpawnArgs({ ...base, exists: true })).toContain('--include-partial-messages');
   });
 
   it('meneruskan model, reasoning effort, dan agent non-default', () => {

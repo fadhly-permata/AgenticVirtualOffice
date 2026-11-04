@@ -87,6 +87,8 @@ export const shell: Catalog = {
   chatWorkspace: ['Virtual Command Room', 'Virtual Command Room'],
   changeWorkspace: ['Ganti workspace', 'Change workspace'],
   newChat: ['Chat baru', 'New chat'],
+  deleteChat: ['Hapus sesi', 'Delete session'],
+  deleteChatConfirm: ['Klik lagi untuk hapus sesi ini', 'Click again to delete this session'],
   closeChat: ['Tutup chat', 'Close chat'],
   railAria: ['Bagian chat', 'Chat sections'],
 

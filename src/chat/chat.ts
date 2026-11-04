@@ -81,6 +81,7 @@ const chatWindow = byId<HTMLElement>('chat-window');
 const chatChangeFolder = byId<HTMLButtonElement>('chat-change-folder');
 const chatFolder = byId<HTMLElement>('chat-folder');
 const chatNew = byId<HTMLButtonElement>('chat-new');
+const sessionDelete = byId<HTMLButtonElement>('chat-session-delete');
 const chatMaximize = byId<HTMLButtonElement>('chat-maximize');
 const chatHead = byId<HTMLElement>('chat-head');
 const chatClose = byId<HTMLButtonElement>('chat-close');
@@ -178,6 +179,8 @@ let sendPhase = '';
 let noticeKind: NoticeKind | '' = '';
 let renderQueued = false;
 let historyReloadTimer = 0;
+let deleteArmed = false;
+let deleteArmTimer = 0;
 
 const reasoningToggled = new Map<string, boolean>();
 const clockHosts: { el: HTMLElement; since: number }[] = [];
@@ -249,6 +252,7 @@ export function installChat(officeApi: VirtOfficeApi): void {
   window.addEventListener('resize', keepBoxOnScreen);
   setBox(readStoredBox());
   chatNew.addEventListener('click', () => startNewChat(true));
+  sessionDelete.addEventListener('click', () => void deleteCurrentSession());
   chatChangeFolder.addEventListener('click', () => {
     if (isAnyRunning()) {
       setNotice('error', t('chat.stopBeforeSwitch'));
@@ -808,6 +812,8 @@ function renderSessionSelect(): void {
     sessionSelect.append(option);
   }
   sessionSelect.value = currentSession?.id ?? 'new';
+  sessionDelete.hidden = !currentSession;
+  if (!currentSession) disarmSessionDelete();
 }
 
 function upsertSession(info: Record<string, unknown>): void {
@@ -910,8 +916,56 @@ function startNewChat(focus: boolean): void {
   }
 }
 
+/** Klik kedua dalam empat detik baru menghapus; selain itu tombolnya diam lagi. */
+function disarmSessionDelete(): void {
+  deleteArmed = false;
+  window.clearTimeout(deleteArmTimer);
+  deleteArmTimer = 0;
+  sessionDelete.classList.remove('is-confirm');
+  sessionDelete.title = t('shell.deleteChat');
+  sessionDelete.setAttribute('aria-label', t('shell.deleteChat'));
+}
+
+async function deleteCurrentSession(): Promise<void> {
+  const session = currentSession;
+  if (!session) return;
+  if (!deleteArmed) {
+    deleteArmed = true;
+    sessionDelete.classList.add('is-confirm');
+    sessionDelete.title = t('shell.deleteChatConfirm');
+    sessionDelete.setAttribute('aria-label', t('shell.deleteChatConfirm'));
+    window.clearTimeout(deleteArmTimer);
+    deleteArmTimer = window.setTimeout(disarmSessionDelete, 4_000);
+    return;
+  }
+  disarmSessionDelete();
+  try {
+    await chatApi.deleteSession(session.id);
+  } catch (error) {
+    setNotice('error', describeError(error));
+    return;
+  }
+  runningSessions.delete(session.id);
+  sessions = sessions.filter((entry) => entry.id !== session.id && entry.parentID !== session.id);
+  startNewChat(false);
+  setNotice('info', t('chat.sessionDeleted'));
+  schedulePresence(0);
+}
+
 async function sendMessage(): Promise<void> {
   const text = input.value.trim();
+  // /stop bukan prompt: ia menekan tombol merah yang sama.
+  if (/^\/stop$/i.test(text)) {
+    input.value = '';
+    resizeInput();
+    if (!isCurrentRunning()) {
+      setNotice('info', t('chat.stopNothing'));
+      updateComposer();
+      return;
+    }
+    void stopResponse();
+    return;
+  }
   if (!text || !workspace || sending || isCurrentRunning() || bootLoading || reading) return;
   if (!selectedModel) {
     setNotice('error', t('chat.chooseModelFirst'));
@@ -1590,10 +1644,11 @@ function currentRun(): RunState | null {
   // `messages` masih berisi sesi lama dan fasenya tidak boleh dilaporkan.
   if (!workspace || bootLoading || reading || !messages.length || !isCurrentRunning()) return null;
   const last = messages[messages.length - 1];
-  if (!last || last.role !== 'assistant') {
-    return { phase: 'prepare', label: t(RUN_LABEL.prepare), since: last?.created ?? Date.now() };
-  }
-  return runState(last);
+  const run = !last || last.role !== 'assistant'
+    ? { phase: 'prepare' as const, label: t(RUN_LABEL.prepare), since: last?.created ?? Date.now() }
+    : runState(last);
+  // Retry bukan fase baru: kursinya tetap sama, hanya labelnya yang harus jujur.
+  return noticeKind === 'retry' ? { ...run, label: t('chat.statusWaitRetry') } : run;
 }
 
 function renderWorkBar(label: string, since: number): HTMLElement {

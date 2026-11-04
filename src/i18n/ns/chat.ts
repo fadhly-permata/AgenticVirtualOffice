@@ -31,6 +31,7 @@ export const chat: Catalog = {
   sendSend: ['Kirim', 'Send'],
   sendStopAria: ['Hentikan respons {tool}', 'Stop {tool} response'],
   sendSendAria: ['Kirim pesan', 'Send message'],
+  stopNothing: ['Tidak ada sesi yang berjalan.', 'No session is running.'],
 
   // Muat awal & sesi
   booting: ['Menyiapkan {tool}…', 'Preparing {tool}…'],
