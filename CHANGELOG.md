@@ -4,6 +4,12 @@ Semua perubahan penting pada VirtOffice dicatat di sini. Format mengikuti
 [Keep a Changelog](https://keepachangelog.com/id/1.1.0/) dan versi mengikuti
 [Semantic Versioning](https://semver.org/lang/id/).
 
+## [0.14.5] - 2026-11-04
+
+### Diperbaiki
+
+- Katalog model tidak lagi tertukar antar tool. Cache katalog di server dulu hanya dipisah per folder kerja, jadi `/provider` milik tool lama yang selesai *setelah* ganti tool tetap menulis hasilnya ke cache dan dropdown menampilkan model tool sebelumnya sampai 5 menit (giliran Claude lalu diam-diam memakai `sonnet` karena id model asing diabaikan bridge). Cache sekarang keyed `tool|folder` dan kunci itu sudah ditentukan saat permintaan dimulai, sehingga jawaban terlambat hanya bisa mendarat di entri tool aslinya.
+
 ## [0.14.4] - 2026-11-04
 
 ### Diperbaiki
