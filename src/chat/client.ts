@@ -1,4 +1,5 @@
 import { t } from '../i18n';
+import type { SessionStatus } from '../office/presence';
 import type {
   AgenticToolState,
   Bootstrap,
@@ -96,7 +97,7 @@ export const chatApi = {
     ),
   setRules: (delayMs: number) =>
     request<RuleState>('/api/chat/rules', { method: 'POST', body: JSON.stringify({ delayMs }) }),
-  status: () => request<{ statuses: Record<string, { type?: string }> }>('/api/chat/status'),
+  status: () => request<{ statuses: Record<string, SessionStatus> }>('/api/chat/status'),
   activity: (ids: string[]) =>
     request<{ activities: Record<string, RunActivity> }>(
       `/api/chat/activity?ids=${encodeURIComponent(ids.join(','))}`

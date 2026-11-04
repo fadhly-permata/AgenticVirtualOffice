@@ -736,8 +736,12 @@ export class QoderBridge {
 
   #statuses() {
     const statuses = {};
+    // Agent dan lineage ikut dibawa: lantai kantor tidak boleh bergantung pada
+    // event session.updated yang bisa hilang saat stream SSE belum terpasang.
     for (const session of this.#sessions.values()) {
-      if (session.busy) statuses[session.id] = { type: 'busy' };
+      if (session.busy) {
+        statuses[session.id] = { type: 'busy', agent: session.agent ?? null, parentID: session.parentID ?? null };
+      }
     }
     return statuses;
   }

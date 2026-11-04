@@ -4,6 +4,12 @@ Semua perubahan penting pada VirtOffice dicatat di sini. Format mengikuti
 [Keep a Changelog](https://keepachangelog.com/id/1.1.0/) dan versi mengikuti
 [Semantic Versioning](https://semver.org/lang/id/).
 
+## [0.14.4] - 2026-11-04
+
+### Diperbaiki
+
+- Lantai kantor tidak lagi mati saat Claude/Qoder sedang bekerja. `GET /session/status` pada kedua bridge sekarang membawa `agent` dan `parentID` tiap sesi sibuk, dan `sessionActivities` memakainya sebagai sumber utama lalu melengkapi sesi sibuk yang tidak ada di daftar percakapan. Sebelumnya kursi hanya bisa diisi lewat event `session.updated`/`session.created`, jadi satu event yang hilang (stream SSE belum tersambung, `#emit` tanpa subscriber, atau sesi lama yang dipulihkan dari disk) membuat semua karyawan `idle` sementara panel chat tetap sibuk.
+
 ## [0.14.2] - 2026-10-28
 
 ### Diperbaiki
