@@ -112,6 +112,8 @@ export const chatApi = {
     }),
   abort: (id: string) =>
     request<{ ok: true }>(`/api/chat/sessions/${encodeURIComponent(id)}/abort`, { method: 'POST' }),
+  deleteSession: (id: string) =>
+    request<{ id: string }>(`/api/chat/sessions/${encodeURIComponent(id)}`, { method: 'DELETE' }),
   replyPermission: (id: string, reply: PermissionReply['reply']) =>
     request<{ ok: true }>(`/api/chat/permissions/${encodeURIComponent(id)}`, {
       method: 'POST',

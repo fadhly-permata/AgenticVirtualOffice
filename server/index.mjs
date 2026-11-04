@@ -4,6 +4,7 @@ import http from 'node:http';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { createCatalogCache } from './catalog.mjs';
+import { withSessionOwners } from './status.mjs';
 import { ClaudeBridge } from './claude.mjs';
 import { QoderBridge } from './qoder.mjs';
 import { createEntry, deleteEntry, readFileAt, readRawAt, renameEntry, resolveInside, searchIn, treeAt } from './files.mjs';
@@ -633,7 +634,10 @@ async function handleApi(req, res, url) {
   if (pathname === '/api/chat/status' && method === 'GET') {
     const directory = workspaceOrThrow();
     const statuses = await bridge.request('/session/status', { query: { directory } }).catch(() => ({}));
-    return sendJson(res, 200, { statuses });
+    const owners = await withSessionOwners(statuses, () =>
+      bridge.request('/session', { query: { directory } })
+    );
+    return sendJson(res, 200, { statuses: owners });
   }
 
   if (pathname === '/api/chat/activity' && method === 'GET') {
@@ -711,6 +715,11 @@ async function handleApi(req, res, url) {
     if (action === '/abort' && method === 'POST') {
       await bridge.request(`/session/${id}/abort`, { method: 'POST', query: { directory } });
       return sendJson(res, 200, { ok: true });
+    }
+
+    if (!action && method === 'DELETE') {
+      await bridge.request(`/session/${id}`, { method: 'DELETE', query: { directory } });
+      return sendJson(res, 200, { id });
     }
   }
 

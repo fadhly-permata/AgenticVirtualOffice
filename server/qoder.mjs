@@ -5,6 +5,7 @@ import fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import { HttpError } from './http.mjs';
+import { applyPartialStream } from './partial.mjs';
 
 /**
  * Windows tidak bisa spawn shim npm `.cmd`; pakai dispatcher JS-nya langsung
@@ -37,6 +38,7 @@ export function qoderSpawnArgs({ exists, sessionID, model, agent, effort }) {
     'stream-json',
     '--output-format',
     'stream-json',
+    '--include-partial-messages',
     '--permission-mode',
     'default',
     '--permission-prompt-tool',
@@ -461,6 +463,7 @@ export class QoderBridge {
   #sessions = new Map();
   #subscribers = new Set();
   #transcripts = new Map();
+  #purged = new Set();
   #roster = new Map();
   #version = null;
   #versionPromise = null;
@@ -556,6 +559,7 @@ export class QoderBridge {
         this.#abort(id);
         return null;
       }
+      if (!action && method === 'DELETE') return this.#deleteSession(id, directory);
     }
 
     throw new HttpError(404, 'Endpoint tidak ditemukan.');
@@ -685,9 +689,13 @@ export class QoderBridge {
 
     const dir = projectDirectory(directory);
     const names = await fs.readdir(dir).catch(() => []);
+    // Proses yang sedang dimatikan menulis ulang transkripnya setelah rm pertama.
+    for (const name of this.#purged.size ? names.filter((entry) => entry.endsWith('.jsonl') && this.#purged.has(entry.slice(0, -6))) : []) {
+      void fs.rm(path.join(dir, name), { force: true }).catch(() => undefined);
+    }
     await Promise.all(
       names
-        .filter((name) => name.endsWith('.jsonl') && UUID_RE.test(name.slice(0, -6)))
+        .filter((name) => name.endsWith('.jsonl') && UUID_RE.test(name.slice(0, -6)) && !this.#purged.has(name.slice(0, -6)))
         .map(async (name) => {
           const id = name.slice(0, -6);
           if (sessions.has(id)) return;
@@ -875,6 +883,12 @@ export class QoderBridge {
         if (event.subtype === 'init') this.#mergeRoster(session.directory, event.agents);
         return;
       }
+      case 'stream_event': {
+        // Teks dan pikiran mengalir token per token sebelum blok final tiba.
+        const target = this.#eventSession(session, event);
+        if (target) applyPartialStream(target, event, (frame) => this.#emit(frame));
+        return;
+      }
       case 'assistant': {
         const target = this.#eventSession(session, event);
         if (target) this.#onAssistant(target, event);
@@ -920,7 +934,15 @@ export class QoderBridge {
     }
 
     for (const part of parts) {
-      if (message.parts.some((entry) => entry.id === part.id)) continue;
+      const streamed = message.parts.find((entry) => entry.id === part.id);
+      if (streamed) {
+        // Salinan parsial sudah tampil di layar; blok final hanya mengoreksi isinya.
+        if (typeof part.text === 'string' && streamed.text !== part.text) {
+          streamed.text = part.text;
+          this.#emit({ type: 'message.part.updated', properties: { sessionID: session.id, part: streamed } });
+        }
+        continue;
+      }
       message.parts.push(part);
       if (part.type === 'tool') {
         session.parts.set(part.callID, part);
@@ -961,6 +983,7 @@ export class QoderBridge {
     const aborted = session.aborting;
     session.aborting = false;
     session.busy = false;
+    session.partial = null;
     session.updated = Date.now();
 
     this.#rejectQuestions(session);
@@ -1113,6 +1136,27 @@ export class QoderBridge {
       this.#emit({ type: 'session.deleted', properties: { info: { id } } });
     }, SUBAGENT_LINGER_MS);
     child.lingerTimer.unref?.();
+  }
+
+  /**
+   * Sesi hilang dari daftar dan transkripnya ikut terhapus. Izin serta pertanyaan
+   * yang menggantung padanya ikut pergi karena keduanya menempel di objek sesi.
+   */
+  async #deleteSession(id, directory) {
+    const session = this.#sessions.get(id);
+    const root = session?.directory ?? directory;
+    if (session?.busy) this.#abort(id);
+    for (const childId of session?.subagents?.values() ?? []) {
+      const child = this.#sessions.get(childId);
+      if (child?.lingerTimer) clearTimeout(child.lingerTimer);
+      this.#sessions.delete(childId);
+      this.#emit({ type: 'session.deleted', properties: { info: { id: childId } } });
+    }
+    this.#sessions.delete(id);
+    this.#purged.add(id);
+    this.#emit({ type: 'session.deleted', properties: { info: { id } } });
+    if (root) await fs.rm(path.join(projectDirectory(root), `${id}.jsonl`), { force: true }).catch(() => undefined);
+    return { id };
   }
 
   #abort(id) {

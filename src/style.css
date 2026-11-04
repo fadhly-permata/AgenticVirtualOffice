@@ -488,6 +488,24 @@ body.chat-open .launcher,
   display: none;
 }
 
+/* Tombol hapus sesi: klik pertama meminta konfirmasi, klik kedua mengeksekusi. */
+.icon-btn .icon-confirm {
+  display: none;
+}
+
+.icon-btn.is-confirm {
+  color: var(--err, #e07a5f);
+  border-color: var(--err, #e07a5f);
+}
+
+.icon-btn.is-confirm .icon-confirm {
+  display: block;
+}
+
+.icon-btn.is-confirm .icon-trash {
+  display: none;
+}
+
 .chat__head {
   display: flex;
   align-items: center;

@@ -221,6 +221,8 @@ describe('claudeSpawnArgs', () => {
     expect(claudeSpawnArgs({ ...base, exists: false })).toContain('--session-id');
     expect(claudeSpawnArgs({ ...base, exists: false })).not.toContain('--resume');
     expect(claudeSpawnArgs({ ...base, exists: true })).toContain('--resume');
+    // Tanpa flag ini jawaban baru muncul sepotong di akhir giliran.
+    expect(claudeSpawnArgs({ ...base, exists: true })).toContain('--include-partial-messages');
   });
 
   it('meneruskan model, effort, dan agent non-default', () => {
