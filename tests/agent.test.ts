@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import { describe, expect, it } from 'vitest';
 import { Agent } from '../src/agents/agent';
-import { buildNavGraph, OFFICE_DEPTH, OFFICE_WIDTH, spot } from '../src/world/layout';
+import { buildNavGraph, OFFICE_DEPTH, OFFICE_WIDTH, SPOTS, spot } from '../src/world/layout';
 
 const seed = {
   id: 'tester',
@@ -59,7 +59,23 @@ describe('Agent', () => {
     agent.assign(spot('sofa-1'), 4);
     runUntilSettled(agent);
     expect(agent.group.position.x).toBeCloseTo(17.4, 2);
-    expect(agent.group.position.z).toBeCloseTo(18, 2);
+    expect(agent.group.position.z).toBeCloseTo(17.55, 2);
+  });
+
+  it.each(SPOTS.filter((s) => s.seatHeight > 0).map((s) => [s.id, s] as const))(
+    'seats %s with the soles on the floor',
+    (_id, target) => {
+      const agent = new Agent(seed, buildNavGraph(), target, 4);
+      const box = new THREE.Box3().setFromObject(agent.group);
+      expect(box.min.y).toBeCloseTo(0, 2);
+    }
+  );
+
+  it('keeps a sofa sitter clear of the solid base under the cushion', () => {
+    const agent = new Agent(seed, buildNavGraph(), spot('sofa-1'), 4);
+    const box = new THREE.Box3().setFromObject(agent.group);
+    // Sofa front face at z = 17.35: shins and toes belong in front of it.
+    expect(box.min.z).toBeLessThan(17.3);
   });
 
   it('can be released back to the autopilot', () => {
