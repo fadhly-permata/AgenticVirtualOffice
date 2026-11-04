@@ -7,6 +7,7 @@ import type { AgenticToolChoice, AgenticToolState } from './types';
 const MARKS: Record<string, { mark: string; color: string }> = {
   opencode: { mark: 'OC', color: '#e2b44a' },
   claude: { mark: 'CL', color: '#d97757' },
+  qoder: { mark: 'QD', color: '#34c98e' },
   kilo: { mark: 'K', color: '#7aa2f7' },
   phi: { mark: 'P', color: '#9b7bd4' },
   openclaw: { mark: 'OA', color: '#5fb49c' },
@@ -72,6 +73,7 @@ function markFor(tool: string): { mark: string; color: string } {
 function metaFor(tool: AgenticToolChoice): string {
   if (tool.id === 'opencode') return 'opencode CLI';
   if (tool.id === 'claude') return 'Claude Code CLI';
+  if (tool.id === 'qoder') return 'Qoder CLI';
   return t('shell.toolNoAdapter');
 }
 

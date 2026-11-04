@@ -28,6 +28,10 @@ export interface CharacterRig {
 
 const HIP = 0.86;
 
+/** Hip joint to knee, and knee to sole. The seated pose solves against these. */
+export const THIGH = 0.4;
+export const KNEE_TO_SOLE = 0.46;
+
 function limb(material: THREE.Material, width: number, height: number, depth: number): THREE.Mesh {
   return rbox(width, height, depth, 0.05, material, 0, -height / 2, 0);
 }
@@ -35,13 +39,13 @@ function limb(material: THREE.Material, width: number, height: number, depth: nu
 function buildLeg(pants: THREE.Material, shoe: THREE.Material, x: number) {
   const hip = new THREE.Group();
   hip.position.set(x, HIP, 0);
-  hip.add(limb(pants, 0.2, 0.4, 0.24));
+  hip.add(limb(pants, 0.2, THIGH, 0.24));
 
   const knee = new THREE.Group();
-  knee.position.y = -0.4;
+  knee.position.y = -THIGH;
   hip.add(knee);
   knee.add(rbox(0.18, 0.38, 0.21, 0.05, pants, 0, -0.19, 0));
-  knee.add(box(0.21, 0.1, 0.32, shoe, 0, -0.41, 0.06));
+  knee.add(box(0.21, 0.1, 0.32, shoe, 0, -KNEE_TO_SOLE + 0.05, 0.06));
   return { hip, knee };
 }
 

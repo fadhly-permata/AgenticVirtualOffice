@@ -4,6 +4,7 @@ import http from 'node:http';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { ClaudeBridge } from './claude.mjs';
+import { QoderBridge } from './qoder.mjs';
 import { createEntry, deleteEntry, readFileAt, readRawAt, renameEntry, resolveInside, searchIn, treeAt } from './files.mjs';
 import { HttpError, readJson, sendError, sendJson } from './http.mjs';
 import { lanInfo } from './network.mjs';
@@ -67,6 +68,7 @@ const TOOL_FILE = path.join(APP_DIR, '.virtoffice', 'tool.json');
 const TOOLS = [
   { id: 'opencode', name: 'OpenCode', available: true },
   { id: 'claude', name: 'Claude', available: true },
+  { id: 'qoder', name: 'Qoder', available: true },
   { id: 'kilo', name: 'Kilo', available: false },
   { id: 'phi', name: 'Phi', available: false },
   { id: 'openclaw', name: 'OpenClaw', available: false },
@@ -76,12 +78,19 @@ const store = new WorkspaceStore(APP_DIR);
 const terminals = new TerminalHub();
 const bridges = new Map();
 const eventClients = new Set();
-let TOOL = process.env.VIRTOFFICE_TOOL === 'claude' ? 'claude' : 'opencode';
+let TOOL = toolFromEnv();
 let bridge = null;
 let toolSwitch = null;
 
+function toolFromEnv() {
+  const value = process.env.VIRTOFFICE_TOOL;
+  return TOOLS.some((entry) => entry.id === value && entry.available) ? value : 'opencode';
+}
+
 function createBridge(tool) {
-  return tool === 'claude' ? new ClaudeBridge({ cwd: APP_DIR }) : new OpenCodeBridge({ cwd: APP_DIR });
+  if (tool === 'claude') return new ClaudeBridge({ cwd: APP_DIR });
+  if (tool === 'qoder') return new QoderBridge({ cwd: APP_DIR });
+  return new OpenCodeBridge({ cwd: APP_DIR });
 }
 
 /** Bridge yang ditinggal tetap hidup: sesi Claude hanya ada di memori instance-nya. */
@@ -110,7 +119,7 @@ async function loadToolPreference() {
   } catch {
     // Belum pernah memilih: ikuti env, lalu default.
   }
-  return process.env.VIRTOFFICE_TOOL === 'claude' ? 'claude' : 'opencode';
+  return toolFromEnv();
 }
 
 async function saveToolPreference(tool) {

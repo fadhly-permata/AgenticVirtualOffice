@@ -18,6 +18,10 @@ const ADAPTERS = {
     file: 'CLAUDE.md',
     render: (delayMs) => renderRule('Agent', delayMs),
   },
+  qoder: {
+    file: 'AGENTS.md',
+    render: (delayMs) => renderRule('task', delayMs),
+  },
 };
 
 function renderRule(tool, delayMs) {

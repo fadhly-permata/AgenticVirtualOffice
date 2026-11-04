@@ -4,7 +4,13 @@ import { dampAngle } from '../core/math';
 import { signalBubble } from '../core/textures';
 import type { Spot, Vec2 } from '../world/layout';
 import type { NavGraph } from '../world/nav';
-import { createCharacter, type AgentLook, type CharacterRig } from './character';
+import {
+  createCharacter,
+  KNEE_TO_SOLE,
+  THIGH,
+  type AgentLook,
+  type CharacterRig,
+} from './character';
 
 export interface AgentSeed {
   id: string;
@@ -347,11 +353,24 @@ export class Agent {
       return;
     }
 
+    // Duduk dihitung dari tinggi kursi supaya telapak kaki mendarat di lantai:
+    // sofa punya bantal lebih tebal daripada kursi kerja, kakinya tidak bisa
+    // pakai sudut yang sama.
     const seated = this.spot.seatHeight > 0;
-    t.hipL = seated ? -1.4 : 0;
-    t.hipR = seated ? -1.4 : 0;
-    t.kneeL = seated ? 1.35 : 0;
-    t.kneeR = seated ? 1.35 : 0;
+    const shin = -0.05;
+    const hip = seated
+      ? -Math.acos(
+          THREE.MathUtils.clamp(
+            (this.spot.seatHeight - KNEE_TO_SOLE * Math.cos(shin)) / THIGH,
+            -1,
+            1
+          )
+        )
+      : 0;
+    t.hipL = hip;
+    t.hipR = hip;
+    t.kneeL = seated ? shin - hip : 0;
+    t.kneeR = seated ? shin - hip : 0;
     t.bodyY = seated ? this.spot.seatHeight - this.rig.hipHeight : 0;
     t.lean = 0;
     t.headX = 0;
@@ -415,8 +434,8 @@ export class Agent {
         t.armR = -0.2 - gesture * 0.9;
         t.armL = 0.02 + gesture * 0.1;
         t.armZL = 0.12;
-        // Add, not replace: a couch seat already owns the body height offset.
-        t.bodyY += Math.abs(Math.sin(time * 0.9 + offset)) * 0.015;
+        // Yang duduk sudah menempel lantai, jadi ayunan badan cuma untuk yang berdiri.
+        if (!seated) t.bodyY += Math.abs(Math.sin(time * 0.9 + offset)) * 0.015;
         t.lean = 0.04 + gesture * 0.05;
         t.headX = 0.03 + nod * 0.05;
         t.headY = gesture * 0.12 - nod * 0.06;

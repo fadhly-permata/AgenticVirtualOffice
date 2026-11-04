@@ -4,6 +4,26 @@ Semua perubahan penting pada VirtOffice dicatat di sini. Format mengikuti
 [Keep a Changelog](https://keepachangelog.com/id/1.1.0/) dan versi mengikuti
 [Semantic Versioning](https://semver.org/lang/id/).
 
+## [0.14.2] - 2026-10-28
+
+### Diperbaiki
+
+- Pesan `session.error` Qoder tidak lagi generik: bridge membaca `result`, `errors[]`, `api_error_status`, lalu `stderr` terakhir, dan menambahkan petunjuk untuk dua kasus nyata — katalog model Qoder yang berubah di tengah giliran ("The selected Qoder model definition changed") dan slash command seperti `/model` yang tidak didukung mode headless.
+
+## [0.14.1] - 2026-10-28
+
+### Ditambahkan
+
+- Script `launch-dev.bat` / `launch-dev.sh` kini mematikan lebih dulu proses yang masih listening di port 5199 sebelum menyalakan server baru, dan pasangannya `stop-dev.bat` / `stop-dev.sh` menghentikan pohon proses tersebut. Script hanya menyasar PID pemilik port target, jadi `opencode serve` milik user di port 4096 tidak tersentuh.
+
+## [0.14.0] - 2026-10-28
+
+### Ditambahkan
+
+- Adapter **Qoder** sebagai tool agentik ketiga: bridge `server/qoder.mjs` memakai protokol `-p --input-format stream-json --output-format stream-json`, sesi `--session-id`/`--resume`, izin tool lewat `control_request`/`control_response` stdio, pertanyaan `AskUserQuestion`, interrupt, dan subagent — seluruhnya diverifikasi langsung terhadap Qoder CLI 1.1.80.
+- Pilihan tool membaca `VIRTOFFICE_TOOL=qoder`; katalog HUD menampilkan Qoder dengan model Auto/Ultimate/Fast/Efficient/DeepSeek-Flash/Qwen3.8-Flash, dan aturan workspace Qoder ditulis ke `AGENTS.md`.
+- Spawn Qoder di Windows memakai dispatcher JS paket npm (`qoder-npm-dispatcher.cjs`) karena Node tidak bisa menjalankan shim `.cmd`; env SDK Qoder Desktop dibersihkan agar CLI tidak masuk mode SDK.
+
 ## [0.13.2] - 2026-10-28
 
 ### Diperbaiki
