@@ -54,6 +54,8 @@ describe('OfficeWorld', () => {
     let sawCatOutside = false;
     let sawCatBack = false;
     let sawBallCarried = false;
+    let sawCatCarry = false;
+    let sawDogCarry = false;
     let sawGrooming = false;
     const ballHome = world.ballSpot;
     let ballTravel = 0;
@@ -66,6 +68,8 @@ describe('OfficeWorld', () => {
       if (world.catsOutside > 0) sawCatOutside = true;
       else if (sawCatOutside) sawCatBack = true;
       sawBallCarried = sawBallCarried || world.ballCarried;
+      sawCatCarry = sawCatCarry || world.ballCarrier === 'cat';
+      sawDogCarry = sawDogCarry || world.ballCarrier === 'dog';
       sawGrooming = sawGrooming || world.catGrooming;
       const spot = world.ballSpot;
       ballTravel = Math.max(ballTravel, Math.hypot(spot.x - ballHome.x, spot.z - ballHome.z));
@@ -80,8 +84,10 @@ describe('OfficeWorld', () => {
     expect(sawDogBack).toBe(true);
     expect(sawCatOutside).toBe(true);
     expect(sawCatBack).toBe(true);
-    // The dog picks the ball up, carries it, and drops it somewhere new.
+    // Both pets pick the ball up, carry it, and drop it somewhere new.
     expect(sawBallCarried).toBe(true);
+    expect(sawDogCarry).toBe(true);
+    expect(sawCatCarry).toBe(true);
     expect(world.fetchCount).toBeGreaterThan(0);
     expect(ballTravel).toBeGreaterThan(0.5);
     // The cat now and then stops to groom itself.

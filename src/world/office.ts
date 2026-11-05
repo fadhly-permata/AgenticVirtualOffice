@@ -98,6 +98,8 @@ interface PetRef {
   tail: THREE.Object3D;
   /** Head pivot, used for the cat's grooming dips. */
   head: THREE.Object3D | null;
+  /** Tiny tongue that flicks out while the cat grooms. */
+  tongue: THREE.Object3D | null;
   /** Ground target in world XZ; the chasing pair keeps retargeting each frame. */
   target: THREE.Vector2;
   state: 'idle' | 'wander' | 'chase' | 'flee' | 'fetch' | 'carry';
@@ -250,6 +252,7 @@ export class OfficeWorld {
   private readonly pets: PetRef[] = [];
   private toy: THREE.Mesh | null = null;
   private toyState: 'free' | 'carried' = 'free';
+  private toyCarrier: 'cat' | 'dog' | null = null;
   private readonly screens: ScreenRef[] = [];
   private readonly lampLights: LampRef[] = [];
   private readonly lampMaterials: THREE.MeshStandardMaterial[] = [];
@@ -318,6 +321,11 @@ export class OfficeWorld {
 
   get ballCarried(): boolean {
     return this.toyState === 'carried';
+  }
+
+  /** Which pet has the ball in its mouth right now, for live checks. */
+  get ballCarrier(): 'cat' | 'dog' | null {
+    return this.toyState === 'carried' ? this.toyCarrier : null;
   }
 
   /** Whether the cat is mid-groom right now. */
@@ -1413,24 +1421,45 @@ export class OfficeWorld {
   }
 
   private buildBirds(): void {
-    const material = mat(0x39424a, { roughness: 0.8 });
+    const feather = mat(0x3f4952, { roughness: 0.8 });
+    const wingMat = mat(0x333b43, { roughness: 0.85 });
+    const beakMat = mat(0xd3a244, { roughness: 0.6 });
+    const eyeMat = mat(0x1d2226, { roughness: 0.4 });
     const count = 5;
     for (let index = 0; index < count; index += 1) {
       const rng = mulberry32(0x9e3779b9 + index * 7919);
       const group = new THREE.Group();
       group.scale.setScalar(1.15 + rng() * 0.45);
 
-      const body = box(0.34, 0.05, 0.07, material);
-      body.castShadow = false;
-      body.receiveShadow = false;
+      // Rounded body, head, beak and a fanned tail instead of a flat slab.
+      const body = ball(0.16, feather, 0, 0.15, 0, 10);
+      body.scale.set(1.35, 0.82, 0.78);
       group.add(body);
+      group.add(ball(0.085, feather, 0.21, 0.26, 0, 8));
+
+      const beak = new THREE.Mesh(new THREE.ConeGeometry(0.032, 0.1, 6), beakMat);
+      beak.position.set(0.32, 0.25, 0);
+      beak.rotation.z = -Math.PI / 2;
+      group.add(beak);
+
+      for (const side of [-1, 1]) {
+        group.add(ball(0.016, eyeMat, 0.25, 0.28, side * 0.055, 6));
+      }
+
+      const tail = box(0.22, 0.02, 0.1, wingMat, -0.27, 0.15, 0);
+      tail.rotation.z = 0.2;
+      group.add(tail);
+
+      for (const side of [-1, 1]) {
+        group.add(cyl(0.008, 0.008, 0.09, beakMat, 0, 0.045, side * 0.045, 6));
+      }
 
       const wings: THREE.Object3D[] = [];
       for (const side of [-1, 1]) {
         const pivot = new THREE.Group();
-        const wing = box(0.3, 0.014, 0.34, material, 0, 0, side * 0.2);
-        wing.castShadow = false;
-        wing.receiveShadow = false;
+        pivot.position.set(0, 0.18, 0);
+        const wing = ball(0.14, wingMat, 0, 0, side * 0.13, 8);
+        wing.scale.set(1.15, 0.16, 0.8);
         pivot.add(wing);
         group.add(pivot);
         wings.push(pivot);
@@ -1598,8 +1627,9 @@ export class OfficeWorld {
     post.add(ball(0.06, mat(0xd8795e), 0.24, 0.92, 0.18, 8));
     g.add(post);
 
-    g.add(cyl(0.14, 0.12, 0.07, mat(0x9fb9c9, { roughness: 0.4 }), -hw + 0.55, 0.08, -0.5, 12));
-    g.add(cyl(0.14, 0.12, 0.07, mat(0x9b7a56, { roughness: 1 }), -hw + 0.55, 0.08, 0.25, 12));
+    // Water and food sit on the lawn outside the fence, not in the paddock.
+    g.add(cyl(0.14, 0.12, 0.07, mat(0x9fb9c9, { roughness: 0.4 }), -hw - 1.5, 0.08, -1.7, 12));
+    g.add(cyl(0.14, 0.12, 0.07, mat(0x9b7a56, { roughness: 1 }), -hw - 1.5, 0.08, -2.35, 12));
     const tennis = ball(0.13, mat(0xc9d05e, { roughness: 0.95 }), 0, 0, 0, 10);
     tennis.position.set(0.6, 0.17, -1.3);
     g.add(tennis);
@@ -1631,7 +1661,13 @@ export class OfficeWorld {
 
   private petRef(
     kind: 'cat' | 'dog',
-    parts: { group: THREE.Group; legs: THREE.Object3D[]; tail: THREE.Object3D; head: THREE.Object3D },
+    parts: {
+      group: THREE.Group;
+      legs: THREE.Object3D[];
+      tail: THREE.Object3D;
+      head: THREE.Object3D;
+      tongue: THREE.Object3D | null;
+    },
     rng: () => number,
     scale: number,
   ): PetRef {
@@ -1642,6 +1678,7 @@ export class OfficeWorld {
       legs: parts.legs,
       tail: parts.tail,
       head: parts.head,
+      tongue: parts.tongue,
       target: new THREE.Vector2(),
       state: 'idle',
       prey: null,
@@ -1664,6 +1701,7 @@ export class OfficeWorld {
     legs: THREE.Object3D[];
     tail: THREE.Object3D;
     head: THREE.Object3D;
+    tongue: THREE.Object3D | null;
   } {
     const g = new THREE.Group();
     const fur = mat(0xc9945f, { roughness: 0.95 });
@@ -1711,7 +1749,7 @@ export class OfficeWorld {
         object.receiveShadow = true;
       }
     });
-    return { group: g, legs, tail, head };
+    return { group: g, legs, tail, head, tongue: null };
   }
 
   private catModel(): {
@@ -1719,6 +1757,7 @@ export class OfficeWorld {
     legs: THREE.Object3D[];
     tail: THREE.Object3D;
     head: THREE.Object3D;
+    tongue: THREE.Object3D;
   } {
     const g = new THREE.Group();
     const fur = mat(0xc98a5a, { roughness: 0.95 });
@@ -1731,6 +1770,11 @@ export class OfficeWorld {
     head.add(ball(0.16, fur, 0, 0, 0, 10));
     head.add(rbox(0.15, 0.1, 0.13, 0.04, cream, 0.13, -0.04, 0));
     head.add(ball(0.025, mat(0xd8795e), 0.2, -0.01, 0, 6));
+    // Tongue: a pink strip that only shows while the cat grooms.
+    const tongue = box(0.14, 0.024, 0.06, mat(0xf07f8e, { roughness: 0.6 }), 0.24, -0.12, 0.02);
+    tongue.rotation.z = 0.3;
+    tongue.visible = false;
+    head.add(tongue);
     for (const side of [-1, 1]) {
       const ear = new THREE.Mesh(
         new THREE.ConeGeometry(0.075, 0.16, 4),
@@ -1770,7 +1814,7 @@ export class OfficeWorld {
         object.receiveShadow = true;
       }
     });
-    return { group: g, legs, tail, head };
+    return { group: g, legs, tail, head, tongue };
   }
 
   // ------------------------------------------------------------- shared ----
@@ -2032,14 +2076,19 @@ export class OfficeWorld {
       );
       this.clampPetTarget(pet.target, pet);
       if (pet.timer <= 0) this.endChase(pet);
-    } else if (pet.state === 'fetch' && this.toy) {
+    } else if (pet.state === 'fetch' && this.toyState === 'free') {
       const spot = this.ballSpot;
       pet.target.set(spot.x, spot.z);
       if (Math.hypot(spot.x - pet.group.position.x, spot.z - pet.group.position.z) < 0.55) {
         this.toyState = 'carried';
+        this.toyCarrier = pet.kind;
         pet.state = 'carry';
         pet.target.copy(this.penTarget(pet.rng, pet));
       }
+    } else if (pet.state === 'fetch') {
+      // The other pet got to the ball first; drop the chase for it.
+      pet.state = 'idle';
+      pet.timer = 0.8 + pet.rng() * 1.4;
     } else if (pet.state === 'carry') {
       const reach = Math.hypot(
         pet.target.x - pet.group.position.x,
@@ -2055,9 +2104,9 @@ export class OfficeWorld {
       pet.leg -= dt;
       if (pet.leg <= 0) {
         pet.leg = pet.kind === 'dog' ? 1.1 + pet.rng() * 1.4 : 1.6 + pet.rng() * 1.9;
-        if (pet.kind === 'cat' && pet.groom <= 0 && pet.rng() < 0.35) {
+        if (pet.kind === 'cat' && pet.groom <= 0 && pet.rng() < 0.3) {
           pet.state = 'idle';
-          pet.groom = 1.4 + pet.rng() * 1.4;
+          pet.groom = 2.4 + pet.rng() * 2;
           pet.timer = pet.groom + 0.2;
         } else {
           pet.target.copy(
@@ -2073,9 +2122,13 @@ export class OfficeWorld {
         : pet.state === 'flee'
           ? 3.5
           : pet.state === 'fetch'
-            ? 1.7
+            ? pet.kind === 'dog'
+              ? 1.7
+              : 1.35
             : pet.state === 'carry'
-              ? 1.15
+              ? pet.kind === 'dog'
+                ? 1.15
+                : 0.95
               : pet.state === 'wander'
                 ? pet.kind === 'dog'
                   ? 1.05
@@ -2106,12 +2159,15 @@ export class OfficeWorld {
     this.stepTrip(pet, dt);
 
     if (pet.state === 'carry' && this.toy) {
+      // The ball rides at mouth height, a little closer for the smaller cat.
+      const reach = pet.kind === 'dog' ? 0.95 : 0.6;
+      const height = pet.kind === 'dog' ? 0.88 : 0.5;
       const forwardX = Math.cos(pet.heading);
       const forwardZ = -Math.sin(pet.heading);
       this.toy.position.set(
-        pet.group.position.x + forwardX * 0.95 - (PEN.x0 + PEN.x1) / 2,
-        0.88,
-        pet.group.position.z + forwardZ * 0.95 - (PEN.z0 + PEN.z1) / 2,
+        pet.group.position.x + forwardX * reach - (PEN.x0 + PEN.x1) / 2,
+        height,
+        pet.group.position.z + forwardZ * reach - (PEN.z0 + PEN.z1) / 2,
       );
     }
 
@@ -2124,20 +2180,30 @@ export class OfficeWorld {
     }
 
     if (pet.groom > 0 && pet.state !== 'idle') pet.groom = 0;
+    let grooming = false;
     if (pet.kind === 'cat' && pet.head) {
-      if (pet.state === 'idle' && pet.groom <= 0 && pet.rng() < dt * 0.35) {
-        pet.groom = 1.4 + pet.rng() * 1.4;
+      if (pet.state === 'idle' && pet.groom <= 0 && pet.rng() < dt * 0.22) {
+        pet.groom = 2.4 + pet.rng() * 2;
         pet.timer = Math.max(pet.timer, pet.groom + 0.2);
       }
-      if (pet.groom > 0) {
+      grooming = pet.groom > 0;
+      if (grooming) {
         pet.groom -= dt;
+        // Head bobs down onto the raised front paw, tongue working the fur.
         const lick = Math.sin(t * 11 + pet.phase);
-        pet.head.rotation.z = -0.54 - 0.08 * (0.5 + 0.5 * lick);
-        pet.head.rotation.y = 1.0 + 0.14 * lick;
+        const bob = 0.5 + 0.5 * lick;
+        pet.head.rotation.z = -0.5 - 0.22 * bob;
+        pet.head.rotation.y = -1.35 - 0.15 * lick;
+        if (pet.tongue) {
+          pet.tongue.visible = true;
+          pet.tongue.position.y = -0.1 - 0.04 * bob;
+          pet.tongue.scale.set(1, 0.7 + 0.5 * bob, 1);
+        }
       } else {
-        const ease = Math.min(1, dt * 7);
+        const ease = Math.min(1, dt * 8);
         pet.head.rotation.z += (0 - pet.head.rotation.z) * ease;
         pet.head.rotation.y += (0 - pet.head.rotation.y) * ease;
+        if (pet.tongue) pet.tongue.visible = false;
       }
     }
 
@@ -2152,6 +2218,10 @@ export class OfficeWorld {
     const swing = moving ? Math.sin(pet.stride) * pace : 0;
     pet.legs.forEach((leg, index) => {
       leg.rotation.z = swing * (index === 0 || index === 3 ? 1 : -1);
+      if (grooming && index === 0) {
+        // One front paw lifted to the muzzle, the way a cat washes its face.
+        leg.rotation.z = 1.85 + Math.sin(t * 11 + pet.phase) * 0.08;
+      }
     });
     pet.tail.rotation.y =
       Math.sin(t * (pet.kind === 'dog' ? 9 : 4.5) + pet.phase) * (pet.kind === 'dog' ? 0.55 : 0.4);
@@ -2180,8 +2250,8 @@ export class OfficeWorld {
       pet.target.set(PEN.x0 + inset + 0.2, GATE.z);
       return;
     }
+    // Both pets go for the ball now and then, the dog a little more eagerly.
     if (
-      pet.kind === 'dog' &&
       pet.trip === 'none' &&
       this.toyState === 'free' &&
       pet.rng() < 0.4
@@ -2227,6 +2297,7 @@ export class OfficeWorld {
       ),
     );
     this.toyState = 'free';
+    this.toyCarrier = null;
     pet.state = 'idle';
     pet.timer = 1 + pet.rng() * 1.8;
     this.fetchCount += 1;
@@ -2405,9 +2476,11 @@ export class OfficeWorld {
     for (const bird of this.birds) {
       if (bird.state === 'perch') {
         bird.timer -= dt;
-        // Wings tuck up against the body instead of beating.
-        bird.wings[0]!.rotation.x = -1.25;
-        bird.wings[1]!.rotation.x = 1.25;
+        // Wings fold in tight against the flanks instead of beating.
+        bird.wings[0]!.rotation.x = 0.14;
+        bird.wings[0]!.scale.z = 0.5;
+        bird.wings[1]!.rotation.x = -0.14;
+        bird.wings[1]!.scale.z = 0.5;
 
         if (bird.perch?.ground) {
           // Feeding on the lawn: peck between hops, and bolt if a pet closes in.
@@ -2448,6 +2521,8 @@ export class OfficeWorld {
       const flap = Math.sin(t * (climbing ? 10.5 : 6.5) + bird.phase) * (climbing ? 0.7 : 0.4);
       bird.wings[0]!.rotation.x = flap;
       bird.wings[1]!.rotation.x = -flap;
+      bird.wings[0]!.scale.z = 1;
+      bird.wings[1]!.scale.z = 1;
 
       if (distance <= step + 0.05) {
         if (bird.perch) this.perchAt(bird, bird.perch);

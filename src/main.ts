@@ -162,7 +162,11 @@ function boot(target: HTMLCanvasElement): void {
         birdChases: world.birdChaseCount,
         escapes: world.birdEscapeCount,
         outside: { cats: world.catsOutside, dogs: world.dogsOutside },
-        ball: { carried: world.ballCarried, fetches: world.fetchCount },
+        ball: {
+          carried: world.ballCarried,
+          carriedBy: world.ballCarrier,
+          fetches: world.fetchCount,
+        },
         grooming: world.catGrooming,
       },
       sun: {

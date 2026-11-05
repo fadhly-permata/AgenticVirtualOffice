@@ -65,8 +65,8 @@ export interface ScenerySnapshot {
     escapes: number;
     /** Pets out playing on the lawn right now, by kind. */
     outside: { cats: number; dogs: number };
-    /** The tennis ball: whether the dog is carrying it, and drops so far. */
-    ball: { carried: boolean; fetches: number };
+    /** The tennis ball: who is carrying it right now, and drops so far. */
+    ball: { carried: boolean; carriedBy: 'cat' | 'dog' | null; fetches: number };
     /** Whether the cat is licking itself right now. */
     grooming: boolean;
   };
