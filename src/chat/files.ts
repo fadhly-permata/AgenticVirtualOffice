@@ -1369,9 +1369,13 @@ export function mountFiles(container: HTMLElement, hooks: FilesHooks = {}): File
       if (flags.length) barEl.append(el('span', 'viewer__count', flags.join(' · ')));
     }
 
+    // Grup ikon dipisah garis rambut, sama seperti bar di atas pohon file: satu pembatas
+    // per kelompok, bukan per ikon.
+    const groups: HTMLElement[][] = [];
+
     if (viewed && (kind === 'image' || kind === 'pdf')) {
-      if (kind === 'image') actions.append(zoomButton('out'), zoomButton('in'));
-      actions.append(openLinkButton(viewed.path));
+      if (kind === 'image') groups.push([zoomButton('out'), zoomButton('in')]);
+      groups.push([openLinkButton(viewed.path)]);
     } else if (viewed && !viewed.binary) {
       const wrapButton = el('button', 'viewer__icon');
       wrapButton.type = 'button';
@@ -1403,14 +1407,15 @@ export function mountFiles(container: HTMLElement, hooks: FilesHooks = {}): File
       });
 
       if (hooks.onReference) {
-        actions.append(
-          iconButton(t('menu.reference'), ICON.plus, () => hooks.onReference?.(viewed?.path ?? ''))
-        );
+        groups.push([
+          iconButton(t('menu.reference'), ICON.plus, () => hooks.onReference?.(viewed?.path ?? '')),
+        ]);
       }
-      actions.append(wrapButton, zoomButton('out'), zoomButton('in'), copy);
+      groups.push([wrapButton, zoomButton('out'), zoomButton('in')], [copy]);
 
-      // Mode sunting: tombol di kanan, posisi kursor pindah ke baris status di dasar editor.
-      // Pencarian lama dilompati karena panel CodeMirror sudah cari sekaligus ganti.
+      // Mode sunting: grup terakhir adalah cari & ganti plus riwayat/simpan; posisi kursor
+      // ada di baris status dasar editor. Pencarian lama dilompati karena panel CodeMirror
+      // sudah cari sekaligus ganti.
       if (editable(viewed)) {
         const draft = draftFor(viewed);
         const caret = el('span', 'viewer__status-caret');
@@ -1422,13 +1427,18 @@ export function mountFiles(container: HTMLElement, hooks: FilesHooks = {}): File
         const redo = iconButton(t('viewer.redo'), ICON.redo, () => draft.redo());
         const save = iconButton(t('viewer.save'), ICON.save, () => void saveDraft(draft));
         editorUi = { save, undo, redo, caret, info, dots: tabDots };
-        actions.append(el('span', 'files__sep'), find, undo, redo, save);
+        groups.push([find, undo, redo, save]);
       } else {
         editorUi = null;
         barEl.append(findControl());
       }
     }
-    barEl.append(el('span', 'viewer__spacer'), actions);
+    groups.forEach((group, index) => {
+      if (index) actions.append(el('span', 'files__sep'));
+      actions.append(...group);
+    });
+    // Rata kiri seperti bar di atas pohon file: tanpa spacer, ikon tidak menggantung di kanan.
+    barEl.append(actions);
     return barEl;
   }
 

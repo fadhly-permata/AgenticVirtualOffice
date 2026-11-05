@@ -117,10 +117,6 @@
   flex: none;
 }
 
-.viewer__bar > .viewer__spacer {
-  flex: 1 0 auto;
-}
-
 .viewer__seg {
   display: inline-flex;
   padding: 2px;
@@ -144,10 +140,6 @@
   color: var(--accent, #e2b44a);
 }
 
-.viewer__spacer {
-  flex: 1;
-}
-
 .viewer__count {
   color: var(--ink-faint, rgba(244, 239, 230, 0.45));
   font-size: 10.5px;
@@ -159,6 +151,19 @@
   display: inline-flex;
   align-items: center;
   gap: 2px;
+}
+
+/* Pembatas grup butuh tinggi sendiri: barisnya align-items: center, jadi stretch tidak bekerja. */
+.viewer__actions .files__sep {
+  height: 18px;
+}
+
+/* .icon-btn bawaan 28 px — lebih gemuk dari .viewer__icon — jadi irama baris jadi tidak rata. */
+.viewer__actions .icon-btn {
+  width: 24px;
+  height: 22px;
+  border: 0;
+  border-radius: 7px;
 }
 
 .viewer__icon {

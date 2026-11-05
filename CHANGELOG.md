@@ -4,6 +4,17 @@ Semua perubahan penting pada VirtOffice dicatat di sini. Format mengikuti
 [Keep a Changelog](https://keepachangelog.com/id/1.1.0/) dan versi mengikuti
 [Semantic Versioning](https://semver.org/lang/id/).
 
+## [0.22.1] - 2026-11-06
+
+### Berubah
+
+- Toolbar pratinjau rata kiri seperti bar di atas pohon file. Spacer (`viewer__spacer`) dibuang: sejak chip posisi kursor pindah ke baris status, spacer itu cuma mendorong ikon ke tepi kanan dan meninggalkan lubang ±116 px di kiri. Seg, penanda file terpotong, kotak cari, dan ikon aksi sekarang menempel berturutan dari kiri; pane sempit tetap menggeser isinya menyamping (250 px: 281/250).
+- Ikon toolbar pratinjau disatukan ukurannya. Tombol bikinan `iconButton()` membawa `.icon-btn` 28 px sementara `wrap`/zoom/salin memakai `.viewer__icon` 24×22, jadi irama baris patah (26 px di dalam grup, 30–39 px antar ikon). Di dalam `.viewer__actions`, `.icon-btn` dipaksa ke 24×22 tanpa border.
+
+### Ditambahkan
+
+- Pembatas garis rambut per grup ikon di toolbar pratinjau, sama seperti bar di atas pohon file — satu pembatas per kelompok, bukan per ikon: sunting (`+` sisip | `wrap − +` | `salin` | `cari urungkan ulangi simpan`), baca-saja (grup terakhir tanpa cari/undo/redo/save), gambar (`− +` | `buka di tab`). `.files__sep` perlu tinggi sendiri (18 px) karena barisnya `align-items: center`, bukan `stretch`.
+
 ## [0.22.0] - 2026-11-06
 
 ### Berubah
