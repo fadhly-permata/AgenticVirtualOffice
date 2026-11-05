@@ -69,9 +69,9 @@ export const files: Catalog = {
   uploadedOne: ['{name} diunggah.', '{name} uploaded.'],
   uploadedMany: ['{count} file diunggah.', '{count} files uploaded.'],
   uploadFailed: ['Gagal mengunggah {names}: {reason}', 'Upload failed for {names}: {reason}'],
-  uploadFolders: [
-    '{count} folder dilewati — dari Explorer hanya file yang bisa diunggah.',
-    '{count} folder skipped — Explorer drops upload files only.',
+  uploadCapped: [
+    'Baru {count} file pertama diunggah — seretan itu terlalu besar.',
+    'Only the first {count} files uploaded — that drop was too big.',
   ],
   contextEmpty: [
     'Klik kanan file atau folder untuk aksi lain.',

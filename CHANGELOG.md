@@ -4,6 +4,18 @@ Semua perubahan penting pada VirtOffice dicatat di sini. Format mengikuti
 [Keep a Changelog](https://keepachangelog.com/id/1.1.0/) dan versi mengikuti
 [Semantic Versioning](https://semver.org/lang/id/).
 
+## [0.19.0] - 2026-11-05
+
+### Ditambahkan
+
+- Folder dari Explorer sekarang ikut terunggah, tidak lagi dilewati. Item drop dibaca lewat `webkitGetAsEntry()` lalu direkursi (`walk` di `src/chat/files.ts`): `docs/img/logo.txt` mendarat di path yang sama di bawah folder tujuan, dan cabang kosong (`docs/empty`) tetap dibuat lewat `createFile(..., 'folder')` supaya strukturnya utuh. Drop di atas baris folder memakai folder itu sebagai tujuan; drop di atas baris file memakai induknya — sama seperti seretan di dalam aplikasi.
+- `readDir()` mengulang `readEntries()` sampai batch kosong, karena Chromium hanya mengembalikan maksimal 100 entri per panggilan — folder dengan lebih dari 100 isi tidak lagi terpotong diam-diam.
+- Batas satu seretan: `MAX_DROP_FILES = 200`. Sisa entri tidak dibaca, dan pesannya menyebutkan di berapa file berhenti (`files.uploadCapped`).
+
+### Berubah
+
+- `files.uploadFolders` (pesan "folder dilewati") dihapus, diganti `files.uploadCapped`.
+
 ## [0.18.1] - 2026-11-05
 
 ### Berubah

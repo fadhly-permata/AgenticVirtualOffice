@@ -60,6 +60,9 @@ function gitTitle(mark: string): string {
 /** Agent bisa menulis file kapan saja, jadi tanda git disegarkan selagi halamannya terlihat. */
 const GIT_POLL_MS = 6000;
 
+/** Batas satu seretan: folder seukuran node_modules tidak boleh mengubah workspace jadi disk. */
+const MAX_DROP_FILES = 200;
+
 type PreviewKind = 'markdown' | 'html' | 'image' | 'pdf' | null;
 
 /** Satu file yang terbuka di viewer; mode, zoom, dan barisnya diingat per tab. */
@@ -543,52 +546,117 @@ export function mountFiles(container: HTMLElement, hooks: FilesHooks = {}): File
     if (node) node.classList.add(node === list ? 'files__list--drop' : 'files__row--drop');
   }
 
-  /** Item Explorer hanya terbaca sinkron saat drop, jadi daftarnya diambil lebih dulu. */
-  function droppedFiles(event: DragEvent): { files: File[]; folders: number } {
+  /** Satu seretan dari Explorer: berkas dengan path relatifnya plus daftar folder. */
+  interface Drop {
+    items: { path: string; file: File }[];
+    dirs: string[];
+    capped: boolean;
+  }
+
+  /** Entry hanya bisa diambil sinkron saat event drop; membacanya baru boleh belakangan. */
+  function droppedEntries(event: DragEvent): { entries: FileSystemEntry[]; loose: File[] } {
     const data = event.dataTransfer;
-    const files: File[] = [];
-    let folders = 0;
-    if (!data) return { files, folders };
+    const entries: FileSystemEntry[] = [];
+    const loose: File[] = [];
+    if (!data) return { entries, loose };
     if (!data.items.length) {
-      for (const file of Array.from(data.files)) files.push(file);
-      return { files, folders };
+      for (const file of Array.from(data.files)) loose.push(file);
+      return { entries, loose };
     }
     for (const item of Array.from(data.items)) {
       if (item.kind !== 'file') continue;
       // Folder cuma terlihat lewat entry; daftar File[] saja tidak bisa mengenalinya.
-      if (item.webkitGetAsEntry?.()?.isDirectory) folders += 1;
+      const entry = item.webkitGetAsEntry?.() ?? null;
+      if (entry) entries.push(entry);
       else {
         const file = item.getAsFile();
-        if (file) files.push(file);
+        if (file) loose.push(file);
       }
     }
-    return { files, folders };
+    return { entries, loose };
+  }
+
+  /** readEntries mengembalikan maksimal 100 per panggilan, jadi diulang sampai kosong. */
+  function readDir(dir: FileSystemDirectoryEntry): Promise<FileSystemEntry[]> {
+    const reader = dir.createReader();
+    return new Promise((resolve, reject) => {
+      const all: FileSystemEntry[] = [];
+      const step = (): void =>
+        reader.readEntries(
+          (batch) => {
+            if (!batch.length) resolve(all);
+            else {
+              all.push(...batch);
+              step();
+            }
+          },
+          (error) => reject(error)
+        );
+      step();
+    });
+  }
+
+  function fileOf(entry: FileSystemFileEntry): Promise<File> {
+    return new Promise((resolve, reject) => entry.file(resolve, (error) => reject(error)));
+  }
+
+  /** Jalan rekursif pohon folder yang diseret; path memakai nama folder teratas. */
+  async function walk(entry: FileSystemEntry, prefix: string, drop: Drop): Promise<void> {
+    if (drop.items.length >= MAX_DROP_FILES) {
+      drop.capped = true;
+      return;
+    }
+    if (entry.isFile) {
+      try {
+        drop.items.push({ path: `${prefix}${entry.name}`, file: await fileOf(entry as FileSystemFileEntry) });
+      } catch {
+        // Folder sistem yang lagi terkunci bisa gagal dibaca: lewati satu ini.
+      }
+      return;
+    }
+    if (!entry.isDirectory) return;
+    drop.dirs.push(`${prefix}${entry.name}`);
+    const children = await readDir(entry as FileSystemDirectoryEntry).catch(() => []);
+    for (const child of children) {
+      await walk(child, `${prefix}${entry.name}/`, drop);
+      if (drop.capped) return;
+    }
+  }
+
+  async function collectDrop(event: DragEvent): Promise<Drop> {
+    const drop: Drop = { items: [], dirs: [], capped: false };
+    const { entries, loose } = droppedEntries(event);
+    for (const entry of entries) await walk(entry, '', drop);
+    for (const file of loose) drop.items.push({ path: file.name, file });
+    return drop;
   }
 
   /** Satu berkas per permintaan, berurutan: dua tulis bersamaan sulit dibaca progresnya. */
-  async function uploadAll(dropped: { files: File[]; folders: number }, dir: string): Promise<void> {
+  async function uploadAll(drop: Drop, dir: string): Promise<void> {
     if (busy) return;
-    if (!dropped.files.length) {
-      message = dropped.folders ? t('files.uploadFolders', { count: dropped.folders }) : '';
-      paintMessage();
-      return;
-    }
+    const join = (rel: string): string => (dir ? `${dir}/${rel}` : rel);
     busy = true;
     const done: string[] = [];
     const failed: string[] = [];
     let reason = '';
-    for (const [index, file] of dropped.files.entries()) {
-      message = t('files.uploading', { index: index + 1, total: dropped.files.length, name: file.name });
+    for (const [index, item] of drop.items.entries()) {
+      message = t('files.uploading', { index: index + 1, total: drop.items.length, name: item.path });
       paintMessage();
       try {
-        const up = await chatApi.uploadFile(dir ? `${dir}/${file.name}` : file.name, file);
+        const up = await chatApi.uploadFile(join(item.path), item.file);
         // Nama bisa berubah jadi '(2)' di server, jadi path hasilnya yang dipakai.
         done.push(up.path);
         reveal(up.path);
       } catch (error) {
-        failed.push(file.name);
+        failed.push(item.path);
         reason = describeError(error);
       }
+    }
+    // Cabang kosong juga dibuat supaya struktur yang diseret utuh lagi. Gagal di sini
+    // hampir selalu berarti foldernya sudah ada di tujuan, jadi bukan sesuatu untuk dilaporkan.
+    for (const rel of drop.dirs) {
+      if (done.some((p) => p.startsWith(`${join(rel)}/`))) continue;
+      await chatApi.createFile(join(rel), 'folder').catch(() => {});
     }
     invalidate();
     await redraw();
@@ -597,7 +665,7 @@ export function mountFiles(container: HTMLElement, hooks: FilesHooks = {}): File
     if (done.length === 1) notes.push(t('files.uploadedOne', { name: done[0] }));
     if (done.length > 1) notes.push(t('files.uploadedMany', { count: done.length }));
     if (failed.length) notes.push(t('files.uploadFailed', { names: failed.join(', '), reason }));
-    if (dropped.folders) notes.push(t('files.uploadFolders', { count: dropped.folders }));
+    if (drop.capped) notes.push(t('files.uploadCapped', { count: MAX_DROP_FILES }));
     message = notes.join(' ');
     paintMessage();
   }
@@ -642,10 +710,12 @@ export function mountFiles(container: HTMLElement, hooks: FilesHooks = {}): File
 
     list.addEventListener('drop', (event) => {
       if (!dragging && hasFiles(event)) {
-        const dropped = droppedFiles(event);
         event.preventDefault();
         paintDrop(null);
-        void uploadAll(dropped, folderUnder(event).dir);
+        // Semuanya harus dibaca sinkron sebelum event selesai: dataTransfer
+        // sudah dilucuti browser saat promise traversal tiba.
+        const dir = folderUnder(event).dir;
+        void collectDrop(event).then((drop) => uploadAll(drop, dir));
         return;
       }
       const hit = dropTarget(event);
