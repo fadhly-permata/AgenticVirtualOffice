@@ -10,6 +10,7 @@ import {
   readFileAt,
   renameEntry,
   resolveInside,
+  saveFileAt,
   searchIn,
   treeAt,
   writeUpload,
@@ -256,6 +257,71 @@ describe('upload', () => {
   it.each(['../outside', 'C:\\Windows\\x.txt', ''])('refuses %s', async (input) => {
     const root = await workspace();
     expect(await rejected(writeUpload(root, input, streamOf(['x'])))).toBe(400);
+  });
+});
+
+describe('save', () => {
+  it('overwrites an existing file and reports the new size and mtime', async () => {
+    const root = await workspace();
+    await write(root, 'a.ts', 'const a = 1');
+    const before = await readFileAt(root, 'a.ts');
+    expect(before.mtime).toBeGreaterThan(0);
+    const saved = await saveFileAt(root, 'a.ts', 'const a = 2222222');
+    expect(saved).toMatchObject({ path: 'a.ts', size: 17 });
+    expect(saved.mtime).toBeGreaterThanOrEqual(before.mtime);
+    expect((await readFileAt(root, 'a.ts')).text).toBe('const a = 2222222');
+  });
+
+  it('keeps the bytes it was handed, including CRLF', async () => {
+    const root = await workspace();
+    await write(root, 'b.txt', 'x');
+    await saveFileAt(root, 'b.txt', 'satu\r\ndua\r\n');
+    expect(await fs.readFile(path.join(root, 'b.txt'), 'utf8')).toBe('satu\r\ndua\r\n');
+  });
+
+  it('refuses when the file changed on disk since the read', async () => {
+    const root = await workspace();
+    await write(root, 'c.md', 'lama');
+    const seen = await readFileAt(root, 'c.md');
+    await fs.writeFile(path.join(root, 'c.md'), 'diubah agent', 'utf8');
+    // utimes membuat pergeseran mtime pasti, tidak bergantung resolusi jam filesystem.
+    const bumped = new Date(seen.mtime + 5000);
+    await fs.utimes(path.join(root, 'c.md'), bumped, bumped);
+    expect(await rejected(saveFileAt(root, 'c.md', 'baru', seen.mtime))).toBe(409);
+    expect(await fs.readFile(path.join(root, 'c.md'), 'utf8')).toBe('diubah agent');
+  });
+
+  it('saves without a baseMtime even when the disk moved', async () => {
+    const root = await workspace();
+    await write(root, 'd.txt', 'lama');
+    expect(await saveFileAt(root, 'd.txt', 'baru')).toMatchObject({ path: 'd.txt', size: 4 });
+  });
+
+  it('rejects empty paths, non-text bodies, folders and missing files', async () => {
+    const root = await workspace();
+    await write(root, 'e.txt', 'x');
+    await fs.mkdir(path.join(root, 'f'));
+    expect(await rejected(saveFileAt(root, '', 'x'))).toBe(400);
+    expect(await rejected(saveFileAt(root, 'e.txt', 42))).toBe(400);
+    expect(await rejected(saveFileAt(root, 'f', 'x'))).toBe(400);
+    expect(await rejected(saveFileAt(root, 'gone.txt', 'x'))).toBe(404);
+    expect(await rejected(saveFileAt(root, '../outside.txt', 'x'))).toBe(400);
+  });
+
+  it('caps the payload and leaves no temp file behind', async () => {
+    const root = await workspace();
+    await write(root, 'g.txt', 'x');
+    expect(await rejected(saveFileAt(root, 'g.txt', 'y'.repeat(2_000_001)))).toBe(413);
+    expect(await fs.readFile(path.join(root, 'g.txt'), 'utf8')).toBe('x');
+    expect((await fs.readdir(root)).filter((name) => name.includes('virto-save'))).toEqual([]);
+  });
+
+  it('refuses a path whose folder no longer exists instead of recreating it', async () => {
+    const root = await workspace();
+    await write(root, 'h/i.txt', 'x');
+    await fs.rm(path.join(root, 'h'), { recursive: true, force: true });
+    expect(await rejected(saveFileAt(root, 'h/i.txt', 'y'))).toBe(404);
+    expect(await fs.readdir(root)).toEqual([]);
   });
 });
 

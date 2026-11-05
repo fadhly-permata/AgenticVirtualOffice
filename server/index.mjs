@@ -7,7 +7,7 @@ import { createCatalogCache } from './catalog.mjs';
 import { withSessionOwners } from './status.mjs';
 import { ClaudeBridge } from './claude.mjs';
 import { QoderBridge } from './qoder.mjs';
-import { createEntry, copyEntry, deleteEntry, readFileAt, readRawAt, renameEntry, resolveInside, searchIn, treeAt, writeUpload } from './files.mjs';
+import { createEntry, copyEntry, deleteEntry, readFileAt, readRawAt, renameEntry, resolveInside, saveFileAt, searchIn, treeAt, writeUpload } from './files.mjs';
 import { HttpError, readJson, sendError, sendJson } from './http.mjs';
 import { lanInfo } from './network.mjs';
 import {
@@ -65,6 +65,9 @@ const MIME = {
 };
 
 const TOOL_FILE = path.join(APP_DIR, '.virtoffice', 'tool.json');
+
+// Body save = teks 2 MB yang bisa membengkak karena escaping JSON.
+const MAX_SAVE_BODY_BYTES = 4_200_000;
 
 /** Katalog tool agentik; yang belum punya bridge tetap tampil supaya arah dukungannya jelas. */
 const TOOLS = [
@@ -453,6 +456,12 @@ async function handleApi(req, res, url) {
   if (pathname === '/api/chat/files' && method === 'POST') {
     const body = await readJson(req);
     return sendJson(res, 201, await createEntry(workspaceOrThrow(), body.path, body.kind, body.text));
+  }
+
+  // Save: isi teks utuh dikirim sebagai JSON, jadi plafon body mengikuti plafon baca file.
+  if (pathname === '/api/chat/files/save' && method === 'POST') {
+    const body = await readJson(req, MAX_SAVE_BODY_BYTES);
+    return sendJson(res, 200, await saveFileAt(workspaceOrThrow(), body.path, body.text, body.baseMtime));
   }
 
   if (pathname === '/api/chat/files/rename' && method === 'POST') {

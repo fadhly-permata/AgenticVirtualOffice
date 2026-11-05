@@ -28,6 +28,9 @@ export const ICON = {
   cut: 'M6.8 8.6 20 20M6.8 15.4 20 4M7 4a3 3 0 1 1 0 6 3 3 0 0 1 0-6ZM7 14a3 3 0 1 1 0 6 3 3 0 0 1 0-6Z',
   move: 'M12 4v16M4 12h16M9 7l3-3 3 3M9 17l3 3 3-3M7 9l-3 3 3 3M17 9l3 3-3 3',
   about: 'M12 21a9 9 0 1 0 0-18 9 9 0 0 0 0 18ZM12 11v6M12 7.6h.01',
+  save: 'M5 4h11l3 3v13H5zM8 4v5h7M8 13h8v6H8z',
+  undo: 'M8 10 4 6 8 2M4 6h9a5 5 0 0 1 0 10H9',
+  redo: 'm16 10 4-4-4-4M20 6h-9a5 5 0 0 0 0 10h4',
 };
 
 export function icon(d: string, size = 16): SVGSVGElement {

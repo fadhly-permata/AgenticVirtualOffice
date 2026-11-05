@@ -917,9 +917,29 @@ body.chat-open .launcher,
   width: min(420px, 100%);
 }
 
-.modal__card--alert .files__error-ok {
-  align-self: flex-end;
-  min-width: 104px;
+.files__dialog-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 14px;
+}
+
+.files__dialog-btn {
+  min-width: 96px;
+  padding: 6px 12px;
+  border: 1px solid var(--border-strong, rgba(255, 255, 255, 0.14));
+  border-radius: 8px;
+  background: var(--glass, rgba(255, 255, 255, 0.06));
+  color: var(--ink);
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.files__dialog-btn--go {
+  border-color: var(--accent, rgba(226, 180, 74, 0.55));
+  background: var(--accent-soft, rgba(226, 180, 74, 0.16));
+  color: var(--accent);
 }
 
 .files__list {

@@ -116,7 +116,7 @@ Tool calls that need approval raise an **Allow / Always allow / Deny** card insi
 
 ![File List with a syntax-highlighted preview under the tree](docs/screenshots/chat-files.png)
 
-The active workspace as a tree, with the full workspace path printed at the top. Folders load lazily, files preview on click with line numbers and syntax highlighting, and rows show sizes. Hover a row to rename or delete — deletion confirms itself inside the panel, never with a browser dialog. The toolbar above the tree holds seven icons in three groups split by a hairline: search and reload, copy / cut / paste, new file and new folder. The search icon shows or hides the search row — it starts hidden so the tree gets the full height — and the choice is remembered; the search itself matches names or file contents (with line numbers and snippets; opening a hit jumps to that line). The `＋` button in the preview toolbar writes `@path/to/file.ts` into the composer and returns you to Agentic, so the file you're looking at becomes the file the agent is working on.
+The active workspace as a tree, with the full workspace path printed at the top. Folders load lazily, files preview on click with line numbers and syntax highlighting, and rows show sizes. Hover a row to rename or delete — deletion confirms itself inside the panel, never with a browser dialog. The toolbar above the tree holds seven icons in three groups split by a hairline: search and reload, copy / cut / paste, new file and new folder. The search icon shows or hides the search row — it starts hidden so the tree gets the full height — and the choice is remembered; the search itself matches names or file contents (with line numbers and snippets; opening a hit jumps to that line). The `＋` button in the preview toolbar writes `@path/to/file.ts` into the composer and returns you to Agentic, so the file you're looking at becomes the file the agent is working on. Text files are editable in this same pane — see [Editing a file](#editing-a-file).
 
 Rows also carry a clipboard: right-click gives **Copy** / **Cut** / **Paste into …**, the toolbar icons do the same, and `Ctrl+C`, `Ctrl+X`, `Ctrl+V` work while this page is showing (inputs and text selections keep their normal shortcuts). Marking is silent — no chip under the toolbar, no status line. The only feedback is the cut row going dim and the paste icon becoming clickable; pasting into the folder the item already sits in is the one thing that answers back, and it answers in a dialog. Any row can be dragged onto a folder to move it — hold `Ctrl` while dropping to copy instead, and drop on empty list space to target the workspace root. The target folder is highlighted during the drag. Copies pasted where the name is taken come out as `a (2).ts` / `docs (2)` rather than failing.
 
@@ -129,6 +129,18 @@ The preview window docks below the list or beside it (**Settings → Preview →
 Paths travel relative to the workspace root and the bridge rejects `..`, absolute paths, drive letters, and separator characters — see `server/files.mjs`.
 
 Rows are badged with git status the way VS Code's explorer does: the letter (`M` modified, `A` added, `D` deleted, `R` renamed, `C` copied, `U` untracked) sits at the right edge and colours the name — amber for modified, green for added/untracked, red for deleted, blue for renamed/copied. Folders take the colour of the most important change inside them, so a directory the agent touched is visible without expanding it. The marks come from the same `GET /api/chat/scm/status` the Source Control tab uses, refreshed on every tree reload and every 6 seconds while the page is visible; a workspace that isn't a git repo simply shows no badges.
+
+### Editing a file
+
+Nothing here saves on its own. A text file opened from the tree becomes a CodeMirror 6 surface — loaded on demand, so the editor chunk is only fetched when something is actually opened for editing, and images, PDFs, markdown previews, binaries and truncated reads stay read-only. The toolbar gains **Undo**, **Redo** and **Save**, and until Save is pressed the tab carries a dirty dot. `Ctrl+S` saves; the status line beside the tabs shows caret position, line count and `+added −removed` against what is on disk.
+
+Undo and redo are a snapshot stack owned by the app rather than the editor's own history, which is why the toolbar buttons keep working when focus is on the tree or the composer; a burst of typing collapses into one step (600 ms), and Save does not add a step — undoing after a save goes back to the edit and marks the tab dirty again, the way an editor should.
+
+Leaving an unsaved tab asks instead of forgetting: clicking another row, closing the tab, or closing the preview opens a dialog with **Cancel**, **Discard**, and **Save & continue**, and closing the preview lists every dirty file at once. Saving asks too, when it can: the bridge compares the file's `mtime` with the one the tab was opened from, and a 409 opens **Cancel / Reload / Overwrite** — the file may have been written by the agent while you were typing.
+
+Line endings survive the round trip. The separator is read from the file, the document is kept as LF internally, and the original separator is re-applied on write, so pasting LF text into a CRLF file does not leave a mixed file behind. Find & replace (`Ctrl+F`) covers match case, regexp, whole word, replace and replace all, with the panel's labels following the UI language; word wrap, text zoom, line numbers and syntax colours follow the same preview settings as the read-only view, and the Raw/Preview toggle hands the draft back untouched.
+
+Writes go to `POST /api/chat/files/save` with `{ path, text, baseMtime }` — capped at 2 MB of file content, atomic through a temp file and a rename, and rejected outright for paths outside the workspace.
 
 ### Source Control
 
@@ -216,6 +228,7 @@ Everything the popup does goes through these routes on the same origin.
 | GET | `/api/chat/raw/…` | raw file bytes for preview (images, HTML) |
 | GET | `/api/chat/search?q=&mode=name\|content` | search names or file contents |
 | POST | `/api/chat/files` | create file/folder (`path`, `kind`) |
+| POST | `/api/chat/files/save` | write a file (`path`, `text`, `baseMtime` → 409 when disk moved) |
 | POST | `/api/chat/files/rename` | rename / move (`from`, `to`) |
 | POST | `/api/chat/files/copy` | copy file/folder recursively (`from`, `to`, `unique`) |
 | POST | `/api/chat/files/upload?path=` | upload one file; the raw request body is streamed to disk |
@@ -288,6 +301,7 @@ src/
     toolswitch.ts   HUD tool pill: menu, inline confirm, switching state, undo toast
     client.ts       fetch wrapper for /api/chat
     files.ts        File List page: tree, preview, CRUD, search, upload
+    editor.ts       CodeMirror draft per tab: snapshot undo stack, LF/CRLF, caret status
     gitmarks.ts     porcelain letter → row status badge, with folder inheritance
     scm.ts          Source Control page: status, diff, commit, branches, history
     settings.ts     Settings page: language, theme, preview, agent pause

@@ -126,7 +126,7 @@ export async function readFileAt(root, input, maxBytes) {
     if (error?.code === 'ENOENT') throw new HttpError(404, 'File tidak ditemukan.');
     throw new HttpError(403, `Tidak bisa membaca file: ${error.message}`);
   }
-  if (stat.isDirectory()) return { path: rel, text: '', size: stat.size, truncated: false, binary: true };
+  if (stat.isDirectory()) return { path: rel, text: '', size: stat.size, mtime: Math.round(stat.mtimeMs), truncated: false, binary: true };
 
   const length = Math.min(stat.size, limit);
   const buffer = Buffer.alloc(length);
@@ -134,7 +134,11 @@ export async function readFileAt(root, input, maxBytes) {
   try {
     handle = await fs.open(abs, 'r');
     const { bytesRead } = await handle.read(buffer, 0, length, 0);
-    return decodeWindow(rel, stat.size, buffer.subarray(0, bytesRead), length < stat.size);
+    // mtime ikut dikirim: editor memakainya untuk tahu disk sudah berubah sejak dibaca.
+    return {
+      ...decodeWindow(rel, stat.size, buffer.subarray(0, bytesRead), length < stat.size),
+      mtime: Math.round(stat.mtimeMs),
+    };
   } catch (error) {
     if (error?.code === 'ENOENT') throw new HttpError(404, 'File tidak ditemukan.');
     throw new HttpError(403, `Tidak bisa membaca file: ${error.message}`);
@@ -241,6 +245,48 @@ export async function createEntry(root, input, kind, text) {
     throw error;
   }
   return { path: rel };
+}
+
+/**
+ * Menimpa file teks yang sudah ada — createEntry sengaja memakai flag 'wx', jadi jalur
+ * tulis ini yang dipakai tombol Save. baseMtime adalah mtime yang dulu dilihat editor;
+ * kalau disk sudah berubah sejak itu, tulisannya ditolak 409 alih-alih menimpa diam-diam.
+ */
+export async function saveFileAt(root, input, text, baseMtime) {
+  const { rel, abs } = resolveInside(root, input);
+  if (!rel) throw new HttpError(400, 'Path tidak boleh kosong.');
+  if (typeof text !== 'string') throw new HttpError(400, 'Isi file harus berupa teks.');
+  const bytes = Buffer.byteLength(text, 'utf8');
+  if (bytes > MAX_FILE_BYTES) throw new HttpError(413, `Isi lebih dari ${Math.round(MAX_FILE_BYTES / 1_000_000)} MB.`);
+
+  let before;
+  try {
+    before = await fs.stat(abs);
+  } catch (error) {
+    if (error?.code === 'ENOENT') throw new HttpError(404, 'File tidak ditemukan.');
+    throw new HttpError(403, `Tidak bisa membaca file: ${error.message}`);
+  }
+  if (before.isDirectory()) throw new HttpError(400, 'Itu sebuah folder.');
+  if (Number.isFinite(baseMtime) && Math.round(before.mtimeMs) !== baseMtime) {
+    throw new HttpError(409, 'File sudah berubah di disk sejak dibuka.');
+  }
+
+  // Tulis ke file sementara di folder yang sama lalu rename: pembaca tidak pernah
+  // melihat separuh isi, dan kegagalan di tengah tulis meninggalkan file asal utuh.
+  const tmp = `${abs}.virto-save-${process.pid}-${Date.now()}`;
+  try {
+    await fs.writeFile(tmp, text, 'utf8');
+    await fs.rename(tmp, abs);
+  } catch (error) {
+    await fs.rm(tmp, { force: true });
+    if (error?.code === 'EACCES' || error?.code === 'EPERM' || error?.code === 'EBUSY') {
+      throw new HttpError(403, `Tidak bisa menulis: ${error.message}`);
+    }
+    throw error;
+  }
+
+  const after = await fs.stat(abs);
+  return { path: rel, size: after.size, mtime: Math.round(after.mtimeMs) };
 }
 
 export async function renameEntry(root, fromInput, toInput) {

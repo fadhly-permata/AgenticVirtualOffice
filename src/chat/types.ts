@@ -245,6 +245,8 @@ export interface FileContent {
   size: number;
   truncated: boolean;
   binary: boolean;
+  /** mtime (ms) dari disk; tombol Save memakainya untuk mendeteksi tulisan orang lain. */
+  mtime: number;
 }
 
 export interface SearchMatch {

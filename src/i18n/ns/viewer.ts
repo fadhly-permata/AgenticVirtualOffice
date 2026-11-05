@@ -38,4 +38,32 @@ export const viewer: Catalog = {
   pdfBody: ['PDF tidak bisa disisipkan di pratinjau yang disandbox.', 'PDFs cannot be embedded in the sandboxed preview.'],
   tabClose: ['Tutup {name}', 'Close {name}'],
   openFile: ['Buka di daftar file', 'Open in the file list'],
+  save: ['Simpan (Ctrl+S)', 'Save (Ctrl+S)'],
+  saved: ['Tersimpan: {name}', 'Saved: {name}'],
+  undo: ['Urungkan', 'Undo'],
+  redo: ['Ulangi', 'Redo'],
+  findReplace: ['Cari & ganti', 'Find & replace'],
+  editStatus: [
+    'baris {line}·kolom {column} — {lines} baris — +{added} −{removed}',
+    'line {line}:{column} — {lines} lines — +{added} −{removed}',
+  ],
+  unsavedDot: ['belum disimpan', 'not saved yet'],
+  unsavedTitle: ['Perubahan belum disimpan', 'Unsaved changes'],
+  unsavedBody: [
+    '{name} punya perubahan yang belum ditulis ke disk. Simpan dulu, atau buang?',
+    '{name} has changes that were never written to disk. Save them first, or discard?',
+  ],
+  unsavedMany: [
+    'Belum ditulis: {names}. Disimpan semuanya, atau dibuang?',
+    'Not written yet: {names}. Save them all, or discard?',
+  ],
+  unsavedSave: ['Simpan & lanjut', 'Save & continue'],
+  unsavedDiscard: ['Buang', 'Discard'],
+  conflictTitle: ['File berubah di disk', 'File changed on disk'],
+  conflictBody: [
+    '{name} sudah berubah sejak dibuka — bisa jadi oleh agent. Timpa, atau muat ulang isi disk?',
+    '{name} changed since it was opened — possibly by the agent. Overwrite it, or reload the disk version?',
+  ],
+  conflictReload: ['Muat ulang', 'Reload'],
+  conflictOverwrite: ['Timpa', 'Overwrite'],
 };

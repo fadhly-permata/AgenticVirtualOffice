@@ -4,6 +4,29 @@ Semua perubahan penting pada VirtOffice dicatat di sini. Format mengikuti
 [Keep a Changelog](https://keepachangelog.com/id/1.1.0/) dan versi mengikuti
 [Semantic Versioning](https://semver.org/lang/id/).
 
+## [0.21.0] - 2026-11-05
+
+### Ditambahkan
+
+- File teks bisa disunting langsung di pane pratinjau File List, dan tidak ada yang tersimpan sendiri. `src/chat/editor.ts` memasang CodeMirror 6 yang baru dimuat saat file teks benar-benar dibuka — nomor baris, fold, bracket matching, tutup kurung otomatis, plus paket bahasa (js/ts/tsx, json, html, css, python, markdown, yaml) yang juga dilazy-load; image, PDF, pratinjau markdown, file biner, dan file terpotong tetap baca-saja.
+- Toolbar pratinjau mendapat **Urungkan**, **Ulangi**, **Simpan (Ctrl+S)**, dan **Cari & ganti** (panel `Ctrl+F` dengan match case / regexp / per kata / replace / replace all). Ikon `save`, `undo`, `redo` ditambahkan ke `ICON` di `src/chat/dom.ts`.
+- Riwayat undo/redo adalah stack snapshot milik aplikasi, bukan `history()` CodeMirror, jadi tombol toolbar tetap bekerja saat fokus sedang di pohon file atau composer. Ledakan ketik dalam 600 ms diringkas jadi satu langkah; Save sengaja tidak menambah langkah, sehingga mengurut setelah simpan mengembalikan suntingannya dan menandai tab dirty lagi.
+- Titik dirty di tab (`.viewer__tab-dot`) dan status posisi di bar toolbar: `baris N·kolom M — K baris — +a −b`, angkanya dihitung `lineDelta()` terhadap isi di disk.
+- Meninggalkan tab yang belum disimpan bertanya lewat dialog, bukan diam-diam: **Batal / Buang / Simpan & lanjut** saat klik baris lain atau menutup tab; menutup pratinjau menyebut semua file yang belum ditulis (`viewer.unsavedMany`).
+- Deteksi file berubah di disk: `GET /api/chat/file` ikut mengirim `mtime`, dan kalau `POST /api/chat/files/save` menemukan disk sudah bergerak (409) FE membuka dialog **Batal / Muat ulang / Timpa** — tulisan agent yang mendarat di tengah ketikan tidak lagi tertimpa tanpa kabar.
+- `saveFileAt()` di `server/files.mjs`: tulis atomik lewat file sementara + `rename`, plafon 2 MB, menolak path kosong, teks non-string, folder, file hilang, dan path di luar workspace. Body save diizinkan sampai 4,2 MB (`MAX_SAVE_BODY_BYTES`) karena escaping JSON bisa membengkak.
+- `chatApi.saveFile(path, text, baseMtime)` di `src/chat/client.ts`; tipe `FileContent` bertambah `mtime`.
+- Pemisah baris bertahan: dokumen internal selalu LF (`toLF`), pemisah asli diingat (`separatorOf`) dan dipasang lagi saat menulis. Sebelumnya `lineSeparator` CodeMirror membuat tempelan teks LF di file CRLF jadi karakter asing di tengah baris dan menghasilkan berkas campur.
+- Dependensi baru: `@codemirror/state`, `@codemirror/view`, `@codemirror/commands`, `@codemirror/language`, `@codemirror/search`, `@codemirror/autocomplete`, tujuh paket bahasa, dan `@lezer/highlight` (dipakai langsung untuk peta tag → kelas CSS).
+- Teks dua bahasa baru di `src/i18n/ns/viewer.ts`: `save`, `saved`, `undo`, `redo`, `findReplace`, `editStatus`, `unsaved*`, `conflict*`.
+- Tes unit: `tests/editor.test.ts` (14 kasus untuk `toLF`, `separatorOf`, `lineDelta`) dan blok `save` di `tests/files.test.mjs` (7 kasus: tulis + ukuran/mtime, kesetiaan byte CRLF, 409 saat `baseMtime` tertinggal, tulis tanpa `baseMtime`, penolakan, 413 tanpa sisa file sementara, dan 404 saat induknya hilang).
+
+### Berubah
+
+- `showError()` sekarang satu kasus dari `showDialog(title, text, buttons)` — shell kartu `.modal__card--alert` dengan baris tombol berlabel dan satu tombol menonjol (`files__dialog-actions`, `files__dialog-btn--go`), dipakai bersama oleh error dan konfirmasi.
+- Panel Cari & Ganti ikut bahasa UI lewat `EditorState.phrases`, dan token CodeMirror dipetakan ke kelas `.tok-*` milik tema (`tokenStyle()`), jadi warna sintaksis di editor sama dengan pratinjau baca-saja — `defaultHighlightStyle` bawaan memakai kelas acak berwarna terang yang nyaris tidak terbaca di latar gelap.
+- `trimTabs()` tidak lagi membuang tab yang isinya belum disimpan; `setWorkspace` menutup semua draft bersama workspace lama, dan preferensi `lineNumbers` / `syntax` dikonfigurasi ulang tanpa membangun editor dari nol.
+
 ## [0.20.0] - 2026-11-05
 
 ### Berubah

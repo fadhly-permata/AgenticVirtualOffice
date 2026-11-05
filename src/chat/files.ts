@@ -1,7 +1,8 @@
 import { subscribeLocale, t } from '../i18n';
-import { chatApi } from './client';
+import { ChatApiError, chatApi } from './client';
 import { ICON, el, icon, iconButton } from './dom';
 import { openContextMenu } from './context-menu';
+import { Draft } from './editor';
 import { marksFor } from './gitmarks';
 import type { MenuEntry } from './context-menu';
 import { highlightLines, languageForPath } from './highlight';
@@ -260,49 +261,265 @@ export function mountFiles(container: HTMLElement, hooks: FilesHooks = {}): File
 
   /* ------------------------------------ dialog gagal ------------------------------------ */
 
-  let errorModal: HTMLElement | null = null;
+  /* ------------------------------------------ dialog ------------------------------------------ */
 
-  function closeError(): void {
-    if (!errorModal) return;
-    errorModal.remove();
-    errorModal = null;
-    document.body.classList.remove('modal-open');
-    window.removeEventListener('keydown', onErrorKey);
+  let openModal: HTMLElement | null = null;
+
+  interface DialogButton {
+    label: string;
+    /** Tombol utama satu kartu saja; sisanya tampil netral. */
+    emphasis?: boolean;
+    action?: () => void;
   }
 
-  function onErrorKey(event: KeyboardEvent): void {
-    if (event.key === 'Escape') closeError();
+  function closeModal(): void {
+    if (!openModal) return;
+    openModal.remove();
+    openModal = null;
+    document.body.classList.remove('modal-open');
+    window.removeEventListener('keydown', onDialogKey);
+  }
+
+  function onDialogKey(event: KeyboardEvent): void {
+    if (event.key === 'Escape') closeModal();
   }
 
   /**
-   * Kegagalan ditampilkan sebagai dialog, bukan baris teks yang mudah terlewat.
-   * Shell-nya kelas .modal milik folder picker supaya permukaannya sama.
+   * Satu permukaan untuk semua yang harus dilihat user: gagal, konflik tulis, dan tab yang
+   * belum disimpan. Shell-nya kelas .modal milik folder picker supaya permukaannya sama.
    */
-  function showError(text: string): void {
-    if (!text) return;
+  function showDialog(title: string, text: string, buttons: DialogButton[]): void {
+    if (!text || !buttons.length) return;
     // Satu kartu per kali: seretan 200 file yang gagal tidak boleh menumpuk 200 dialog.
-    closeError();
+    closeModal();
     const modal = el('div', 'modal');
     const backdrop = el('div', 'modal__backdrop');
     const card = el('section', 'modal__card modal__card--alert');
     card.setAttribute('role', 'dialog');
     card.setAttribute('aria-modal', 'true');
-    card.setAttribute('aria-labelledby', 'files-error-title');
+    card.setAttribute('aria-labelledby', 'files-dialog-title');
     const head = el('header', 'modal__head');
-    const title = el('h2', '', t('files.errTitle'));
-    title.id = 'files-error-title';
-    head.append(title);
-    const ok = el('button', 'button files__error-ok', t('files.errClose'));
-    ok.type = 'button';
-    ok.addEventListener('click', closeError);
-    backdrop.addEventListener('click', closeError);
-    card.append(head, el('p', 'files__error', text), ok);
+    const heading = el('h2', '', title);
+    heading.id = 'files-dialog-title';
+    head.append(heading);
+    const row = el('div', 'files__dialog-actions');
+
+    for (const option of buttons) {
+      const button = el('button', 'button files__dialog-btn', option.label);
+      button.type = 'button';
+      if (option.emphasis) button.classList.add('files__dialog-btn--go');
+      button.addEventListener('click', () => {
+        closeModal();
+        option.action?.();
+      });
+      row.append(button);
+    }
+
+    backdrop.addEventListener('click', closeModal);
+    card.append(head, el('p', 'files__error', text), row);
     modal.append(backdrop, card);
     document.body.append(modal);
     document.body.classList.add('modal-open');
-    window.addEventListener('keydown', onErrorKey);
-    errorModal = modal;
-    ok.focus();
+    window.addEventListener('keydown', onDialogKey);
+    openModal = modal;
+    const primary =
+      row.querySelector<HTMLElement>('.files__dialog-btn--go') ?? (row.firstElementChild as HTMLElement | null);
+    primary?.focus();
+  }
+
+  function showError(text: string): void {
+    showDialog(t('files.errTitle'), text, [{ label: t('files.errClose') }]);
+  }
+
+  /* ----------------------------------------- menyunting ----------------------------------------- */
+
+  /** Satu draft per file yang terbuka; dibuang saat tab ditutup atau workspace berganti. */
+  const drafts = new Map<string, Draft>();
+  /** Titik dirty per tab, diisi tabStrip() dan dikendalikan paintEditorUi(). */
+  const tabDots = new Map<string, HTMLElement>();
+  let editorUi: {
+    save: HTMLButtonElement;
+    undo: HTMLButtonElement;
+    redo: HTMLButtonElement;
+    status: HTMLElement;
+    dots: Map<string, HTMLElement>;
+  } | null = null;
+
+  function baseName(path: string): string {
+    return path.split('/').pop() ?? path;
+  }
+
+  /**
+   * Hanya teks utuh yang boleh disunting. File terpotong akan tertulis kembali sebagai
+   * separuh isinya, dan gambar/PDF/biner tidak punya teks untuk diketik.
+   */
+  function editable(content: FileContent | null): boolean {
+    if (!content || content.binary || content.truncated || viewMode !== 'raw') return false;
+    const kind = previewKind(content.path);
+    return kind !== 'image' && kind !== 'pdf';
+  }
+
+  function draftFor(content: FileContent): Draft {
+    const known = drafts.get(content.path);
+    if (known) return known;
+    const draft = new Draft({
+      path: content.path,
+      text: content.text,
+      mtime: content.mtime,
+      hooks: {
+        onActivity: paintEditorUi,
+        onSave: () => void saveDraft(draft),
+      },
+    });
+    drafts.set(content.path, draft);
+    return draft;
+  }
+
+  function dropDraft(path: string): void {
+    drafts.get(path)?.destroy();
+    drafts.delete(path);
+  }
+
+  function disposeDrafts(): void {
+    for (const path of Array.from(drafts.keys())) dropDraft(path);
+    editorUi = null;
+  }
+
+  /** Digambar ulang tiap ketikan: hanya tombol dan status, bukan seluruh viewer. */
+  function paintEditorUi(): void {
+    if (!editorUi) return;
+    for (const [path, dot] of editorUi.dots) {
+      const marked = drafts.get(path)?.dirty() ?? false;
+      dot.hidden = !marked;
+    }
+    const draft = drafts.get(activePath);
+    if (!draft) {
+      editorUi.status.textContent = '';
+      return;
+    }
+    const caret = draft.caret();
+    const delta = draft.delta();
+    editorUi.save.disabled = !draft.dirty();
+    editorUi.undo.disabled = !draft.canUndo();
+    editorUi.redo.disabled = !draft.canRedo();
+    editorUi.status.textContent = t('viewer.editStatus', {
+      line: caret.line,
+      column: caret.column,
+      lines: caret.lines,
+      added: delta.added,
+      removed: delta.removed,
+    });
+  }
+
+  /** Tulis ke disk. force dipakai setelah user memilih menimpa file yang berubah di disk. */
+  async function saveDraft(draft: Draft, force = false): Promise<boolean> {
+    const tab = tabs.find((item) => item.path === draft.path);
+    const text = draft.text();
+    try {
+      const saved = await chatApi.saveFile(draft.path, text, force ? undefined : draft.mtime);
+      draft.markSaved(saved.mtime);
+      if (tab) tab.content = { ...tab.content, text, size: saved.size, mtime: saved.mtime };
+      if (viewed?.path === draft.path && tab) viewed = tab.content;
+      // Isi disk berubah, jadi ukuran di pohon dan tanda git harus diminta ulang.
+      invalidate();
+      message = t('viewer.saved', { name: baseName(draft.path) });
+      paintMessage();
+      return true;
+    } catch (error) {
+      if (error instanceof ChatApiError && error.status === 409) {
+        askConflict(draft);
+        return false;
+      }
+      showError(describeError(error));
+      return false;
+    }
+  }
+
+  async function reloadDraft(draft: Draft): Promise<void> {
+    try {
+      const content = await chatApi.file(draft.path);
+      const tab = tabs.find((item) => item.path === draft.path);
+      if (tab) tab.content = content;
+      if (viewed?.path === draft.path) viewed = content;
+      draft.reset(content.text, content.mtime);
+    } catch (error) {
+      showError(describeError(error));
+    }
+  }
+
+  function askConflict(draft: Draft): void {
+    showDialog(t('viewer.conflictTitle'), t('viewer.conflictBody', { name: baseName(draft.path) }), [
+      { label: t('files.cancel') },
+      { label: t('viewer.conflictReload'), action: () => void reloadDraft(draft) },
+      { label: t('viewer.conflictOverwrite'), emphasis: true, action: () => void saveDraft(draft, true) },
+    ]);
+  }
+
+  /** Tab yang belum disimpan tidak pernah ditinggal diam-diam. */
+  function guardAway(path: string, then: () => void): void {
+    const draft = drafts.get(path);
+    if (!draft || !draft.dirty()) {
+      then();
+      return;
+    }
+    showDialog(t('viewer.unsavedTitle'), t('viewer.unsavedBody', { name: baseName(path) }), [
+      { label: t('files.cancel') },
+      {
+        label: t('viewer.unsavedDiscard'),
+        action: () => {
+          dropDraft(path);
+          then();
+        },
+      },
+      {
+        label: t('viewer.unsavedSave'),
+        emphasis: true,
+        action: () => {
+          void saveDraft(draft).then((saved) => {
+            if (saved) then();
+          });
+        },
+      },
+    ]);
+  }
+
+  /** Semua draf yang belum ditulis, untuk satu pertanyaan saat preview ditutup seluruhnya. */
+  function dirtyDrafts(): Draft[] {
+    return Array.from(drafts.values()).filter((draft) => draft.dirty());
+  }
+
+  function guardAll(then: () => void): void {
+    const dirty = dirtyDrafts();
+    if (!dirty.length) {
+      then();
+      return;
+    }
+    const names = dirty.map((draft) => baseName(draft.path)).join(', ');
+    showDialog(t('viewer.unsavedTitle'), t('viewer.unsavedMany', { names }), [
+      { label: t('files.cancel') },
+      {
+        label: t('viewer.unsavedDiscard'),
+        action: () => {
+          disposeDrafts();
+          then();
+        },
+      },
+      {
+        label: t('viewer.unsavedSave'),
+        emphasis: true,
+        action: () => {
+          // Satu per satu: yang gagal berhenti di dialog, sisanya tidak ikut dibuang.
+          void dirty
+            .reduce(
+              (chain, draft) => chain.then((ok) => (ok ? saveDraft(draft) : Promise.resolve(false))),
+              Promise.resolve(true)
+            )
+            .then((ok) => {
+              if (ok) then();
+            });
+        },
+      },
+    ]);
   }
 
   function applySplit(): void {
@@ -1025,6 +1242,14 @@ export function mountFiles(container: HTMLElement, hooks: FilesHooks = {}): File
   }
 
   function activate(tab: ViewTab | null): void {
+    if (tab && tab.path === activePath) {
+      applyActivate(tab);
+      return;
+    }
+    guardAway(activePath, () => applyActivate(tab));
+  }
+
+  function applyActivate(tab: ViewTab | null): void {
     saveTab();
     findValue = '';
     hits = [];
@@ -1046,26 +1271,34 @@ export function mountFiles(container: HTMLElement, hooks: FilesHooks = {}): File
   }
 
   function closeTab(path: string): void {
+    guardAway(path, () => applyCloseTab(path));
+  }
+
+  function applyCloseTab(path: string): void {
     const index = tabs.findIndex((tab) => tab.path === path);
     if (index < 0) return;
     const wasActive = tabs[index].path === activePath;
     tabs.splice(index, 1);
+    dropDraft(path);
     if (!wasActive) {
       renderViewer();
       return;
     }
     const next = tabs[Math.min(index, tabs.length - 1)] ?? null;
     activePath = '';
-    activate(next);
+    applyActivate(next);
   }
 
   function closeViewer(): void {
-    tabs.length = 0;
-    activePath = '';
-    viewed = null;
-    viewLine = 0;
-    findValue = '';
-    renderViewer();
+    guardAll(() => {
+      tabs.length = 0;
+      activePath = '';
+      viewed = null;
+      viewLine = 0;
+      findValue = '';
+      disposeDrafts();
+      renderViewer();
+    });
   }
 
   function setViewMode(next: 'raw' | 'preview'): void {
@@ -1084,6 +1317,12 @@ export function mountFiles(container: HTMLElement, hooks: FilesHooks = {}): File
       button.title = tab.path;
       const name = tab.path.split('/').pop() ?? tab.path;
       button.append(el('span', 'viewer__tab-name', name));
+      // Titik dirty: satu-satunya penanda tab ini punya draf yang belum ditulis.
+      const dot = el('span', 'viewer__tab-dot', '•');
+      dot.title = t('viewer.unsavedDot');
+      dot.hidden = !(drafts.get(tab.path)?.dirty() ?? false);
+      tabDots.set(tab.path, dot);
+      button.append(dot);
       const close = el('span', 'viewer__tab-close', '×');
       close.setAttribute('role', 'button');
       close.setAttribute('aria-label', t('viewer.tabClose', { name }));
@@ -1167,7 +1406,23 @@ export function mountFiles(container: HTMLElement, hooks: FilesHooks = {}): File
         );
       }
       actions.append(wrapButton, zoomButton('out'), zoomButton('in'), copy);
-      barEl.append(findControl());
+
+      // Mode sunting: Save/Undo/Redo di kanan, posisi kursor di kiri. Pencarian lama
+      // dilompati karena panel CodeMirror sudah cari sekaligus ganti.
+      if (editable(viewed)) {
+        const draft = draftFor(viewed);
+        const status = el('span', 'viewer__edit-status');
+        const find = iconButton(t('viewer.findReplace'), ICON.search, () => draft.openFind());
+        const undo = iconButton(t('viewer.undo'), ICON.undo, () => draft.undo());
+        const redo = iconButton(t('viewer.redo'), ICON.redo, () => draft.redo());
+        const save = iconButton(t('viewer.save'), ICON.save, () => void saveDraft(draft));
+        editorUi = { save, undo, redo, status, dots: tabDots };
+        barEl.append(status);
+        actions.append(el('span', 'files__sep'), find, undo, redo, save);
+      } else {
+        editorUi = null;
+        barEl.append(findControl());
+      }
     }
     barEl.append(el('span', 'viewer__spacer'), actions);
     return barEl;
@@ -1308,10 +1563,14 @@ export function mountFiles(container: HTMLElement, hooks: FilesHooks = {}): File
 
   function renderViewer(): void {
     viewer.textContent = '';
+    tabDots.clear();
     findCount = null;
     viewer.hidden = tabs.length === 0;
     split.sync();
-    if (!viewed) return;
+    if (!viewed) {
+      editorUi = null;
+      return;
+    }
 
     viewer.append(tabStrip());
 
@@ -1337,6 +1596,23 @@ export function mountFiles(container: HTMLElement, hooks: FilesHooks = {}): File
     }
     if (viewMode === 'preview' && kind === 'html') {
       viewer.append(htmlFrame(viewed.text, viewed.path));
+      return;
+    }
+
+    // Mode sunting: CodeMirror menempel di host stabil milik draft, bukan dibangun ulang.
+    if (editable(viewed)) {
+      const draft = draftFor(viewed);
+      viewer.append(draft.host);
+      draft.setWrap(wrap);
+      draft.setFontSize(11.5 * zoom);
+      paintEditorUi();
+      if (viewLine > 1) {
+        void draft.ready().then(() => {
+          if (!draft.gotoLine(viewLine)) {
+            showError(t('viewer.gotoMissing', { line: viewLine, count: draft.caret().lines }));
+          }
+        });
+      }
       return;
     }
 
@@ -1533,6 +1809,21 @@ export function mountFiles(container: HTMLElement, hooks: FilesHooks = {}): File
       return;
     }
 
+    // Tab yang sedang dibuka tidak boleh tertimpa oleh klik berikutnya tanpa pertanyaan.
+    guardAway(activePath, () => void loadTab(path, options));
+  }
+
+  /** Tab tertua dibuang saat penuh; yang masih punya draf tidak hilang diam-diam. */
+  function trimTabs(): void {
+    while (tabs.length > MAX_TABS) {
+      const victim = tabs.find((tab) => !(drafts.get(tab.path)?.dirty() ?? false));
+      if (!victim) return;
+      tabs.splice(tabs.indexOf(victim), 1);
+      dropDraft(victim.path);
+    }
+  }
+
+  async function loadTab(path: string, options: { mode?: 'raw' | 'preview'; line?: number }): Promise<void> {
     const token = (renderToken += 1);
     message = '';
     try {
@@ -1546,8 +1837,8 @@ export function mountFiles(container: HTMLElement, hooks: FilesHooks = {}): File
         line: options.line ?? 0,
       };
       tabs.push(tab);
-      if (tabs.length > MAX_TABS) tabs.shift();
-      activate(tab);
+      trimTabs();
+      applyActivate(tab);
       paintMessage();
     } catch (error) {
       if (token !== renderToken) return;
@@ -1661,6 +1952,10 @@ export function mountFiles(container: HTMLElement, hooks: FilesHooks = {}): File
     wrap = next.wrap;
     applySplit();
     paintSearch();
+    if (changed.includes('lineNumbers') || changed.includes('syntax')) {
+      // Editor tidak dibangun ulang: nomor baris dan warna cukup dikonfigurasi ulang.
+      for (const draft of drafts.values()) draft.setLook();
+    }
     if (light) return;
     if (viewed) renderViewer();
     void redraw();
@@ -1668,6 +1963,8 @@ export function mountFiles(container: HTMLElement, hooks: FilesHooks = {}): File
 
   subscribeLocale(() => {
     paintRoot();
+    // Label panel Cari & Ganti ikut bahasa tanpa membangun ulang editor.
+    for (const draft of drafts.values()) draft.setLook();
     if (viewed) renderViewer();
     void redraw();
   });
@@ -1681,6 +1978,8 @@ export function mountFiles(container: HTMLElement, hooks: FilesHooks = {}): File
       invalidate();
       expanded.clear();
       selected = '';
+      // Draf workspace lama tidak punya arti di workspace baru, dan jangan pernah ditulis ke sana.
+      disposeDrafts();
       tabs.length = 0;
       activePath = '';
       viewed = null;
