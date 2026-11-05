@@ -61,6 +61,11 @@ export const settings: Catalog = {
   ],
   delayAria: ['Jeda delegasi dalam detik', 'Delegation pause in seconds'],
   delaySaved: ['Jeda agen diperbarui.', 'Agent pause updated.'],
+  fps: ['Penghitung FPS', 'FPS counter'],
+  fpsHint: [
+    'Tampilkan frame per detik di bawah jam kantor.',
+    'Show frames per second under the office clock.',
+  ],
   reset: ['Kembalikan bawaan', 'Reset to defaults'],
   resetHint: [
     'Bahasa, tema, dan opsi pratinjau kembali ke awal. Posisi jendela chat tidak diubah.',

@@ -44,6 +44,36 @@ const ROLE_SIGNAL: Record<BusyRole, AgentSignal> = {
   delegated: 'thinking',
 };
 
+/** Read-only view of what the scene put around the building, for live checks. */
+export interface ScenerySnapshot {
+  trees: number;
+  birds: number;
+  /** Birds resting on a tree or the lawn right now. */
+  perched: number;
+  /** Of those, the ones foraging on the ground. */
+  groundBirds: number;
+  /** Foraging birds inside the pet pen, where a chase can start. */
+  penBirds: number;
+  /** The pen pets and their chase state, for live checks. */
+  pets: {
+    cats: number;
+    dogs: number;
+    chasing: boolean;
+    chases: number;
+    /** Chases aimed at a lawn bird, and birds that took off because of one. */
+    birdChases: number;
+    escapes: number;
+    /** Pets out playing on the lawn right now, by kind. */
+    outside: { cats: number; dogs: number };
+    /** The tennis ball: who is carrying it right now, and drops so far. */
+    ball: { carried: boolean; carriedBy: 'cat' | 'dog' | null; fetches: number };
+    /** Whether the cat is licking itself right now. */
+    grooming: boolean;
+  };
+  /** Sun disc in normalised device coordinates; `aligned` means it sits on the light ray. */
+  sun: { x: number; y: number; visible: boolean; aligned: boolean };
+}
+
 /**
  * Small surface the OpenCode bridge calls. It is exposed on `window.virtOffice`
  * so a local script, browser extension or WebSocket shim can drive the agents
@@ -63,13 +93,15 @@ export interface VirtOfficeApi {
   release(agentId: string): boolean;
   setTimeOfDay(hours: number): void;
   setTimeScale(hoursPerSecond: number): void;
+  scenery(): ScenerySnapshot | null;
 }
 
 export function installApi(
   agents: Agent[],
   clock: DayCycle,
   autopilot: Autopilot,
-  crew?: CrewFactory
+  crew?: CrewFactory,
+  scenery?: () => ScenerySnapshot
 ): VirtOfficeApi {
   const find = (key: string): Agent | undefined =>
     agents.find((agent) => agent.id === key || agent.name.toLowerCase() === key.toLowerCase());
@@ -178,6 +210,8 @@ export function installApi(
     setTimeScale: (hoursPerSecond) => {
       clock.setSpeed(hoursPerSecond);
     },
+
+    scenery: () => scenery?.() ?? null,
   };
 
   (window as Window & { virtOffice?: VirtOfficeApi }).virtOffice = api;

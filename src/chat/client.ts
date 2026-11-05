@@ -144,8 +144,30 @@ export const chatApi = {
       method: 'POST',
       body: JSON.stringify({ from, to }),
     }),
+  copyFile: (from: string, to: string, unique = true) =>
+    request<{ from: string; to: string }>('/api/chat/files/copy', {
+      method: 'POST',
+      body: JSON.stringify({ from, to, unique }),
+    }),
   deleteFile: (path: string) =>
     request<{ path: string }>('/api/chat/files/delete', { method: 'POST', body: JSON.stringify({ path }) }),
+  /**
+   * Menimpa file teks yang sudah ada. baseMtime adalah mtime yang dulu dilihat editor —
+   * kalau disk sudah berubah, server menjawab 409 alih-alih menimpa tulisan agent.
+   */
+  saveFile: (path: string, text: string, baseMtime?: number) =>
+    request<{ path: string; size: number; mtime: number }>(
+      '/api/chat/files/save',
+      { method: 'POST', body: JSON.stringify({ path, text, baseMtime }) },
+      60_000
+    ),
+  /** Berkas dikirim apa adanya sebagai body, tanpa multipart; server menyalurkannya ke disk. */
+  uploadFile: (path: string, file: File) =>
+    request<{ path: string; size: number }>(
+      `/api/chat/files/upload?path=${encodeURIComponent(path)}`,
+      { method: 'POST', body: file, headers: { 'content-type': 'application/octet-stream' } },
+      300_000
+    ),
   scmStatus: () => request<ScmStatus>('/api/chat/scm/status', {}, 20_000),
   scmDiff: (path: string, staged: boolean) =>
     request<ScmDiff>(

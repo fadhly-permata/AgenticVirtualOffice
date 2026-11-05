@@ -116,11 +116,33 @@ Tool calls that need approval raise an **Allow / Always allow / Deny** card insi
 
 ![File List with a syntax-highlighted preview under the tree](docs/screenshots/chat-files.png)
 
-The active workspace as a tree, with the full workspace path printed at the top. Folders load lazily, files preview on click with line numbers and syntax highlighting, and rows show sizes. Hover a row to rename or delete — deletion confirms itself inside the panel, never with a browser dialog. There are new-file and new-folder buttons, a reload button, and a search that matches names or file contents (with line numbers and snippets; opening a hit jumps to that line). The `＋` button in the preview toolbar writes `@path/to/file.ts` into the composer and returns you to Agentic, so the file you're looking at becomes the file the agent is working on.
+The active workspace as a tree, with the full workspace path printed at the top. Folders load lazily, files preview on click with line numbers and syntax highlighting, and rows show sizes. Hover a row to rename or delete — deletion confirms itself inside the panel, never with a browser dialog. The toolbar above the tree holds seven icons in three groups split by a hairline: search and reload, copy / cut / paste, new file and new folder. The search icon shows or hides the search row — it starts hidden so the tree gets the full height — and the choice is remembered; the search itself matches names or file contents (with line numbers and snippets; opening a hit jumps to that line). The `＋` button in the preview toolbar writes `@path/to/file.ts` into the composer and returns you to Agentic, so the file you're looking at becomes the file the agent is working on. Text files are editable in this same pane — see [Editing a file](#editing-a-file).
 
-The preview window docks below the list or beside it (**Settings → Preview → Preview window position**); side-by-side only applies when maximised. The divider between list and preview drags to any split between 20–80%, the ratio is stored locally, and **Restore defaults** puts it back. The same rules apply to diffs in Source Control.
+Rows also carry a clipboard: right-click gives **Copy** / **Cut** / **Paste into …**, the toolbar icons do the same, and `Ctrl+C`, `Ctrl+X`, `Ctrl+V` work while this page is showing (inputs and text selections keep their normal shortcuts). Marking is silent — no chip under the toolbar, no status line. The only feedback is the cut row going dim and the paste icon becoming clickable; pasting into the folder the item already sits in is the one thing that answers back, and it answers in a dialog. Any row can be dragged onto a folder to move it — hold `Ctrl` while dropping to copy instead, and drop on empty list space to target the workspace root. The target folder is highlighted during the drag. Copies pasted where the name is taken come out as `a (2).ts` / `docs (2)` rather than failing.
+
+Every failure on this page shows as a popup, not a quiet line of text: a name the bridge rejects, a copy that refuses, a read or an upload the server turned down, a preview that changed on disk — all of them open a modal holding the message with one **Close** button (`Esc` or a click on the backdrop closes it too). It reuses the `.modal` shell already in the app, so it looks like every other surface here and no browser dialog is ever involved. Only one dialog can be up at a time, so a 200-file drop that fails does not stack 200 popups.
+
+Files and whole folders can be dropped straight from Windows Explorer onto the tree to upload them. The row under the cursor picks the destination folder (a file row means its parent), empty list space means the workspace root, and a name that is already taken becomes `a (2).txt`. A dropped folder is walked recursively — `docs/img/logo.png` lands at `docs/img/logo.png`, and an empty branch such as `docs/empty` is created too, so the structure survives the drag. Each file is one `POST /api/chat/files/upload` request whose body is the raw bytes, streamed to disk instead of buffered, capped at 50 MB; files go one after another with a progress line, the tree reloads when the batch ends and expands to the last path written. One drag uploads at most 200 files (`MAX_DROP_FILES`) — enough for a real folder, short enough that a mistaken `node_modules` cannot turn the workspace into a disk copy, and the message says where it stopped. A drop that misses the tree is swallowed by the page, so the browser never navigates to the dropped file and loses the app.
+
+The preview window docks below the list or beside it (**Settings → Preview → Preview window position**); side-by-side only applies when maximised. The divider between list and preview drags to any split between 20–80%, the ratio is stored locally, and **Restore defaults** puts it back. The preview toolbar is laid out like the one above the tree: icons packed from the left and split into groups by a hairline — insert reference | wrap and text zoom | copy | find, undo, redo, save — one divider per group, never per icon. Narrow the pane (or the window) and it scrolls sideways instead of squashing its icons, and the tab strip scrolls the same way. The same rules apply to diffs in Source Control.
 
 Paths travel relative to the workspace root and the bridge rejects `..`, absolute paths, drive letters, and separator characters — see `server/files.mjs`.
+
+Rows are badged with git status the way VS Code's explorer does: the letter (`M` modified, `A` added, `D` deleted, `R` renamed, `C` copied, `U` untracked) sits at the right edge and colours the name — amber for modified, green for added/untracked, red for deleted, blue for renamed/copied. Folders take the colour of the most important change inside them, so a directory the agent touched is visible without expanding it. The marks come from the same `GET /api/chat/scm/status` the Source Control tab uses, refreshed on every tree reload and every 6 seconds while the page is visible; a workspace that isn't a git repo simply shows no badges.
+
+### Editing a file
+
+Nothing here saves on its own. A text file opened from the tree becomes a CodeMirror 6 surface — loaded on demand, so the editor chunk is only fetched when something is actually opened for editing, and images, PDFs, markdown previews, binaries and truncated reads stay read-only. The toolbar gains **Undo**, **Redo** and **Save**, and until Save is pressed the tab carries a dirty dot. `Ctrl+S` saves.
+
+Caret position, line count and `+added −removed` against what is on disk live in a status bar pinned to the bottom of the editor pane — `baris 12·kolom 4` on the left, `240 baris · +3 −1` on the right — not in the toolbar, where it used to crowd out the icons. The diff part only appears once the draft differs from the file on disk. The bar belongs to the editor: the read-only preview has none.
+
+Undo and redo are a snapshot stack owned by the app rather than the editor's own history, which is why the toolbar buttons keep working when focus is on the tree or the composer; a burst of typing collapses into one step (600 ms), and Save does not add a step — undoing after a save goes back to the edit and marks the tab dirty again, the way an editor should.
+
+Leaving an unsaved tab asks instead of forgetting: clicking another row, closing the tab, or closing the preview opens a dialog with **Cancel**, **Discard**, and **Save & continue**, and closing the preview lists every dirty file at once. Saving asks too, when it can: the bridge compares the file's `mtime` with the one the tab was opened from, and a 409 opens **Cancel / Reload / Overwrite** — the file may have been written by the agent while you were typing.
+
+Line endings survive the round trip. The separator is read from the file, the document is kept as LF internally, and the original separator is re-applied on write, so pasting LF text into a CRLF file does not leave a mixed file behind. Find & replace (`Ctrl+F`) covers match case, regexp, whole word, replace and replace all, with the panel's labels following the UI language; word wrap, text zoom, line numbers and syntax colours follow the same preview settings as the read-only view, and the Raw/Preview toggle hands the draft back untouched.
+
+Writes go to `POST /api/chat/files/save` with `{ path, text, baseMtime }` — capped at 2 MB of file content, atomic through a temp file and a rename, and rejected outright for paths outside the workspace.
 
 ### Source Control
 
@@ -208,7 +230,10 @@ Everything the popup does goes through these routes on the same origin.
 | GET | `/api/chat/raw/…` | raw file bytes for preview (images, HTML) |
 | GET | `/api/chat/search?q=&mode=name\|content` | search names or file contents |
 | POST | `/api/chat/files` | create file/folder (`path`, `kind`) |
+| POST | `/api/chat/files/save` | write a file (`path`, `text`, `baseMtime` → 409 when disk moved) |
 | POST | `/api/chat/files/rename` | rename / move (`from`, `to`) |
+| POST | `/api/chat/files/copy` | copy file/folder recursively (`from`, `to`, `unique`) |
+| POST | `/api/chat/files/upload?path=` | upload one file; the raw request body is streamed to disk |
 | POST | `/api/chat/files/delete` | delete file or folder recursively |
 | GET | `/api/chat/scm/status` | branch, upstream, last commit, change list |
 | GET | `/api/chat/scm/diff?path=&staged=1` | one-file diff; untracked renders as all-added |
@@ -277,7 +302,9 @@ src/
     chat.ts         popup controller, SSE streaming, sessions, permissions, composer, rail
     toolswitch.ts   HUD tool pill: menu, inline confirm, switching state, undo toast
     client.ts       fetch wrapper for /api/chat
-    files.ts        File List page: tree, preview, CRUD, search
+    files.ts        File List page: tree, preview, CRUD, search, upload
+    editor.ts       CodeMirror draft per tab: snapshot undo stack, LF/CRLF, caret status
+    gitmarks.ts     porcelain letter → row status badge, with folder inheritance
     scm.ts          Source Control page: status, diff, commit, branches, history
     settings.ts     Settings page: language, theme, preview, agent pause
     about.ts        About page: identity, author, links

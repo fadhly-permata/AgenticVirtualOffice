@@ -157,6 +157,29 @@ body.is-ready #scene {
   transition: width 220ms linear;
 }
 
+.clock__fps {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  margin: 9px 0 0;
+  font-size: 9px;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+  color: var(--ink-dim);
+}
+
+.clock__fps[hidden] {
+  display: none;
+}
+
+#fps-value {
+  font-family: ui-monospace, 'SF Mono', 'Cascadia Mono', monospace;
+  font-size: 12px;
+  letter-spacing: 0.06em;
+  font-variant-numeric: tabular-nums;
+  color: var(--accent);
+}
+
 .panel--legend {
   left: 24px;
   bottom: 24px;
@@ -810,6 +833,14 @@ body.chat-open .launcher,
   gap: 4px;
 }
 
+/* Pembatas tipis antar grup icon (lihat | papan klip | buat baru). */
+.files__sep {
+  flex: none;
+  width: 1px;
+  margin: 4px 3px;
+  background: var(--border-strong, rgba(255, 255, 255, 0.1));
+}
+
 .files__message {
   margin: 0;
   padding: 6px 11px;
@@ -894,6 +925,46 @@ body.chat-open .launcher,
   color: var(--err, #f6b39f);
 }
 
+/* Isi dialog kegagalan File List: path panjang harus bisa melingkar, bukan memotong. */
+.files__error {
+  margin: 0;
+  color: var(--ink-dim, rgba(244, 239, 230, 0.7));
+  font-size: 12.5px;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+}
+
+/* Satu kalimat gagal tidak butuh kartu selebar browser folder. Dua kelas supaya
+   menang atas .modal__card yang definisinya ada jauh di bawah blok ini. */
+.modal__card.modal__card--alert {
+  width: min(420px, 100%);
+}
+
+.files__dialog-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 14px;
+}
+
+.files__dialog-btn {
+  min-width: 96px;
+  padding: 6px 12px;
+  border: 1px solid var(--border-strong, rgba(255, 255, 255, 0.14));
+  border-radius: 8px;
+  background: var(--glass, rgba(255, 255, 255, 0.06));
+  color: var(--ink);
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.files__dialog-btn--go {
+  border-color: var(--accent, rgba(226, 180, 74, 0.55));
+  background: var(--accent-soft, rgba(226, 180, 74, 0.16));
+  color: var(--accent);
+}
+
 .files__list {
   flex: 1;
   min-height: 0;
@@ -908,6 +979,8 @@ body.chat-open .launcher,
   display: flex;
   align-items: center;
   gap: 6px;
+  /* Baris jadi objek seretan, jadi teksnya tidak ikut terseleksi. */
+  user-select: none;
   /* Isi folder terbuka mengikuti kedalaman pohon, tanpa nested div. */
   padding: 4px 10px 4px calc(10px + var(--depth, 0) * 13px);
   cursor: pointer;
@@ -920,6 +993,35 @@ body.chat-open .launcher,
 
 .files__row--active {
   background: var(--accent-soft, rgba(226, 180, 74, 0.1));
+}
+
+/* ditandai Cut */
+.files__row--cut {
+  opacity: 0.48;
+}
+
+/* sedang diseret */
+.files__row--drag {
+  opacity: 0.32;
+}
+
+/* tujuan lepas yang valid */
+.files__row--drop {
+  background: var(--accent-soft, rgba(226, 180, 74, 0.18));
+  box-shadow: inset 0 0 0 1px var(--accent, rgba(226, 180, 74, 0.6));
+}
+
+.files__list--drop {
+  box-shadow: inset 0 0 0 2px var(--accent, rgba(226, 180, 74, 0.5));
+}
+
+.files__list:focus {
+  outline: none;
+}
+
+.files__list:focus-visible {
+  outline: 1px solid var(--accent, rgba(226, 180, 74, 0.45));
+  outline-offset: -1px;
 }
 
 .files__twist {
@@ -958,6 +1060,46 @@ body.chat-open .launcher,
   color: var(--ink-faint, rgba(244, 239, 230, 0.42));
   font-size: 11px;
   font-family: ui-monospace, 'SF Mono', 'Cascadia Mono', monospace;
+}
+
+/* Huruf status git di ujung kanan; baris bersih tetap butuh span ini supaya
+   margin-left:auto ada di DOM dan aksi tetap menempel di tepi. */
+.files__git {
+  flex: none;
+  margin-left: auto;
+  color: var(--ink-faint, rgba(244, 239, 230, 0.42));
+  font-size: 11px;
+  font-weight: 700;
+  font-family: ui-monospace, 'SF Mono', 'Cascadia Mono', monospace;
+}
+
+.files__git ~ .files__actions {
+  margin-left: 8px;
+}
+
+/* Nama ikut warna status, seperti Explorer VSCode. */
+.files__row[data-git='M'] .files__name,
+.files__row[data-git='M'] .files__git {
+  color: var(--accent, #e2b44a);
+}
+
+.files__row[data-git='A'] .files__name,
+.files__row[data-git='U'] .files__name,
+.files__row[data-git='A'] .files__git,
+.files__row[data-git='U'] .files__git {
+  color: var(--ok, #79b884);
+}
+
+.files__row[data-git='D'] .files__name,
+.files__row[data-git='D'] .files__git {
+  color: var(--err, #e07a5f);
+}
+
+.files__row[data-git='R'] .files__name,
+.files__row[data-git='C'] .files__name,
+.files__row[data-git='R'] .files__git,
+.files__row[data-git='C'] .files__git {
+  color: var(--info, #7fb2d8);
 }
 
 .files__preview {

@@ -4,13 +4,16 @@ import path from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import { HttpError } from '../server/http.mjs';
 import {
+  copyEntry,
   createEntry,
   deleteEntry,
   readFileAt,
   renameEntry,
   resolveInside,
+  saveFileAt,
   searchIn,
   treeAt,
+  writeUpload,
 } from '../server/files.mjs';
 
 const temps = [];
@@ -34,6 +37,17 @@ afterEach(async () => {
 
 const status = (error) => (error instanceof HttpError ? error.status : `unexpected: ${error?.message}`);
 const rejected = (promise) => promise.then(() => 'resolved').catch(status);
+
+const streamOf = (parts) =>
+  (async function* source() {
+    for (const part of parts) yield Buffer.from(part, 'utf8');
+  })();
+
+const brokenStream = (parts) =>
+  (async function* source() {
+    for (const part of parts) yield Buffer.from(part, 'utf8');
+    throw new Error('putus');
+  })();
 
 describe('path guard', () => {
   it('accepts relative paths in both separators', () => {
@@ -144,6 +158,170 @@ describe('create, rename, delete', () => {
     expect(await fs.stat(path.join(root, 'src')).catch(() => null)).toBeNull();
     expect(await rejected(deleteEntry(root, 'src'))).toBe(404);
     expect(await rejected(deleteEntry(root, ''))).toBe(400);
+  });
+});
+
+describe('copy', () => {
+  it('copies a file without touching the original', async () => {
+    const root = await workspace();
+    await write(root, 'a.txt', 'one');
+    expect(await copyEntry(root, 'a.txt', 'nested/b.txt')).toEqual({ from: 'a.txt', to: 'nested/b.txt' });
+    expect(await fs.readFile(path.join(root, 'nested', 'b.txt'), 'utf8')).toBe('one');
+    expect(await fs.readFile(path.join(root, 'a.txt'), 'utf8')).toBe('one');
+  });
+
+  it('copies a folder with its tree', async () => {
+    const root = await workspace();
+    await write(root, 'src/deep/a.ts', '1');
+    await write(root, 'src/b.ts', '2');
+    expect(await copyEntry(root, 'src', 'backup/src')).toEqual({ from: 'src', to: 'backup/src' });
+    expect((await treeAt(root, 'backup/src/deep')).entries[0].path).toBe('backup/src/deep/a.ts');
+    expect(await fs.readFile(path.join(root, 'src', 'deep', 'a.ts'), 'utf8')).toBe('1');
+  });
+
+  it('refuses duplicates unless unique naming is asked for', async () => {
+    const root = await workspace();
+    await write(root, 'a.ts', '1');
+    expect(await rejected(copyEntry(root, 'a.ts', 'a.ts'))).toBe(409);
+    expect(await copyEntry(root, 'a.ts', 'a.ts', true)).toEqual({ from: 'a.ts', to: 'a (2).ts' });
+    expect(await copyEntry(root, 'a.ts', 'a.ts', true)).toEqual({ from: 'a.ts', to: 'a (3).ts' });
+    await write(root, 'docs/note.md', 'x');
+    expect(await copyEntry(root, 'docs/note.md', 'docs/note.md', true)).toEqual({
+      from: 'docs/note.md',
+      to: 'docs/note (2).md',
+    });
+    expect(await fs.readdir(path.join(root, 'docs'))).toEqual(['note (2).md', 'note.md']);
+  });
+
+  it('keeps dotfile names readable when uniquifying', async () => {
+    const root = await workspace();
+    await write(root, '.env', 'A=1');
+    expect(await copyEntry(root, '.env', '.env', true)).toEqual({ from: '.env', to: '.env (2)' });
+  });
+
+  it('refuses copying a folder into itself and reports missing sources', async () => {
+    const root = await workspace();
+    await write(root, 'src/a.ts', '1');
+    expect(await rejected(copyEntry(root, 'src', 'src/inner'))).toBe(400);
+    expect(await rejected(copyEntry(root, 'src', 'src'))).toBe(400);
+    expect(await rejected(copyEntry(root, 'gone.ts', 'x.ts'))).toBe(404);
+    expect(await rejected(copyEntry(root, 'a.txt', '../escape'))).toBe(400);
+    expect(await rejected(copyEntry(root, '', 'x'))).toBe(400);
+    expect(await rejected(copyEntry(root, 'a.txt', ''))).toBe(400);
+  });
+});
+
+describe('upload', () => {
+  it('streams the body to disk and reports path and size', async () => {
+    const root = await workspace();
+    const up = await writeUpload(root, 'catatan.md', streamOf(['halo ', 'dunia']));
+    expect(up).toEqual({ path: 'catatan.md', size: 10 });
+    expect(await fs.readFile(path.join(root, 'catatan.md'), 'utf8')).toBe('halo dunia');
+  });
+
+  it('creates the parent folders it needs', async () => {
+    const root = await workspace();
+    const up = await writeUpload(root, 'docs/in/new.txt', streamOf(['x']));
+    expect(up.path).toBe('docs/in/new.txt');
+    expect(await fs.readFile(path.join(root, 'docs', 'in', 'new.txt'), 'utf8')).toBe('x');
+  });
+
+  it('renames a duplicate instead of overwriting it', async () => {
+    const root = await workspace();
+    await write(root, 'a.txt', 'lama');
+    const up = await writeUpload(root, 'a.txt', streamOf(['baru']));
+    expect(up.path).toBe('a (2).txt');
+    expect(await fs.readFile(path.join(root, 'a.txt'), 'utf8')).toBe('lama');
+    expect(await fs.readFile(path.join(root, 'a (2).txt'), 'utf8')).toBe('baru');
+  });
+
+  it('refuses a name that belongs to a folder', async () => {
+    const root = await workspace();
+    await fs.mkdir(path.join(root, 'assets'));
+    expect(await rejected(writeUpload(root, 'assets', streamOf(['x'])))).toBe(409);
+    expect(await fs.readdir(root)).toEqual(['assets']);
+  });
+
+  it('caps the size and leaves no partial file behind', async () => {
+    const root = await workspace();
+    expect(await rejected(writeUpload(root, 'big.bin', streamOf(['aaa', 'bbb']), 4))).toBe(413);
+    expect(await fs.readdir(root)).toEqual([]);
+  });
+
+  it('deletes the file when the stream breaks halfway', async () => {
+    const root = await workspace();
+    expect(await rejected(writeUpload(root, 'part.txt', brokenStream(['setengah '])))).toBe('unexpected: putus');
+    expect(await fs.readdir(root)).toEqual([]);
+  });
+
+  it.each(['../outside', 'C:\\Windows\\x.txt', ''])('refuses %s', async (input) => {
+    const root = await workspace();
+    expect(await rejected(writeUpload(root, input, streamOf(['x'])))).toBe(400);
+  });
+});
+
+describe('save', () => {
+  it('overwrites an existing file and reports the new size and mtime', async () => {
+    const root = await workspace();
+    await write(root, 'a.ts', 'const a = 1');
+    const before = await readFileAt(root, 'a.ts');
+    expect(before.mtime).toBeGreaterThan(0);
+    const saved = await saveFileAt(root, 'a.ts', 'const a = 2222222');
+    expect(saved).toMatchObject({ path: 'a.ts', size: 17 });
+    expect(saved.mtime).toBeGreaterThanOrEqual(before.mtime);
+    expect((await readFileAt(root, 'a.ts')).text).toBe('const a = 2222222');
+  });
+
+  it('keeps the bytes it was handed, including CRLF', async () => {
+    const root = await workspace();
+    await write(root, 'b.txt', 'x');
+    await saveFileAt(root, 'b.txt', 'satu\r\ndua\r\n');
+    expect(await fs.readFile(path.join(root, 'b.txt'), 'utf8')).toBe('satu\r\ndua\r\n');
+  });
+
+  it('refuses when the file changed on disk since the read', async () => {
+    const root = await workspace();
+    await write(root, 'c.md', 'lama');
+    const seen = await readFileAt(root, 'c.md');
+    await fs.writeFile(path.join(root, 'c.md'), 'diubah agent', 'utf8');
+    // utimes membuat pergeseran mtime pasti, tidak bergantung resolusi jam filesystem.
+    const bumped = new Date(seen.mtime + 5000);
+    await fs.utimes(path.join(root, 'c.md'), bumped, bumped);
+    expect(await rejected(saveFileAt(root, 'c.md', 'baru', seen.mtime))).toBe(409);
+    expect(await fs.readFile(path.join(root, 'c.md'), 'utf8')).toBe('diubah agent');
+  });
+
+  it('saves without a baseMtime even when the disk moved', async () => {
+    const root = await workspace();
+    await write(root, 'd.txt', 'lama');
+    expect(await saveFileAt(root, 'd.txt', 'baru')).toMatchObject({ path: 'd.txt', size: 4 });
+  });
+
+  it('rejects empty paths, non-text bodies, folders and missing files', async () => {
+    const root = await workspace();
+    await write(root, 'e.txt', 'x');
+    await fs.mkdir(path.join(root, 'f'));
+    expect(await rejected(saveFileAt(root, '', 'x'))).toBe(400);
+    expect(await rejected(saveFileAt(root, 'e.txt', 42))).toBe(400);
+    expect(await rejected(saveFileAt(root, 'f', 'x'))).toBe(400);
+    expect(await rejected(saveFileAt(root, 'gone.txt', 'x'))).toBe(404);
+    expect(await rejected(saveFileAt(root, '../outside.txt', 'x'))).toBe(400);
+  });
+
+  it('caps the payload and leaves no temp file behind', async () => {
+    const root = await workspace();
+    await write(root, 'g.txt', 'x');
+    expect(await rejected(saveFileAt(root, 'g.txt', 'y'.repeat(2_000_001)))).toBe(413);
+    expect(await fs.readFile(path.join(root, 'g.txt'), 'utf8')).toBe('x');
+    expect((await fs.readdir(root)).filter((name) => name.includes('virto-save'))).toEqual([]);
+  });
+
+  it('refuses a path whose folder no longer exists instead of recreating it', async () => {
+    const root = await workspace();
+    await write(root, 'h/i.txt', 'x');
+    await fs.rm(path.join(root, 'h'), { recursive: true, force: true });
+    expect(await rejected(saveFileAt(root, 'h/i.txt', 'y'))).toBe(404);
+    expect(await fs.readdir(root)).toEqual([]);
   });
 });
 

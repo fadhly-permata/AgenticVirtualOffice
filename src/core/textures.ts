@@ -110,6 +110,24 @@ export function plasterNoise(repeatX = 1, repeatY = 1): THREE.DataTexture {
   );
 }
 
+/** Mottled grass so the garden terrace does not read as flat paint. */
+export function grassNoise(repeatX = 1, repeatY = 1): THREE.DataTexture {
+  return cached(`grass:${repeatX}:${repeatY}`, () =>
+    dataTexture(
+      64,
+      (u, v, x, y) => {
+        const blade = Math.sin(u * Math.PI * 2 * 17 + v * Math.PI * 6) * 0.5 + 0.5;
+        const clump = Math.sin(u * Math.PI * 5.3 + v * Math.PI * 4.1) * 0.5 + 0.5;
+        const value = 234 + blade * 9 + clump * 6 - hash(x, y) * 13;
+        return [value * 0.95, value, value * 0.88];
+      },
+      null,
+      repeatX,
+      repeatY,
+    ),
+  );
+}
+
 /** Radial white blob for additive light halos around bulbs. */
 export function glowSprite(): THREE.DataTexture {
   return cached('glow', () =>

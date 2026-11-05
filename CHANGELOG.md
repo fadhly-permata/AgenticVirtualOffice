@@ -4,6 +4,126 @@ Semua perubahan penting pada VirtOffice dicatat di sini. Format mengikuti
 [Keep a Changelog](https://keepachangelog.com/id/1.1.0/) dan versi mengikuti
 [Semantic Versioning](https://semver.org/lang/id/).
 
+## [0.22.1] - 2026-11-06
+
+### Berubah
+
+- Toolbar pratinjau rata kiri seperti bar di atas pohon file. Spacer (`viewer__spacer`) dibuang: sejak chip posisi kursor pindah ke baris status, spacer itu cuma mendorong ikon ke tepi kanan dan meninggalkan lubang ±116 px di kiri. Seg, penanda file terpotong, kotak cari, dan ikon aksi sekarang menempel berturutan dari kiri; pane sempit tetap menggeser isinya menyamping (250 px: 281/250).
+- Ikon toolbar pratinjau disatukan ukurannya. Tombol bikinan `iconButton()` membawa `.icon-btn` 28 px sementara `wrap`/zoom/salin memakai `.viewer__icon` 24×22, jadi irama baris patah (26 px di dalam grup, 30–39 px antar ikon). Di dalam `.viewer__actions`, `.icon-btn` dipaksa ke 24×22 tanpa border.
+
+### Ditambahkan
+
+- Pembatas garis rambut per grup ikon di toolbar pratinjau, sama seperti bar di atas pohon file — satu pembatas per kelompok, bukan per ikon: sunting (`+` sisip | `wrap − +` | `salin` | `cari urungkan ulangi simpan`), baca-saja (grup terakhir tanpa cari/undo/redo/save), gambar (`− +` | `buka di tab`). `.files__sep` perlu tinggi sendiri (18 px) karena barisnya `align-items: center`, bukan `stretch`.
+
+## [0.22.0] - 2026-11-06
+
+### Berubah
+
+- Posisi kursor tidak lagi menumpang di toolbar pratinjau. `.viewer__status` menempel di dasar jendela editor — kiri `baris N·kolom M`, kanan `K baris` — dan bagian `+a −b` hanya muncul kalau isi draft memang berbeda dari disk, jadi file yang baru dibuka tidak lagi berbunyi `+0 −0`. Baris status hanya ada di mode sunting; pratinjau baca-saja tetap tanpa.
+- Toolbar pratinjau bisa digeser menyamping saat pane atau jendela sempit: `overflow-x: auto` plus `flex: none` pada setiap anaknya, sehingga spacer yang menyusut lebih dulu dan ikon tidak pernah dipadatkan atau terpotong. Berlaku untuk mode sunting maupun mode baca yang membawa kotak cari; `viewer__count` ikut `white-space: nowrap`.
+- `viewer.editStatus` di `src/i18n/ns/viewer.ts` dipecah menjadi `editCaret`, `editInfo`, dan `editDiff`; `editorUi.status` menjadi `editorUi.caret` + `editorUi.info`, dan `renderViewer()` menempelkan baris status setelah host editor.
+
+## [0.21.0] - 2026-11-05
+
+### Ditambahkan
+
+- File teks bisa disunting langsung di pane pratinjau File List, dan tidak ada yang tersimpan sendiri. `src/chat/editor.ts` memasang CodeMirror 6 yang baru dimuat saat file teks benar-benar dibuka — nomor baris, fold, bracket matching, tutup kurung otomatis, plus paket bahasa (js/ts/tsx, json, html, css, python, markdown, yaml) yang juga dilazy-load; image, PDF, pratinjau markdown, file biner, dan file terpotong tetap baca-saja.
+- Toolbar pratinjau mendapat **Urungkan**, **Ulangi**, **Simpan (Ctrl+S)**, dan **Cari & ganti** (panel `Ctrl+F` dengan match case / regexp / per kata / replace / replace all). Ikon `save`, `undo`, `redo` ditambahkan ke `ICON` di `src/chat/dom.ts`.
+- Riwayat undo/redo adalah stack snapshot milik aplikasi, bukan `history()` CodeMirror, jadi tombol toolbar tetap bekerja saat fokus sedang di pohon file atau composer. Ledakan ketik dalam 600 ms diringkas jadi satu langkah; Save sengaja tidak menambah langkah, sehingga mengurut setelah simpan mengembalikan suntingannya dan menandai tab dirty lagi.
+- Titik dirty di tab (`.viewer__tab-dot`) dan status posisi di bar toolbar: `baris N·kolom M — K baris — +a −b`, angkanya dihitung `lineDelta()` terhadap isi di disk.
+- Meninggalkan tab yang belum disimpan bertanya lewat dialog, bukan diam-diam: **Batal / Buang / Simpan & lanjut** saat klik baris lain atau menutup tab; menutup pratinjau menyebut semua file yang belum ditulis (`viewer.unsavedMany`).
+- Deteksi file berubah di disk: `GET /api/chat/file` ikut mengirim `mtime`, dan kalau `POST /api/chat/files/save` menemukan disk sudah bergerak (409) FE membuka dialog **Batal / Muat ulang / Timpa** — tulisan agent yang mendarat di tengah ketikan tidak lagi tertimpa tanpa kabar.
+- `saveFileAt()` di `server/files.mjs`: tulis atomik lewat file sementara + `rename`, plafon 2 MB, menolak path kosong, teks non-string, folder, file hilang, dan path di luar workspace. Body save diizinkan sampai 4,2 MB (`MAX_SAVE_BODY_BYTES`) karena escaping JSON bisa membengkak.
+- `chatApi.saveFile(path, text, baseMtime)` di `src/chat/client.ts`; tipe `FileContent` bertambah `mtime`.
+- Pemisah baris bertahan: dokumen internal selalu LF (`toLF`), pemisah asli diingat (`separatorOf`) dan dipasang lagi saat menulis. Sebelumnya `lineSeparator` CodeMirror membuat tempelan teks LF di file CRLF jadi karakter asing di tengah baris dan menghasilkan berkas campur.
+- Dependensi baru: `@codemirror/state`, `@codemirror/view`, `@codemirror/commands`, `@codemirror/language`, `@codemirror/search`, `@codemirror/autocomplete`, tujuh paket bahasa, dan `@lezer/highlight` (dipakai langsung untuk peta tag → kelas CSS).
+- Teks dua bahasa baru di `src/i18n/ns/viewer.ts`: `save`, `saved`, `undo`, `redo`, `findReplace`, `editStatus`, `unsaved*`, `conflict*`.
+- Tes unit: `tests/editor.test.ts` (14 kasus untuk `toLF`, `separatorOf`, `lineDelta`) dan blok `save` di `tests/files.test.mjs` (7 kasus: tulis + ukuran/mtime, kesetiaan byte CRLF, 409 saat `baseMtime` tertinggal, tulis tanpa `baseMtime`, penolakan, 413 tanpa sisa file sementara, dan 404 saat induknya hilang).
+
+### Berubah
+
+- `showError()` sekarang satu kasus dari `showDialog(title, text, buttons)` — shell kartu `.modal__card--alert` dengan baris tombol berlabel dan satu tombol menonjol (`files__dialog-actions`, `files__dialog-btn--go`), dipakai bersama oleh error dan konfirmasi.
+- Panel Cari & Ganti ikut bahasa UI lewat `EditorState.phrases`, dan token CodeMirror dipetakan ke kelas `.tok-*` milik tema (`tokenStyle()`), jadi warna sintaksis di editor sama dengan pratinjau baca-saja — `defaultHighlightStyle` bawaan memakai kelas acak berwarna terang yang nyaris tidak terbaca di latar gelap.
+- `trimTabs()` tidak lagi membuang tab yang isinya belum disimpan; `setWorkspace` menutup semua draft bersama workspace lama, dan preferensi `lineNumbers` / `syntax` dikonfigurasi ulang tanpa membangun editor dari nol.
+
+## [0.20.0] - 2026-11-05
+
+### Berubah
+
+- Papan klip File List sekarang bekerja tanpa suara. Menandai Copy/Cut tidak lagi menulis pesan apa pun dan tidak lagi memunculkan bar "chip" di bawah toolbar — yang tersisa cuma baris yang redup (untuk Cut) dan tombol Tempel yang ikut aktif. Panel chip beserta seluruh pesannya (`clipModeCopy`, `clipModeCut`, `clipLabel`, `clipHint`, `clipCopied`, `clipCut`, `clipCleared`) dihapus dari `src/style.css` dan `src/i18n/ns/files.ts`; hasil copy/move yang sukses juga diam (`copiedTo`/`movedTo` dihapus, `transferItem()` tidak menulis pesan lagi).
+- Tiap kegagalan di File List tampil sebagai dialog popup, bukan satu baris teks yang mudah terlewat: `showError()` di `src/chat/files.ts` memasang shell `.modal` yang sudah ada (milik folder picker) dengan pesan plus satu tombol **Tutup**; `Esc` atau klik backdrop menutupnya. Dipakai di 10 titik — nama path ditolak server, rename/hapus/pindah gagal, tempel ke folder asal, pratinjau file yang hilang, error pencarian, gagal baca file, gagal salin text, dan batch unggah yang ditolak. Cuma satu kartu yang boleh muncul sekaligus supaya seretan 200 file tidak menumpuk 200 dialog.
+- `noSelection` (belum ada baris yang diklik saat shortcut papan klip ditekan) ikut pindah ke dialog karena ia memang penolakan, bukan informasi.
+
+### Ditambahkan
+
+- Kelas `.modal__card--alert`: kartu dialog selebar `min(420px, 100%)` dengan tombol **Tutup** rata kanan (`files__error-ok`), khusus untuk pesan satu-dua kalimat. Ditulis dua kelas (`.modal__card.modal__card--alert`) supaya menang atas definisi `.modal__card` yang letaknya jauh di bawah di `src/style.css`.
+- Teks dua bahasa `files.errTitle` ("Gagal" / "Failed") dan `files.errClose` ("Tutup" / "Close").
+
+## [0.19.0] - 2026-11-05
+
+### Ditambahkan
+
+- Folder dari Explorer sekarang ikut terunggah, tidak lagi dilewati. Item drop dibaca lewat `webkitGetAsEntry()` lalu direkursi (`walk` di `src/chat/files.ts`): `docs/img/logo.txt` mendarat di path yang sama di bawah folder tujuan, dan cabang kosong (`docs/empty`) tetap dibuat lewat `createFile(..., 'folder')` supaya strukturnya utuh. Drop di atas baris folder memakai folder itu sebagai tujuan; drop di atas baris file memakai induknya — sama seperti seretan di dalam aplikasi.
+- `readDir()` mengulang `readEntries()` sampai batch kosong, karena Chromium hanya mengembalikan maksimal 100 entri per panggilan — folder dengan lebih dari 100 isi tidak lagi terpotong diam-diam.
+- Batas satu seretan: `MAX_DROP_FILES = 200`. Sisa entri tidak dibaca, dan pesannya menyebutkan di berapa file berhenti (`files.uploadCapped`).
+
+### Berubah
+
+- `files.uploadFolders` (pesan "folder dilewati") dihapus, diganti `files.uploadCapped`.
+
+## [0.18.1] - 2026-11-05
+
+### Berubah
+
+- Bar pencarian File List sekarang tersembunyi secara bawaan (`filesSearch: false` di `DEFAULT_PREFS`) supaya pohon mendapat seluruh tinggi panel; icon **Cari** menampilkannya dan pilihan itu tetap diingat. `Settings → Restore defaults` ikut mengembalikan ke kondisi tersembunyi ini.
+
+## [0.18.0] - 2026-11-05
+
+### Ditambahkan
+
+- Baris File List sekarang memakai tanda status git seperti Explorer VSCode: huruf `M`/`A`/`D`/`R`/`C`/`U` di ujung kanan dan warna nama ikut status (amber berubah, hijau baru/untracked, merah terhapus, biru rename/salin). Folder tidak dapat huruf tapi ikut warna anak paling penting di dalamnya, jadi direktori yang diutak-atik agent terlihat tanpa harus dibuka.
+- `src/chat/gitmarks.ts` (`statusLetter` + `marksFor`): memetakan `ScmFile` hasil `GET /api/chat/scm/status` menjadi path → huruf, lengkap dengan pewarisan ke induk. Ditutupi 14 tes di `tests/gitmarks.test.ts`, termasuk kolom porcelain berupa spasi literal.
+- Tanda disegarkan otomatis tiap 6 detik selagi halaman File List terlihat (`root.offsetParent`), dan seketika setiap kali pohon di-`invalidate()` — muat ulang, ganti workspace, buat/ganti nama/hapus/pindah/tempel/unggah. Tooltips hurufnya ada di namespace `files` (`gitM`…`gitU`), dua bahasa.
+
+### Berubah
+
+- Pembatas toolbar File List sekarang satu di antara grup, bukan satu di antara setiap icon: `[cari · muat ulang] | [salin · potong · tempel] | [file baru · folder baru]` — dua garis, bukan enam.
+
+### Diperbaiki
+
+- `setWorkspace()` memakai `invalidate()` alih-alih `children.clear()` dan mengosongkan `gitMarks` lebih dulu, supaya tanda dari workspace lama tidak menempel di baris workspace baru.
+
+## [0.17.0] - 2026-11-05
+
+### Ditambahkan
+
+- Toolbar File List lengkap terlihat: icon **Cari** (sejajar dengan **Muat ulang**) menampilkan/menyembunyikan bar pencarian, dan **Salin** / **Potong** / **Tempel** sekarang punya tombol sendiri di samping menu kanan-klik dan `Ctrl+C`/`Ctrl+X`/`Ctrl+V`. **Tempel** otomatis redup selama belum ada yang ditandai. Setiap icon dipisahkan pembatas tipis (`files__sep`) supaya tujuh button tidak terbaca sebagai satu gumpalan.
+- Status tampil/sembunyi bar pencarian disimpan di `virtoOffice.previewPrefs` (`filesSearch`), jadi tetap seperti terakhir kali setelah halaman dimuat ulang.
+
+### Diperbaiki
+
+- Baris petunjuk "Seret baris ke folder…" di bawah toolbar dihapus; teksnya memakan satu baris penuh di panel yang sempit dan informasinya sudah ada di README.
+- `onlyRatioChanged` di `src/chat/prefs.ts` diganti `changedKeys()`: pemeriksaan "perubahan kecil apa yang tidak perlu menggambar ulang pane" sekarang satu mekanisme (rasio split dan tampil/sembunyi pencarian sama-sama tidak lagi mereset posisi gulir pohon).
+
+## [0.16.0] - 2026-11-05
+
+### Ditambahkan
+
+- File dari Explorer bisa dijatuhkan ke pohon File List untuk diunggah. Baris di bawah kursor menentukan folder tujuan (baris file berarti induknya; latar kosong berarti akar workspace), nama yang sudah dipakai menjadi `a (2).txt`, dan beberapa file dalam satu seretan dikirim berurutan dengan baris progres. Folder yang ikut dijatuhkan dihitung lalu dilewati dengan pesan, bukan diunggah setengah.
+- `POST /api/chat/files/upload?path=` (`writeUpload` di `server/files.mjs`): satu berkas per permintaan, body biner dialirkan langsung ke disk lewat `for await` tanpa parser multipart, dipanggil dari `chatApi.uploadFile` dengan `content-type: application/octet-stream`. Batas 50 MB (413), folder dengan nama yang diminta 409, `..`/path absolut/ nama kosong 400, dan berkas parsial dihapus bila stream putus atau client pergi di tengah jalan.
+
+### Berubah
+
+- Seretan `Files` dari luar aplikasi tidak lagi ditolak diam-diam seperti di 0.15.0 — sekarang ia diunggah. Penahan `dragover`/`drop` level dokumen dipasang supaya lepassan yang meleset dari pohon tidak membuat browser membuka file itu dan menghapus halaman aplikasi.
+
+## [0.15.0] - 2026-11-05
+
+### Ditambahkan
+
+- File List bisa menyalin, memotong, dan menempel file/folder. Satu baris ditandai lewat menu kanan-klik (Salin/Potong/Tempel ke …) atau `Ctrl+C`/`Ctrl+X`/`Ctrl+V` selama halaman itu yang tampil; chip di bawah toolbar menyimpan tandanya, tombol **Tempel** di chip menempel ke folder terpilih, dan baris yang dipotong dibuat redup. Pindah memakai `POST /api/chat/files/rename` yang sudah ada; salin memakai endpoint baru `POST /api/chat/files/copy` (`copyEntry` di `server/files.mjs`, rekursif lewat `fs.cp`). Menempel hasil salin ke folder asalnya tidak lagi menabrak: tujuannya dinamai ulang otomatis menjadi `a (2).ts` / `docs (2)` (`unique`), dan menandai ulang `a.ts` menghasilkan `a (3).ts`.
+- Baris File List bisa diseret ke folder untuk memindah; tahan `Ctrl` saat melepas untuk menyalin. Folder tujuan disorot selama seretan (`files__row--drop`), latar pohon menerima lepas untuk tujuan akar workspace, dan seretan dari luar aplikasi (tipe `Files`) tidak diterima supaya halaman tidak berpindah ke file itu.
+- Penjaga path berlaku untuk kedua jalur: folder tidak bisa dipindah atau disalin ke dalam dirinya sendiri/cabangnya (400), sumber yang hilang 404, tujuan yang sudah ada 409, dan `..`/path absolut tetap ditolak `resolveInside`. Menempel hasil potong ke folder yang sama hanya menampilkan "Sudah ada di folder itu." tanpa mengubah disk.
+
 ## [0.14.6] - 2026-11-04
 
 ### Ditambahkan
