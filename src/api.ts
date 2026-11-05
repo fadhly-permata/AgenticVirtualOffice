@@ -49,7 +49,8 @@ export interface ScenerySnapshot {
   trees: number;
   clouds: number;
   birds: number;
-  mist: number;
+  /** Birds resting on a tree or the lawn right now. */
+  perched: number;
   /** Sun disc in normalised device coordinates; `aligned` means it sits on the light ray. */
   sun: { x: number; y: number; visible: boolean; aligned: boolean };
 }

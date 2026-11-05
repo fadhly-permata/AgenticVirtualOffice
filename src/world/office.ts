@@ -7,7 +7,6 @@ import {
   glowSprite,
   grassNoise,
   idleScreenTexture,
-  mistSprite,
   plasterNoise,
   softShadow,
   tvSlides as createTvSlides,
@@ -70,14 +69,26 @@ interface CloudRef {
   sway: number;
 }
 
-/** Small bird circling the building, wings flapping in `update`. */
+/** Where a bird can settle: a tree crown or a patch of lawn. */
+interface PerchSpot {
+  x: number;
+  y: number;
+  z: number;
+}
+
+/** One bird: either crossing the garden or resting on a perch. */
 interface BirdRef {
   group: THREE.Group;
   wings: THREE.Object3D[];
-  radius: number;
-  height: number;
+  state: 'fly' | 'perch';
+  /** Air waypoint while cruising; the perch itself while landing. */
+  target: THREE.Vector3;
+  perch: PerchSpot | null;
   speed: number;
+  heading: number;
+  timer: number;
   phase: number;
+  rng: () => number;
 }
 
 /** Window band shared by the glass panes and the wall cut-outs. */
@@ -119,6 +130,18 @@ const M = {
   treeLeaf: mat(C.treeLeaf, { roughness: 0.9, flatShading: true }),
   treeLeafLight: mat(C.treeLeafLight, { roughness: 0.9, flatShading: true }),
 } as const;
+
+/** Small deterministic PRNG, so every bird wanders differently but reproducibly. */
+function mulberry32(seed: number): () => number {
+  let a = seed >>> 0;
+  return () => {
+    a = (a + 0x6d2b79f5) >>> 0;
+    let x = a;
+    x = Math.imul(x ^ (x >>> 15), x | 1);
+    x ^= x + Math.imul(x ^ (x >>> 7), x | 61);
+    return ((x ^ (x >>> 14)) >>> 0) / 4294967296;
+  };
+}
 
 /** Nudges a palette colour up or down in lightness. */
 function tint(hex: number, amount: number): number {
@@ -162,13 +185,12 @@ export class OfficeWorld {
   treeCount = 0;
   cloudCount = 0;
   birdCount = 0;
-  mistCount = 0;
 
   private readonly sunGlow: THREE.Sprite;
   private readonly cloudMaterial: THREE.MeshStandardMaterial;
-  private readonly mistMaterial: THREE.SpriteMaterial;
   private readonly clouds: CloudRef[] = [];
   private readonly birds: BirdRef[] = [];
+  private readonly perches: PerchSpot[] = [];
   private readonly screens: ScreenRef[] = [];
   private readonly lampLights: LampRef[] = [];
   private readonly lampMaterials: THREE.MeshStandardMaterial[] = [];
@@ -188,6 +210,11 @@ export class OfficeWorld {
   private tvSlideIndex = 0;
   private tvSlideAge = 0;
   private tvTexture: THREE.DataTexture | null = null;
+
+  /** Birds currently resting on a tree or on the lawn, for live checks. */
+  get perchedCount(): number {
+    return this.birds.filter((bird) => bird.state === 'perch').length;
+  }
 
   constructor() {
     this.hemi = new THREE.HemisphereLight(0xdff0ff, 0xcdb59a, 0.8);
@@ -238,13 +265,6 @@ export class OfficeWorld {
       roughness: 1,
       metalness: 0,
       flatShading: true,
-    });
-    this.mistMaterial = new THREE.SpriteMaterial({
-      map: mistSprite(),
-      color: 0xc9dae7,
-      transparent: true,
-      opacity: 0.42,
-      depthWrite: false,
     });
     const sunMaterial = new THREE.MeshBasicMaterial({ color: 0xfff1c6, toneMapped: false });
     this.sunDisc = new THREE.Mesh(new THREE.SphereGeometry(SUN_RADIUS, 24, 16), sunMaterial);
@@ -1187,8 +1207,6 @@ export class OfficeWorld {
     ];
     for (const [x, z, size] of bushes) this.surroundings.add(this.bush(x, z, size));
 
-    this.buildMist();
-
     const clouds: [number, number, number, number][] = [
       [-2, 7.2, -3, 1.05],
       [10, 9.0, -4, 1.3],
@@ -1208,45 +1226,60 @@ export class OfficeWorld {
     this.surroundings.add(this.sunDisc);
   }
 
-  /** Fog banks hugging the outer rim, so the tree line dissolves into haze. */
-  private buildMist(): void {
-    const rim = GARDEN_MARGIN + 0.8;
-    const spots: [number, number][] = [];
-    for (let x = -rim; x <= OFFICE_WIDTH + rim; x += 6.4) {
-      spots.push([x, -rim], [x, OFFICE_DEPTH + rim]);
-    }
-    for (let z = -rim; z <= OFFICE_DEPTH + rim; z += 6.4) {
-      spots.push([-rim, z], [OFFICE_WIDTH + rim, z]);
-    }
+  /** Straight-line air waypoint somewhere around the building. */
+  private birdWaypoint(rng: () => number): THREE.Vector3 {
+    const angle = rng() * Math.PI * 2;
+    const radius = 6 + rng() * 11;
+    return new THREE.Vector3(
+      OFFICE_WIDTH / 2 + Math.cos(angle) * radius,
+      7.5 + rng() * 4.5,
+      OFFICE_DEPTH / 2 + Math.sin(angle) * radius * 0.85,
+    );
+  }
 
-    spots.forEach(([x, z], index) => {
-      const sprite = new THREE.Sprite(this.mistMaterial);
-      const wide = 9.4 + Math.abs(Math.sin(index * 1.7)) * 1.8;
-      const tall = 3.8 + Math.abs(Math.cos(index * 2.1)) * 1;
-      sprite.scale.set(wide, tall, 1);
-      sprite.position.set(x, 0.5 + Math.sin(index * 0.9) * 0.14, z);
-      sprite.renderOrder = 2;
-      this.surroundings.add(sprite);
-    });
-    this.mistCount = spots.length;
+  /** Picks a tree crown most of the time, otherwise a random patch of lawn. */
+  private pickPerch(rng: () => number): PerchSpot {
+    if (this.perches.length > 0 && rng() < 0.6) {
+      return this.perches[Math.floor(rng() * this.perches.length)]!;
+    }
+    const pad = 1.5;
+    for (let tries = 0; tries < 12; tries += 1) {
+      const x = -13 + rng() * (OFFICE_WIDTH + 26);
+      const z = -13 + rng() * (OFFICE_DEPTH + 26);
+      const inside = x > -pad && x < OFFICE_WIDTH + pad && z > -pad && z < OFFICE_DEPTH + pad;
+      if (!inside) return { x, y: GARDEN_TOP + 0.07, z };
+    }
+    return { x: -6, y: GARDEN_TOP + 0.07, z: -6 };
+  }
+
+  private perchAt(bird: BirdRef, spot: PerchSpot): void {
+    bird.state = 'perch';
+    bird.perch = spot;
+    bird.group.position.set(spot.x, spot.y, spot.z);
+    bird.group.rotation.y = bird.rng() * Math.PI * 2;
+    bird.timer = 3 + bird.rng() * 7;
+  }
+
+  /** Cruising birds mostly pick another air point; sometimes one drops onto a perch. */
+  private chooseNextTarget(bird: BirdRef): void {
+    if (bird.rng() < 0.45) {
+      const spot = this.pickPerch(bird.rng);
+      bird.perch = spot;
+      bird.target.set(spot.x, spot.y + 0.2, spot.z);
+    } else {
+      bird.perch = null;
+      bird.target.copy(this.birdWaypoint(bird.rng));
+    }
   }
 
   private buildBirds(): void {
     const material = mat(0x39424a, { roughness: 0.8 });
-    const specs: [number, number, number, number, number][] = [
-      // radius, height, speed, phase, scale — high enough to read against the sky,
-      // not so high that they leave the framed diorama.
-      // Keep the circle inside the framed sky: this camera sees about ±15 units
-      // sideways, so wide orbits spent most of their time off-screen.
-      [10, 11.5, 0.34, 0.2, 1.5],
-      [12.5, 12.4, 0.27, 2.1, 1.3],
-      [14, 10.8, 0.31, 4.0, 1.6],
-      [9, 13.2, 0.4, 5.2, 1.2],
-      [11, 12.0, 0.3, 1.2, 1.4],
-    ];
-    for (const [radius, height, speed, phase, scale] of specs) {
+    const count = 5;
+    for (let index = 0; index < count; index += 1) {
+      const rng = mulberry32(0x9e3779b9 + index * 7919);
       const group = new THREE.Group();
-      group.scale.setScalar(scale);
+      group.scale.setScalar(1.15 + rng() * 0.45);
+
       const body = box(0.34, 0.05, 0.07, material);
       body.castShadow = false;
       body.receiveShadow = false;
@@ -1263,15 +1296,29 @@ export class OfficeWorld {
         wings.push(pivot);
       }
 
-      group.position.set(
-        OFFICE_WIDTH / 2 + Math.cos(phase) * radius,
-        height,
-        OFFICE_DEPTH / 2 + Math.sin(phase) * radius,
-      );
-      this.birds.push({ group, wings, radius, height, speed, phase });
+      const bird: BirdRef = {
+        group,
+        wings,
+        state: 'fly',
+        target: this.birdWaypoint(rng),
+        perch: null,
+        speed: 2.6 + rng() * 1.4,
+        heading: rng() * Math.PI * 2,
+        timer: 0,
+        phase: rng() * Math.PI * 2,
+        rng,
+      };
+
+      // Some birds start on the lawn or in a tree, so the scene opens with both.
+      if (index < 2) {
+        this.perchAt(bird, this.pickPerch(rng));
+      } else {
+        group.position.copy(this.birdWaypoint(rng));
+      }
+      this.birds.push(bird);
       this.surroundings.add(group);
     }
-    this.birdCount = specs.length;
+    this.birdCount = count;
   }
 
   private tree(x: number, z: number, height: number, phase: number): THREE.Group {
@@ -1302,6 +1349,14 @@ export class OfficeWorld {
       leaf.receiveShadow = true;
       canopy.add(leaf);
     });
+
+    // A crown a bird can settle on, just clear of the top leaf blob.
+    this.perches.push({
+      x,
+      y: GARDEN_TOP + canopy.position.y + 0.12 + radius * 0.82 + 0.06,
+      z,
+    });
+
     g.add(canopy);
     this.plants.push({ node: canopy, phase });
     return g;
@@ -1519,14 +1574,6 @@ export class OfficeWorld {
     this.cloudMaterial.color.copy(cloudColor);
     this.cloudMaterial.emissive.copy(cloudColor);
     this.cloudMaterial.emissiveIntensity = 0.12 + 0.14 * cycle.nightFactor;
-
-    const mistColor = new THREE.Color(0xc9dae7).lerp(
-      new THREE.Color(0x7f95b4),
-      cycle.nightFactor * 0.85,
-    );
-    mistColor.lerp(new THREE.Color(0xffd8c2), cycle.twilightFactor * 0.3);
-    this.mistMaterial.color.copy(mistColor);
-    this.mistMaterial.opacity = 0.42 - 0.06 * cycle.nightFactor;
   }
 
   update(dt: number, workingSpots: ReadonlySet<string>, gaming: boolean): void {
@@ -1586,19 +1633,43 @@ export class OfficeWorld {
       cloud.group.position.x = cloud.baseX + Math.sin(t * 0.03 + cloud.phase) * cloud.sway;
     }
 
-    const cx = OFFICE_WIDTH / 2;
-    const cz = OFFICE_DEPTH / 2;
     for (const bird of this.birds) {
-      const angle = t * bird.speed + bird.phase;
-      bird.group.position.set(
-        cx + Math.cos(angle) * bird.radius,
-        bird.height + Math.sin(t * 0.9 + bird.phase) * 0.35,
-        cz + Math.sin(angle) * bird.radius,
-      );
-      bird.group.rotation.y = -(angle + Math.PI / 2);
-      const flap = Math.sin(t * 7 + bird.phase) * 0.55;
+      if (bird.state === 'perch') {
+        bird.timer -= dt;
+        // Wings tuck up against the body instead of beating.
+        bird.wings[0]!.rotation.x = -1.25;
+        bird.wings[1]!.rotation.x = 1.25;
+        if (bird.timer <= 0) {
+          bird.state = 'fly';
+          bird.perch = null;
+          bird.target.copy(this.birdWaypoint(bird.rng));
+        }
+        continue;
+      }
+
+      const delta = bird.target.clone().sub(bird.group.position);
+      const distance = delta.length();
+      const step = Math.min(bird.speed * dt, distance);
+      if (distance > 0.001) {
+        // Ease the heading around curves; a bird should bank, not snap.
+        const desired = Math.atan2(-delta.z, delta.x);
+        let turn = desired - bird.heading;
+        while (turn > Math.PI) turn -= Math.PI * 2;
+        while (turn < -Math.PI) turn += Math.PI * 2;
+        bird.heading += THREE.MathUtils.clamp(turn, -3.2 * dt, 3.2 * dt);
+        bird.group.rotation.y = bird.heading;
+        bird.group.position.addScaledVector(delta.normalize(), step);
+      }
+
+      const climbing = delta.y > 0.4;
+      const flap = Math.sin(t * (climbing ? 10.5 : 6.5) + bird.phase) * (climbing ? 0.7 : 0.4);
       bird.wings[0]!.rotation.x = flap;
       bird.wings[1]!.rotation.x = -flap;
+
+      if (distance <= step + 0.05) {
+        if (bird.perch) this.perchAt(bird, bird.perch);
+        else this.chooseNextTarget(bird);
+      }
     }
   }
 }

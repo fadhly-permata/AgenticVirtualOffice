@@ -128,31 +128,6 @@ export function grassNoise(repeatX = 1, repeatY = 1): THREE.DataTexture {
   );
 }
 
-/** Wide, soft fog bank; normal blending, so it reads as haze instead of light. */
-export function mistSprite(): THREE.DataTexture {
-  return cached('mist', () =>
-    dataTexture(
-      128,
-      (u, v) => {
-        const shade = 240 + Math.sin(u * Math.PI * 2.4 + 0.8) * 6 + Math.sin(v * Math.PI * 3.1) * 4;
-        return [shade, shade, shade + 3];
-      },
-      (u, v) => {
-        // A flat core with soft ends reads as one fog bank; a round blob reads
-        // as a puff. Overlapping banks then merge into a continuous ring.
-        const nx = Math.abs(u - 0.5) * 2;
-        const ny = Math.abs(v - 0.5) * 2;
-        const horizontal = clamp01(1 - Math.pow(nx, 3));
-        const vertical = clamp01(1 - ny * ny);
-        const wisp = 0.72 + 0.28 * Math.sin(u * Math.PI * 5.5 + v * 3.1 + 0.7);
-        return horizontal * vertical * wisp * 0.85;
-      },
-      1,
-      1,
-    ),
-  );
-}
-
 /** Radial white blob for additive light halos around bulbs. */
 export function glowSprite(): THREE.DataTexture {
   return cached('glow', () =>

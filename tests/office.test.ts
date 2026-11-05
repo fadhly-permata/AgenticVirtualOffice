@@ -33,7 +33,6 @@ describe('OfficeWorld', () => {
     expect(world.treeCount).toBe(12);
     expect(world.cloudCount).toBeGreaterThanOrEqual(4);
     expect(world.birdCount).toBeGreaterThanOrEqual(3);
-    expect(world.mistCount).toBeGreaterThanOrEqual(12);
 
     const bounds = new THREE.Box3().setFromObject(world.surroundings);
     expect(bounds.min.x).toBeLessThan(-14);
@@ -41,6 +40,20 @@ describe('OfficeWorld', () => {
     expect(bounds.max.x).toBeGreaterThan(OFFICE_WIDTH + 13);
     expect(bounds.max.z).toBeGreaterThan(OFFICE_DEPTH + 13);
     expect(bounds.max.y).toBeGreaterThan(8);
+  });
+
+  it('lets birds wander at random and settle on trees or grass', () => {
+    const world = new OfficeWorld();
+    expect(world.perchedCount).toBe(2);
+
+    const seen = new Set<number>();
+    for (let step = 0; step < 1200; step += 1) {
+      world.update(0.1, new Set(), false);
+      seen.add(world.perchedCount);
+    }
+    // Every bird takes off at some point, and at least one lands again.
+    expect(seen.has(0)).toBe(true);
+    expect([...seen].some((count) => count > 0)).toBe(true);
   });
 
   it('keeps the visible sun on the light ray', () => {
