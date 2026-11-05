@@ -63,8 +63,8 @@ export interface ScenerySnapshot {
     /** Chases aimed at a lawn bird, and birds that took off because of one. */
     birdChases: number;
     escapes: number;
-    /** Dogs out playing on the lawn right now. */
-    outside: number;
+    /** Pets out playing on the lawn right now, by kind. */
+    outside: { cats: number; dogs: number };
   };
   /** Sun disc in normalised device coordinates; `aligned` means it sits on the light ray. */
   sun: { x: number; y: number; visible: boolean; aligned: boolean };

@@ -281,7 +281,11 @@ export class OfficeWorld {
     return this.pets.some((pet) => pet.state === 'chase' || pet.state === 'flee');
   }
 
-  /** Dogs currently playing on the lawn outside the pen, for live checks. */
+  /** Pets currently playing on the lawn outside the pen, for live checks. */
+  get catsOutside(): number {
+    return this.pets.filter((pet) => pet.kind === 'cat' && pet.region === 'lawn').length;
+  }
+
   get dogsOutside(): number {
     return this.pets.filter((pet) => pet.kind === 'dog' && pet.region === 'lawn').length;
   }
@@ -1921,7 +1925,7 @@ export class OfficeWorld {
       }
     } else if (!this.petsChasing && cat && dog) {
       const gap = cat.group.position.distanceTo(dog.group.position);
-      const together = cat.region === 'pen' && dog.region === 'pen' && dog.trip === 'none';
+      const together = cat.region === dog.region;
       if (together && gap < 2.6 && cat.cooldown <= 0 && dog.cooldown <= 0) {
         this.startChase(cat, dog);
       }
@@ -2008,7 +2012,7 @@ export class OfficeWorld {
     this.stepTrip(pet, dt);
 
     if (pet.state === 'wander' && distance < 0.18) {
-      const traveling = pet.kind === 'dog' && (pet.trip === 'exit' || pet.trip === 'home');
+      const traveling = pet.trip === 'exit' || pet.trip === 'home';
       if (!traveling) {
         pet.state = 'idle';
         pet.timer = 0.8 + pet.rng() * 2.2;
@@ -2031,14 +2035,10 @@ export class OfficeWorld {
     pet.timer = 0.5 + pet.rng() * 1.2;
   }
 
-  /** Pick the next wander spot; the dog occasionally starts a trip out the gate. */
+  /** Pick the next wander spot; either pet occasionally starts a trip out the gate. */
   private beginWander(pet: PetRef): void {
     pet.state = 'wander';
     pet.timer = 9;
-    if (pet.kind !== 'dog') {
-      pet.target.copy(this.penTarget(pet.rng));
-      return;
-    }
     if (pet.region === 'lawn') {
       pet.target.copy(
         pet.trip === 'home' ? new THREE.Vector2(OUTSIDE_GATE.x, OUTSIDE_GATE.z) : this.lawnTarget(pet.rng),
@@ -2049,18 +2049,19 @@ export class OfficeWorld {
       pet.target.set(PEN.x0 + 1.0, GATE.z);
       return;
     }
-    if (pet.trip === 'none' && pet.rng() < 0.4) {
+    const roamChance = pet.kind === 'dog' ? 0.4 : 0.34;
+    if (pet.trip === 'none' && pet.rng() < roamChance) {
       pet.trip = 'exit';
-      pet.outing = 11 + pet.rng() * 9;
+      pet.outing =
+        pet.kind === 'dog' ? 11 + pet.rng() * 9 : 9 + pet.rng() * 6;
       pet.target.set(PEN.x0 + 1.0, GATE.z);
       return;
     }
     pet.target.copy(this.penTarget(pet.rng));
   }
 
-  /** Advance the dog's outing across the fence line and count down its play time. */
+  /** Advance a pet's outing across the fence line and count down its play time. */
   private stepTrip(pet: PetRef, dt: number): void {
-    if (pet.kind !== 'dog') return;
     if (pet.state === 'chase' || pet.state === 'flee') return;
     const { position } = pet.group;
     if (pet.trip === 'exit' && pet.region === 'pen') {
@@ -2093,11 +2094,11 @@ export class OfficeWorld {
     }
   }
 
-  /** Keep a pet on its side of the fence, allowing the dog through the gate gap. */
+  /** Keep a pet on its side of the fence, allowing gate trips through the gap. */
   private keepPetInArea(pet: PetRef): void {
     const { position } = pet.group;
     const inGateLine = Math.abs(position.z - GATE.z) < GATE_CLEAR;
-    const crossing = pet.kind === 'dog' && (pet.trip === 'exit' || pet.trip === 'home') && inGateLine;
+    const crossing = (pet.trip === 'exit' || pet.trip === 'home') && inGateLine;
 
     if (pet.region === 'lawn') {
       position.x = THREE.MathUtils.clamp(
