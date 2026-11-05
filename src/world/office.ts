@@ -87,7 +87,7 @@ const WINDOW_OPEN_Y0 = 1.3;
 const WINDOW_OPEN_Y1 = 3.34;
 
 /** How far the garden terrace reaches beyond the wall line, and its surface height. */
-const GARDEN_MARGIN = 3.2;
+const GARDEN_MARGIN = 15.2;
 const GARDEN_TOP = -0.42;
 
 /** Sun disc sits on the light's own ray, far enough to read as sky. */
@@ -194,10 +194,10 @@ export class OfficeWorld {
     this.sun = new THREE.DirectionalLight(0xfff3dc, 2.2);
     this.sun.castShadow = true;
     this.sun.shadow.mapSize.set(2048, 2048);
-    this.sun.shadow.camera.left = -24;
-    this.sun.shadow.camera.right = 24;
-    this.sun.shadow.camera.top = 24;
-    this.sun.shadow.camera.bottom = -24;
+    this.sun.shadow.camera.left = -34;
+    this.sun.shadow.camera.right = 34;
+    this.sun.shadow.camera.top = 34;
+    this.sun.shadow.camera.bottom = -34;
     this.sun.shadow.camera.near = 1;
     this.sun.shadow.camera.far = 220;
     this.sun.shadow.bias = -0.0005;
@@ -1133,7 +1133,7 @@ export class OfficeWorld {
     const d = OFFICE_DEPTH + GARDEN_MARGIN * 2;
     const grass = new THREE.MeshStandardMaterial({
       color: C.lawn,
-      map: grassNoise(7, 6),
+      map: grassNoise(12, 10),
       roughness: 1,
     });
     g.add(rbox(w, 0.78, d, 0.9, grass, OFFICE_WIDTH / 2, GARDEN_TOP - 0.39, OFFICE_DEPTH / 2));
@@ -1153,15 +1153,15 @@ export class OfficeWorld {
   }
 
   private buildScenery(): void {
-    // One tidy row of three trees per side, set back from the walls so the
-    // garden reads as a clearing. The two open sides stay shorter so the
-    // camera keeps its view inside.
+    // One tidy row of three trees per side, pushed well out into the clearing.
+    // The two open sides stay shorter so the camera keeps its view inside.
+    const distance = 13.5;
     const rows: [number, number, number, number, number, number, number][] = [
       // x0, z0, x1, z1, count, minHeight, maxHeight
-      [4.0, -2.7, 22.0, -2.7, 3, 3.8, 4.8],
-      [-2.7, 3.5, -2.7, 17.5, 3, 3.8, 4.8],
-      [28.7, 3.5, 28.7, 17.5, 3, 2.8, 3.5],
-      [4.0, 23.7, 22.0, 23.7, 3, 2.8, 3.5],
+      [4.0, -distance, 22.0, -distance, 3, 3.8, 4.8],
+      [-distance, 3.5, -distance, 17.5, 3, 3.8, 4.8],
+      [OFFICE_WIDTH + distance, 3.5, OFFICE_WIDTH + distance, 17.5, 3, 2.8, 3.5],
+      [4.0, OFFICE_DEPTH + distance, 22.0, OFFICE_DEPTH + distance, 3, 2.8, 3.5],
     ];
     let index = 0;
     for (const [x0, z0, x1, z1, count, minHeight, maxHeight] of rows) {
@@ -1180,10 +1180,10 @@ export class OfficeWorld {
     this.treeCount = index;
 
     const bushes: [number, number, number][] = [
-      [-2.9, -2.9, 0.55],
-      [28.9, -2.9, 0.5],
-      [-2.9, 23.9, 0.5],
-      [28.9, 23.9, 0.55],
+      [-14.4, -14.4, 0.55],
+      [40.4, -14.4, 0.5],
+      [-14.4, 35.4, 0.5],
+      [40.4, 35.4, 0.55],
     ];
     for (const [x, z, size] of bushes) this.surroundings.add(this.bush(x, z, size));
 
@@ -1212,16 +1212,16 @@ export class OfficeWorld {
   private buildMist(): void {
     const rim = GARDEN_MARGIN + 0.8;
     const spots: [number, number][] = [];
-    for (let x = -3; x <= OFFICE_WIDTH + 3; x += 5.3) {
+    for (let x = -rim; x <= OFFICE_WIDTH + rim; x += 6.4) {
       spots.push([x, -rim], [x, OFFICE_DEPTH + rim]);
     }
-    for (let z = 0.5; z <= OFFICE_DEPTH - 0.5; z += 5) {
+    for (let z = -rim; z <= OFFICE_DEPTH + rim; z += 6.4) {
       spots.push([-rim, z], [OFFICE_WIDTH + rim, z]);
     }
 
     spots.forEach(([x, z], index) => {
       const sprite = new THREE.Sprite(this.mistMaterial);
-      const wide = 9 + Math.abs(Math.sin(index * 1.7)) * 1.8;
+      const wide = 9.4 + Math.abs(Math.sin(index * 1.7)) * 1.8;
       const tall = 3.8 + Math.abs(Math.cos(index * 2.1)) * 1;
       sprite.scale.set(wide, tall, 1);
       sprite.position.set(x, 0.5 + Math.sin(index * 0.9) * 0.14, z);

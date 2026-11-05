@@ -36,9 +36,10 @@ describe('OfficeWorld', () => {
     expect(world.mistCount).toBeGreaterThanOrEqual(12);
 
     const bounds = new THREE.Box3().setFromObject(world.surroundings);
-    expect(bounds.min.x).toBeLessThan(-2.5);
-    expect(bounds.min.z).toBeLessThan(-2.5);
-    expect(bounds.max.x).toBeGreaterThan(28.5);
+    expect(bounds.min.x).toBeLessThan(-14);
+    expect(bounds.min.z).toBeLessThan(-14);
+    expect(bounds.max.x).toBeGreaterThan(OFFICE_WIDTH + 13);
+    expect(bounds.max.z).toBeGreaterThan(OFFICE_DEPTH + 13);
     expect(bounds.max.y).toBeGreaterThan(8);
   });
 

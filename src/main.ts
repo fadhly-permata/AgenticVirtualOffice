@@ -330,8 +330,8 @@ function boot(target: HTMLCanvasElement): void {
 
   // --------------------------------------------------------------- resize ---
 
-  const VIEW_HEIGHT = 29;
-  const MIN_WIDTH = 39;
+  const VIEW_HEIGHT = 34;
+  const MIN_WIDTH = 50;
 
   function resize(): void {
     const width = window.innerWidth;
