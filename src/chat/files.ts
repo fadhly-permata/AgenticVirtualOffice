@@ -181,8 +181,8 @@ export function mountFiles(container: HTMLElement, hooks: FilesHooks = {}): File
     if (searchInput.value.trim()) void runSearch(searchInput.value);
   });
   const refreshButton = iconButton(t('files.refresh'), ICON.refresh, () => refresh());
-  const searchButton = iconButton(t('files.hideSearch'), ICON.search, () => toggleSearch());
-  searchButton.setAttribute('aria-pressed', 'true');
+  const searchButton = iconButton(t('files.showSearch'), ICON.search, () => toggleSearch());
+  searchButton.setAttribute('aria-pressed', 'false');
   const copyButton = iconButton(t('menu.copy'), ICON.copy, () => markFromKeys(false));
   const cutButton = iconButton(t('menu.cut'), ICON.cut, () => markFromKeys(true));
   const pasteButton = iconButton(t('menu.paste'), ICON.paste, () => {

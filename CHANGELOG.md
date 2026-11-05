@@ -4,6 +4,12 @@ Semua perubahan penting pada VirtOffice dicatat di sini. Format mengikuti
 [Keep a Changelog](https://keepachangelog.com/id/1.1.0/) dan versi mengikuti
 [Semantic Versioning](https://semver.org/lang/id/).
 
+## [0.18.1] - 2026-11-05
+
+### Berubah
+
+- Bar pencarian File List sekarang tersembunyi secara bawaan (`filesSearch: false` di `DEFAULT_PREFS`) supaya pohon mendapat seluruh tinggi panel; icon **Cari** menampilkannya dan pilihan itu tetap diingat. `Settings → Restore defaults` ikut mengembalikan ke kondisi tersembunyi ini.
+
 ## [0.18.0] - 2026-11-05
 
 ### Ditambahkan

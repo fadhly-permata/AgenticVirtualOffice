@@ -14,7 +14,7 @@ export interface Prefs {
   previewSplit: SplitMode;
   /** Porsi pratinjau terhadap pane (0.2–0.8), diatur dengan menyeret pembatas. */
   previewRatio: number;
-  /** Bar pencarian File List; bisa disembunyikan dari toolbar. */
+  /** Bar pencarian File List; default tersembunyi, icon Cari menampilkannya. */
   filesSearch: boolean;
 }
 
@@ -31,7 +31,7 @@ export const DEFAULT_PREFS: Prefs = {
   scriptedPreview: false,
   previewSplit: 'horizontal',
   previewRatio: 0.56,
-  filesSearch: true,
+  filesSearch: false,
 };
 
 /** Jaga porsi pratinjau tetap masuk akal, termasuk dari nilai localStorage yang rusak. */
