@@ -28,11 +28,12 @@ describe('OfficeWorld', () => {
     expect(bounds.max.y).toBeGreaterThan(4);
   });
 
-  it('surrounds the building with a garden, trees, clouds and a sun', () => {
+  it('surrounds the building with a garden, trees, birds and a pet pen', () => {
     const world = new OfficeWorld();
     expect(world.treeCount).toBe(12);
-    expect(world.cloudCount).toBeGreaterThanOrEqual(4);
     expect(world.birdCount).toBeGreaterThanOrEqual(3);
+    expect(world.catCount).toBe(1);
+    expect(world.dogCount).toBe(1);
 
     const bounds = new THREE.Box3().setFromObject(world.surroundings);
     expect(bounds.min.x).toBeLessThan(-14);
@@ -40,6 +41,24 @@ describe('OfficeWorld', () => {
     expect(bounds.max.x).toBeGreaterThan(OFFICE_WIDTH + 13);
     expect(bounds.max.z).toBeGreaterThan(OFFICE_DEPTH + 13);
     expect(bounds.max.y).toBeGreaterThan(8);
+  });
+
+  it('lets the cat and dog wander and sometimes chase each other', () => {
+    const world = new OfficeWorld();
+    expect(world.petsChasing).toBe(false);
+
+    let sawChase = false;
+    let sawForaging = false;
+    for (let step = 0; step < 1800; step += 1) {
+      world.update(0.1, new Set(), false);
+      sawChase = sawChase || world.petsChasing;
+      sawForaging = sawForaging || world.groundBirdCount > 0;
+    }
+    expect(world.chaseCount).toBeGreaterThan(0);
+    expect(sawChase).toBe(true);
+    expect(sawForaging).toBe(true);
+    expect(world.birdChaseCount).toBeGreaterThan(0);
+    expect(world.birdEscapeCount).toBeGreaterThan(0);
   });
 
   it('lets birds wander at random and settle on trees or grass', () => {

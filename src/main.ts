@@ -150,9 +150,18 @@ function boot(target: HTMLCanvasElement): void {
     const aligned = discRay.lengthSq() > 0 && discRay.normalize().dot(lightRay) > 0.999;
     return {
       trees: world.treeCount,
-      clouds: world.cloudCount,
       birds: world.birdCount,
       perched: world.perchedCount,
+      groundBirds: world.groundBirdCount,
+      penBirds: world.penBirdCount,
+      pets: {
+        cats: world.catCount,
+        dogs: world.dogCount,
+        chasing: world.petsChasing,
+        chases: world.chaseCount,
+        birdChases: world.birdChaseCount,
+        escapes: world.birdEscapeCount,
+      },
       sun: {
         x: Number(projected.x.toFixed(3)),
         y: Number(projected.y.toFixed(3)),

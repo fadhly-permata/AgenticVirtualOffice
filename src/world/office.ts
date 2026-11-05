@@ -61,22 +61,16 @@ interface GlowRef {
   material: THREE.SpriteMaterial;
 }
 
-/** Cloud cluster drifting slowly above the diorama. */
-interface CloudRef {
-  group: THREE.Group;
-  phase: number;
-  baseX: number;
-  sway: number;
-}
-
 /** Where a bird can settle: a tree crown or a patch of lawn. */
 interface PerchSpot {
   x: number;
   y: number;
   z: number;
+  /** Lawn perches let the bird hop, peck and get chased by the pets. */
+  ground: boolean;
 }
 
-/** One bird: either crossing the garden or resting on a perch. */
+/** One bird: crossing the garden, resting in a tree, or foraging on the lawn. */
 interface BirdRef {
   group: THREE.Group;
   wings: THREE.Object3D[];
@@ -87,6 +81,30 @@ interface BirdRef {
   speed: number;
   heading: number;
   timer: number;
+  phase: number;
+  rng: () => number;
+  /** Foraging hop tween: -1 when standing still. */
+  hopT: number;
+  hopTimer: number;
+  hopFrom: THREE.Vector3;
+  hopTo: THREE.Vector3;
+}
+
+/** One pet: idling, wandering, or caught in a chase around the pen. */
+interface PetRef {
+  group: THREE.Group;
+  kind: 'cat' | 'dog';
+  legs: THREE.Object3D[];
+  tail: THREE.Object3D;
+  /** Ground target in world XZ; the chasing pair keeps retargeting each frame. */
+  target: THREE.Vector2;
+  state: 'idle' | 'wander' | 'chase' | 'flee';
+  /** Set when this pet is stalking a lawn bird instead of the other pet. */
+  prey: BirdRef | null;
+  timer: number;
+  cooldown: number;
+  heading: number;
+  stride: number;
   phase: number;
   rng: () => number;
 }
@@ -104,6 +122,11 @@ const GARDEN_TOP = -0.42;
 /** Sun disc sits on the light's own ray, far enough to read as sky. */
 const SUN_DISTANCE = 88;
 const SUN_RADIUS = 1.5;
+
+/** Fenced corner paddock on the empty front-right lawn. */
+const PEN = { x0: 29.4, x1: 37.8, z0: 25.7, z1: 31.3 };
+/** Doghouse footprint inside the pen, kept clear by wandering pets. */
+const HOUSE = { x0: 35.6, x1: 37.45, z0: 29.45, z1: 30.95 };
 
 const FLOOR_COLOR: Record<RoomId, number> = {
   workspace: C.floorWorkspace,
@@ -177,20 +200,25 @@ export class OfficeWorld {
   readonly root = new THREE.Group();
   /** Walls, floors and furniture; the unit-test extents apply to this alone. */
   readonly building = new THREE.Group();
-  /** Garden, trees, clouds and the sun disc around the building. */
+  /** Garden, trees, pet pen, birds and the sun disc around the building. */
   readonly surroundings = new THREE.Group();
   readonly hemi: THREE.HemisphereLight;
   readonly sun: THREE.DirectionalLight;
   readonly sunDisc: THREE.Mesh;
   treeCount = 0;
-  cloudCount = 0;
   birdCount = 0;
+  catCount = 0;
+  dogCount = 0;
+  /** How many chases have started since the page loaded. */
+  chaseCount = 0;
+  /** Chases aimed at a lawn bird, and birds that bolted because of one. */
+  birdChaseCount = 0;
+  birdEscapeCount = 0;
 
   private readonly sunGlow: THREE.Sprite;
-  private readonly cloudMaterial: THREE.MeshStandardMaterial;
-  private readonly clouds: CloudRef[] = [];
   private readonly birds: BirdRef[] = [];
   private readonly perches: PerchSpot[] = [];
+  private readonly pets: PetRef[] = [];
   private readonly screens: ScreenRef[] = [];
   private readonly lampLights: LampRef[] = [];
   private readonly lampMaterials: THREE.MeshStandardMaterial[] = [];
@@ -214,6 +242,29 @@ export class OfficeWorld {
   /** Birds currently resting on a tree or on the lawn, for live checks. */
   get perchedCount(): number {
     return this.birds.filter((bird) => bird.state === 'perch').length;
+  }
+
+  /** Birds foraging on the lawn right now. */
+  get groundBirdCount(): number {
+    return this.birds.filter((bird) => bird.state === 'perch' && bird.perch?.ground).length;
+  }
+
+  /** Foraging birds inside the pen, where the pets can give chase. */
+  get penBirdCount(): number {
+    return this.birds.filter(
+      (bird) =>
+        bird.state === 'perch' &&
+        bird.perch?.ground === true &&
+        bird.group.position.x > PEN.x0 - 0.4 &&
+        bird.group.position.x < PEN.x1 + 0.4 &&
+        bird.group.position.z > PEN.z0 - 0.4 &&
+        bird.group.position.z < PEN.z1 + 0.4,
+    ).length;
+  }
+
+  /** Whether the cat and dog are mid-chase right now. */
+  get petsChasing(): boolean {
+    return this.pets.some((pet) => pet.state === 'chase' || pet.state === 'flee');
   }
 
   constructor() {
@@ -260,12 +311,6 @@ export class OfficeWorld {
     });
     this.lampMaterials.push(this.bulbMaterial);
 
-    this.cloudMaterial = new THREE.MeshStandardMaterial({
-      color: 0xffffff,
-      roughness: 1,
-      metalness: 0,
-      flatShading: true,
-    });
     const sunMaterial = new THREE.MeshBasicMaterial({ color: 0xfff1c6, toneMapped: false });
     this.sunDisc = new THREE.Mesh(new THREE.SphereGeometry(SUN_RADIUS, 24, 16), sunMaterial);
     this.sunGlow = new THREE.Sprite(
@@ -1207,21 +1252,7 @@ export class OfficeWorld {
     ];
     for (const [x, z, size] of bushes) this.surroundings.add(this.bush(x, z, size));
 
-    const clouds: [number, number, number, number][] = [
-      [-2, 7.2, -3, 1.05],
-      [10, 9.0, -4, 1.3],
-      [26, 9.0, -3, 1.0],
-      [33, 8.5, 6, 0.9],
-      [-5, 8.0, 10, 0.85],
-    ];
-    clouds.forEach(([x, y, z, scale], index) => {
-      const group = this.cloud(scale);
-      group.position.set(x, y, z);
-      this.clouds.push({ group, phase: index * 1.9, baseX: x, sway: 0.7 + index * 0.22 });
-      this.surroundings.add(group);
-    });
-    this.cloudCount = clouds.length;
-
+    this.buildPen();
     this.buildBirds();
     this.surroundings.add(this.sunDisc);
   }
@@ -1237,19 +1268,27 @@ export class OfficeWorld {
     );
   }
 
-  /** Picks a tree crown most of the time, otherwise a random patch of lawn. */
+  /** Tree crowns, or a lawn patch; some lawn landings fall inside the pet pen. */
   private pickPerch(rng: () => number): PerchSpot {
     if (this.perches.length > 0 && rng() < 0.6) {
       return this.perches[Math.floor(rng() * this.perches.length)]!;
+    }
+    if (rng() < 0.5) {
+      return {
+        x: PEN.x0 + 0.9 + rng() * (PEN.x1 - PEN.x0 - 1.8),
+        y: GARDEN_TOP + 0.09,
+        z: PEN.z0 + 0.9 + rng() * (PEN.z1 - PEN.z0 - 1.8),
+        ground: true,
+      };
     }
     const pad = 1.5;
     for (let tries = 0; tries < 12; tries += 1) {
       const x = -13 + rng() * (OFFICE_WIDTH + 26);
       const z = -13 + rng() * (OFFICE_DEPTH + 26);
       const inside = x > -pad && x < OFFICE_WIDTH + pad && z > -pad && z < OFFICE_DEPTH + pad;
-      if (!inside) return { x, y: GARDEN_TOP + 0.07, z };
+      if (!inside) return { x, y: GARDEN_TOP + 0.07, z, ground: true };
     }
-    return { x: -6, y: GARDEN_TOP + 0.07, z: -6 };
+    return { x: -6, y: GARDEN_TOP + 0.07, z: -6, ground: true };
   }
 
   private perchAt(bird: BirdRef, spot: PerchSpot): void {
@@ -1257,7 +1296,11 @@ export class OfficeWorld {
     bird.perch = spot;
     bird.group.position.set(spot.x, spot.y, spot.z);
     bird.group.rotation.y = bird.rng() * Math.PI * 2;
-    bird.timer = 3 + bird.rng() * 7;
+    bird.group.rotation.z = 0;
+    bird.hopT = -1;
+    bird.hopTimer = 0.4 + bird.rng() * 0.8;
+    // Lawn landings linger: the bird is looking for food down there.
+    bird.timer = spot.ground ? 6 + bird.rng() * 8 : 3 + bird.rng() * 7;
   }
 
   /** Cruising birds mostly pick another air point; sometimes one drops onto a perch. */
@@ -1270,6 +1313,45 @@ export class OfficeWorld {
       bird.perch = null;
       bird.target.copy(this.birdWaypoint(bird.rng));
     }
+  }
+
+  /** Leaves a perch, startled or done resting, and climbs to a fresh waypoint. */
+  private takeOff(bird: BirdRef): void {
+    bird.state = 'fly';
+    bird.perch = null;
+    bird.hopT = -1;
+    bird.group.rotation.z = 0;
+    bird.target.copy(this.birdWaypoint(bird.rng));
+  }
+
+  /** Short hops between pecks while the bird is feeding on the ground. */
+  private forage(bird: BirdRef, dt: number): void {
+    if (bird.hopT >= 0) {
+      bird.hopT = Math.min(1, bird.hopT + dt * 4);
+      bird.group.position.lerpVectors(bird.hopFrom, bird.hopTo, bird.hopT);
+      bird.group.position.y += Math.sin(bird.hopT * Math.PI) * 0.16;
+      if (bird.hopT >= 1 && bird.perch) {
+        bird.hopT = -1;
+        bird.perch.x = bird.hopTo.x;
+        bird.perch.z = bird.hopTo.z;
+        bird.hopTimer = 0.6 + bird.rng() * 1.4;
+      }
+      return;
+    }
+
+    bird.hopTimer -= dt;
+    if (bird.hopTimer > 0) return;
+
+    const angle = bird.rng() * Math.PI * 2;
+    const distance = 0.35 + bird.rng() * 0.55;
+    bird.hopFrom.copy(bird.group.position);
+    bird.hopTo.set(
+      bird.group.position.x + Math.cos(angle) * distance,
+      bird.group.position.y,
+      bird.group.position.z + Math.sin(angle) * distance,
+    );
+    bird.group.rotation.y = Math.atan2(-Math.sin(angle), Math.cos(angle));
+    bird.hopT = 0;
   }
 
   private buildBirds(): void {
@@ -1307,6 +1389,10 @@ export class OfficeWorld {
         timer: 0,
         phase: rng() * Math.PI * 2,
         rng,
+        hopT: -1,
+        hopTimer: 0,
+        hopFrom: new THREE.Vector3(),
+        hopTo: new THREE.Vector3(),
       };
 
       // Some birds start on the lawn or in a tree, so the scene opens with both.
@@ -1355,6 +1441,7 @@ export class OfficeWorld {
       x,
       y: GARDEN_TOP + canopy.position.y + 0.12 + radius * 0.82 + 0.06,
       z,
+      ground: false,
     });
 
     g.add(canopy);
@@ -1384,23 +1471,229 @@ export class OfficeWorld {
     return g;
   }
 
-  private cloud(scale: number): THREE.Group {
+  /** Fenced corner paddock with a doghouse, a cat bed and room to run. */
+  private buildPen(): void {
+    const w = PEN.x1 - PEN.x0;
+    const d = PEN.z1 - PEN.z0;
+    const hw = w / 2;
+    const hd = d / 2;
     const g = new THREE.Group();
-    const puffs: [number, number, number, number][] = [
-      [0, 0, 0, 1],
-      [1.05, -0.18, 0.15, 0.72],
-      [-1.0, -0.22, -0.1, 0.66],
-      [0.4, 0.42, -0.15, 0.62],
-      [-0.45, 0.3, 0.2, 0.5],
-    ];
-    for (const [px, py, pz, size] of puffs) {
-      const puff = ball(0.85 * size * scale, this.cloudMaterial, px * scale, py * scale, pz * scale, 12);
-      puff.scale.set(1.35, 0.62, 1.0);
-      puff.castShadow = false;
-      puff.receiveShadow = false;
-      g.add(puff);
+    g.position.set((PEN.x0 + PEN.x1) / 2, GARDEN_TOP, (PEN.z0 + PEN.z1) / 2);
+    this.surroundings.add(g);
+
+    const sand = mat(0xd9c6a0, { roughness: 1 });
+    g.add(rbox(w, 0.06, d, 0.4, sand, 0, 0.045, 0));
+
+    const postAt = (x: number, z: number) => {
+      g.add(rbox(0.09, 0.62, 0.09, 0.02, M.oak, x, 0.31, z));
+    };
+    const railBetween = (ax: number, az: number, bx: number, bz: number) => {
+      const length = Math.hypot(bx - ax, bz - az);
+      for (const y of [0.24, 0.47]) {
+        const rail = box(length, 0.055, 0.055, M.oakDark, (ax + bx) / 2, y, (az + bz) / 2);
+        rail.rotation.y = Math.atan2(-(bz - az), bx - ax);
+        g.add(rail);
+      }
+    };
+
+    const gate = 0.95;
+    for (const z of [-hd, hd]) {
+      for (const x of [-hw, 0, hw]) postAt(x, z);
+      railBetween(-hw, z, 0, z);
+      railBetween(0, z, hw, z);
     }
-    return g;
+    for (const z of [-hd, -gate, gate, hd]) postAt(hw, z);
+    railBetween(hw, -hd, hw, 0);
+    railBetween(hw, 0, hw, hd);
+    // The side facing the building keeps a gate-sized gap.
+    for (const z of [-gate, gate]) postAt(-hw, z);
+    railBetween(-hw, -hd, -hw, -gate);
+    railBetween(-hw, gate, -hw, hd);
+
+    // Doghouse in the far corner.
+    const house = new THREE.Group();
+    house.position.set(hw - 1.2, 0, hd - 1.05);
+    const wood = mat(0xb58355, { roughness: 0.9 });
+    house.add(rbox(1.35, 0.9, 1.05, 0.06, wood, 0, 0.45, 0));
+    house.add(box(0.46, 0.56, 0.03, mat(0x2c2622, { roughness: 1 }), -0.69, 0.36, 0));
+    const roof = new THREE.Mesh(
+      new THREE.ConeGeometry(0.98, 0.58, 4),
+      mat(0xb4563f, { roughness: 0.85, flatShading: true }),
+    );
+    roof.position.set(0, 1.18, 0);
+    roof.rotation.y = Math.PI / 4;
+    roof.scale.set(1.05, 1, 0.92);
+    roof.castShadow = true;
+    roof.receiveShadow = true;
+    house.add(roof);
+    g.add(house);
+
+    // Cat bed, scratch post and bowls.
+    g.add(cyl(0.42, 0.4, 0.11, mat(0xd8795e, { roughness: 0.95 }), -hw + 1.1, 0.115, hd - 1.0, 18));
+    g.add(cyl(0.31, 0.31, 0.07, mat(0xf1e4cc, { roughness: 1 }), -hw + 1.1, 0.2, hd - 1.0, 18));
+
+    const post = new THREE.Group();
+    post.position.set(-hw + 1.0, 0, -hd + 1.0);
+    post.add(rbox(0.58, 0.08, 0.58, 0.06, M.oakPale, 0, 0.04, 0));
+    post.add(cyl(0.06, 0.07, 1.05, mat(0xcdbb9a, { roughness: 1 }), 0, 0.56, 0, 8));
+    post.add(rbox(0.5, 0.06, 0.5, 0.05, M.oakPale, 0, 1.1, 0));
+    post.add(ball(0.06, mat(0xd8795e), 0.24, 0.92, 0.18, 8));
+    g.add(post);
+
+    g.add(cyl(0.14, 0.12, 0.07, mat(0x9fb9c9, { roughness: 0.4 }), -hw + 0.55, 0.08, -0.5, 12));
+    g.add(cyl(0.14, 0.12, 0.07, mat(0x9b7a56, { roughness: 1 }), -hw + 0.55, 0.08, 0.25, 12));
+    g.add(ball(0.13, mat(0xc9d05e, { roughness: 0.95 }), 0.6, 0.17, -1.3, 10));
+
+    this.addPets();
+  }
+
+  private addPets(): void {
+    const dogParts = this.dogModel();
+    const dog = this.petRef('dog', dogParts, mulberry32(0x51ed), 1.35);
+    dog.group.position.set(PEN.x1 - 2.7, GARDEN_TOP, PEN.z1 - 2.5);
+    dog.heading = -Math.PI / 2;
+    dog.group.rotation.y = dog.heading;
+    this.surroundings.add(dog.group);
+    this.pets.push(dog);
+
+    const catParts = this.catModel();
+    const cat = this.petRef('cat', catParts, mulberry32(0xc47), 1.15);
+    cat.group.position.set(PEN.x0 + 1.8, GARDEN_TOP, PEN.z0 + 1.2);
+    cat.heading = Math.PI / 2;
+    cat.group.rotation.y = cat.heading;
+    this.surroundings.add(cat.group);
+    this.pets.push(cat);
+
+    this.dogCount = 1;
+    this.catCount = 1;
+  }
+
+  private petRef(
+    kind: 'cat' | 'dog',
+    parts: { group: THREE.Group; legs: THREE.Object3D[]; tail: THREE.Object3D },
+    rng: () => number,
+    scale: number,
+  ): PetRef {
+    parts.group.scale.setScalar(scale);
+    return {
+      group: parts.group,
+      kind,
+      legs: parts.legs,
+      tail: parts.tail,
+      target: new THREE.Vector2(),
+      state: 'idle',
+      prey: null,
+      timer: 1 + rng() * 2,
+      cooldown: 4 + rng() * 4,
+      heading: 0,
+      stride: 0,
+      phase: rng() * Math.PI * 2,
+      rng,
+    };
+  }
+
+  private dogModel(): { group: THREE.Group; legs: THREE.Object3D[]; tail: THREE.Object3D } {
+    const g = new THREE.Group();
+    const fur = mat(0xc9945f, { roughness: 0.95 });
+    const cream = mat(0xe8d6b8, { roughness: 0.95 });
+    const dark = mat(0x332c28, { roughness: 0.7 });
+
+    g.add(rbox(0.95, 0.36, 0.4, 0.17, fur, 0, 0.52, 0));
+    const head = new THREE.Group();
+    head.position.set(0.5, 0.68, 0);
+    head.add(ball(0.2, fur, 0, 0, 0, 10));
+    head.add(rbox(0.24, 0.16, 0.18, 0.06, cream, 0.16, -0.05, 0));
+    head.add(ball(0.05, dark, 0.29, -0.02, 0, 8));
+    for (const side of [-1, 1]) {
+      const ear = rbox(0.12, 0.2, 0.07, 0.03, fur, -0.03, 0.15, side * 0.14);
+      ear.rotation.z = -0.28;
+      head.add(ear);
+      head.add(ball(0.03, dark, 0.16, 0.06, side * 0.1, 6));
+    }
+    g.add(head);
+    g.add(box(0.07, 0.18, 0.42, mat(0xb44a3a, { roughness: 0.8 }), 0.36, 0.62, 0));
+
+    const legs: THREE.Object3D[] = [];
+    for (const [x, z] of [
+      [0.33, 0.15],
+      [0.33, -0.15],
+      [-0.33, 0.15],
+      [-0.33, -0.15],
+    ] as [number, number][]) {
+      const pivot = new THREE.Group();
+      pivot.position.set(x, 0.42, z);
+      pivot.add(box(0.11, 0.42, 0.11, cream, 0, -0.21, 0));
+      g.add(pivot);
+      legs.push(pivot);
+    }
+
+    const tail = new THREE.Group();
+    tail.position.set(-0.46, 0.66, 0);
+    tail.rotation.z = -0.55;
+    tail.add(box(0.34, 0.07, 0.07, fur, -0.17, 0, 0));
+    g.add(tail);
+
+    g.traverse((object) => {
+      if (object instanceof THREE.Mesh) {
+        object.castShadow = true;
+        object.receiveShadow = true;
+      }
+    });
+    return { group: g, legs, tail };
+  }
+
+  private catModel(): { group: THREE.Group; legs: THREE.Object3D[]; tail: THREE.Object3D } {
+    const g = new THREE.Group();
+    const fur = mat(0xc98a5a, { roughness: 0.95 });
+    const cream = mat(0xf0e2c8, { roughness: 0.95 });
+    const dark = mat(0x2f2a26, { roughness: 0.7 });
+
+    g.add(rbox(0.72, 0.28, 0.3, 0.13, fur, 0, 0.36, 0));
+    const head = new THREE.Group();
+    head.position.set(0.4, 0.5, 0);
+    head.add(ball(0.16, fur, 0, 0, 0, 10));
+    head.add(rbox(0.15, 0.1, 0.13, 0.04, cream, 0.13, -0.04, 0));
+    head.add(ball(0.025, mat(0xd8795e), 0.2, -0.01, 0, 6));
+    for (const side of [-1, 1]) {
+      const ear = new THREE.Mesh(
+        new THREE.ConeGeometry(0.075, 0.16, 4),
+        mat(0xc98a5a, { roughness: 0.95, flatShading: true }),
+      );
+      ear.position.set(-0.01, 0.14, side * 0.1);
+      ear.rotation.y = Math.PI / 4;
+      ear.castShadow = true;
+      head.add(ear);
+      head.add(ball(0.024, dark, 0.13, 0.04, side * 0.075, 6));
+    }
+    g.add(head);
+
+    const legs: THREE.Object3D[] = [];
+    for (const [x, z] of [
+      [0.24, 0.1],
+      [0.24, -0.1],
+      [-0.24, 0.1],
+      [-0.24, -0.1],
+    ] as [number, number][]) {
+      const pivot = new THREE.Group();
+      pivot.position.set(x, 0.3, z);
+      pivot.add(box(0.075, 0.3, 0.075, cream, 0, -0.15, 0));
+      g.add(pivot);
+      legs.push(pivot);
+    }
+
+    const tail = new THREE.Group();
+    tail.position.set(-0.34, 0.46, 0);
+    tail.rotation.z = -1.05;
+    tail.add(box(0.5, 0.045, 0.045, fur, -0.25, 0, 0));
+    g.add(tail);
+
+    g.traverse((object) => {
+      if (object instanceof THREE.Mesh) {
+        object.castShadow = true;
+        object.receiveShadow = true;
+      }
+    });
+    return { group: g, legs, tail };
   }
 
   // ------------------------------------------------------------- shared ----
@@ -1568,12 +1861,185 @@ export class OfficeWorld {
     const glow = this.sunGlow.material as THREE.SpriteMaterial;
     glow.color.copy(this.sun.color);
     glow.opacity = up ? 0.3 + 0.25 * (1 - smoothstep(0.02, 0.4, altitude)) : 0;
+  }
 
-    const cloudColor = new THREE.Color(0x2f3d55).lerp(new THREE.Color(0xffffff), day);
-    cloudColor.lerp(new THREE.Color(0xffd2b8), cycle.twilightFactor * 0.4);
-    this.cloudMaterial.color.copy(cloudColor);
-    this.cloudMaterial.emissive.copy(cloudColor);
-    this.cloudMaterial.emissiveIntensity = 0.12 + 0.14 * cycle.nightFactor;
+  /** Idle pets pick a new spot, wander there, and now and then burst into a chase. */
+  private updatePets(dt: number, t: number): void {
+    const cat = this.pets.find((pet) => pet.kind === 'cat');
+    const dog = this.pets.find((pet) => pet.kind === 'dog');
+
+    for (const pet of this.pets) pet.cooldown = Math.max(0, pet.cooldown - dt);
+
+    const groundBird = this.birds.find(
+      (bird) =>
+        bird.state === 'perch' &&
+        bird.perch?.ground === true &&
+        bird.group.position.x > PEN.x0 - 0.4 &&
+        bird.group.position.x < PEN.x1 + 0.4 &&
+        bird.group.position.z > PEN.z0 - 0.4 &&
+        bird.group.position.z < PEN.z1 + 0.4,
+    );
+    const hunting = this.pets.some((pet) => pet.state === 'chase' && pet.prey);
+    if (groundBird && !hunting) {
+      // A bird on the sand wins over whatever the pets were doing; whichever
+      // pet is free (or closest to free) goes after it.
+      for (const pet of this.pets) {
+        if ((pet.state === 'chase' || pet.state === 'flee') && !pet.prey) this.endChase(pet);
+      }
+      const hunter = this.pets.find((pet) => pet.cooldown <= 0) ?? this.pets[0];
+      if (hunter) {
+        hunter.state = 'chase';
+        hunter.prey = groundBird;
+        hunter.timer = 3.5;
+        hunter.cooldown = 7 + hunter.rng() * 5;
+        this.chaseCount += 1;
+        this.birdChaseCount += 1;
+      }
+    } else if (!this.petsChasing && cat && dog) {
+      const gap = cat.group.position.distanceTo(dog.group.position);
+      if (gap < 2.6 && cat.cooldown <= 0 && dog.cooldown <= 0) this.startChase(cat, dog);
+    }
+
+    for (const pet of this.pets) this.stepPet(pet, dt, t);
+  }
+
+  private startChase(cat: PetRef, dog: PetRef): void {
+    const dogChases = dog.rng() < 0.5;
+    const chaser = dogChases ? dog : cat;
+    const runner = dogChases ? cat : dog;
+    const duration = 3 + chaser.rng() * 2.4;
+    chaser.state = 'chase';
+    chaser.timer = duration;
+    runner.state = 'flee';
+    runner.timer = duration;
+    chaser.cooldown = 12 + chaser.rng() * 6;
+    runner.cooldown = 10 + runner.rng() * 6;
+    this.chaseCount += 1;
+  }
+
+  private stepPet(pet: PetRef, dt: number, t: number): void {
+    pet.timer -= dt;
+    const other = this.pets.find((candidate) => candidate !== pet);
+
+    if (pet.state === 'chase' && pet.prey) {
+      if (pet.prey.state !== 'perch' || pet.prey.perch?.ground !== true) {
+        // The bird got away; give up and sniff around again.
+        this.endChase(pet);
+      } else {
+        pet.target.set(pet.prey.group.position.x, pet.prey.group.position.z);
+      }
+      if (pet.timer <= 0) this.endChase(pet);
+    } else if (pet.state === 'chase' && other) {
+      pet.target.set(other.group.position.x, other.group.position.z);
+      if (pet.timer <= 0) this.endChase(pet);
+    } else if (pet.state === 'flee' && other) {
+      const dx = pet.group.position.x - other.group.position.x;
+      const dz = pet.group.position.z - other.group.position.z;
+      const length = Math.hypot(dx, dz) || 1;
+      pet.target.set(
+        pet.group.position.x + (dx / length) * 3,
+        pet.group.position.z + (dz / length) * 3,
+      );
+      this.clampPetTarget(pet.target);
+      if (pet.timer <= 0) this.endChase(pet);
+    } else if (pet.state === 'idle' && pet.timer <= 0) {
+      pet.state = 'wander';
+      pet.target.copy(this.penTarget(pet.rng));
+      pet.timer = 7;
+    }
+
+    const speed =
+      pet.state === 'chase'
+        ? 3.2
+        : pet.state === 'flee'
+          ? 3.5
+          : pet.state === 'wander'
+            ? pet.kind === 'dog'
+              ? 1.05
+              : 0.9
+            : 0;
+
+    const dx = pet.target.x - pet.group.position.x;
+    const dz = pet.target.y - pet.group.position.z;
+    const distance = Math.hypot(dx, dz);
+    let moving = false;
+    if (speed > 0 && distance > 0.05) {
+      const step = Math.min(speed * dt, distance);
+      const nx = dx / distance;
+      const nz = dz / distance;
+      const desired = Math.atan2(-nz, nx);
+      let turn = desired - pet.heading;
+      while (turn > Math.PI) turn -= Math.PI * 2;
+      while (turn < -Math.PI) turn += Math.PI * 2;
+      pet.heading += THREE.MathUtils.clamp(turn, -9 * dt, 9 * dt);
+      pet.group.rotation.y = pet.heading;
+      pet.group.position.x += nx * step;
+      pet.group.position.z += nz * step;
+      this.keepInPen(pet);
+      pet.stride += step * 8;
+      moving = true;
+    }
+
+    if (pet.state === 'wander' && distance < 0.18) {
+      pet.state = 'idle';
+      pet.timer = 0.8 + pet.rng() * 2.2;
+    }
+
+    const running = pet.state === 'chase' || pet.state === 'flee';
+    const swing = moving ? Math.sin(pet.stride) * (running ? 0.7 : 0.42) : 0;
+    pet.legs.forEach((leg, index) => {
+      leg.rotation.z = swing * (index === 0 || index === 3 ? 1 : -1);
+    });
+    pet.tail.rotation.y =
+      Math.sin(t * (pet.kind === 'dog' ? 9 : 4.5) + pet.phase) * (pet.kind === 'dog' ? 0.55 : 0.4);
+    pet.group.position.y = GARDEN_TOP + (moving ? Math.abs(Math.sin(pet.stride)) * 0.03 : 0);
+  }
+
+  private endChase(pet: PetRef): void {
+    pet.state = 'idle';
+    pet.prey = null;
+    pet.timer = 0.5 + pet.rng() * 1.2;
+  }
+
+  /** Keep a pet on the sand and slide it out of the doghouse when it clips a wall. */
+  private keepInPen(pet: PetRef): void {
+    const { position } = pet.group;
+    position.x = THREE.MathUtils.clamp(position.x, PEN.x0 + 0.9, PEN.x1 - 0.9);
+    position.z = THREE.MathUtils.clamp(position.z, PEN.z0 + 0.9, PEN.z1 - 0.9);
+    const insideHouse =
+      position.x > HOUSE.x0 && position.x < HOUSE.x1 && position.z > HOUSE.z0 && position.z < HOUSE.z1;
+    if (!insideHouse) return;
+
+    const exits: [number, number][] = [
+      [HOUSE.x0, position.z],
+      [HOUSE.x1, position.z],
+      [position.x, HOUSE.z0],
+      [position.x, HOUSE.z1],
+    ];
+    const nearest = exits.reduce((best, spot) =>
+      Math.hypot(spot[0] - position.x, spot[1] - position.z) <
+      Math.hypot(best[0] - position.x, best[1] - position.z)
+        ? spot
+        : best,
+    );
+    position.x = nearest[0];
+    position.z = nearest[1];
+  }
+
+  private clampPetTarget(target: THREE.Vector2): void {
+    target.x = THREE.MathUtils.clamp(target.x, PEN.x0 + 0.9, PEN.x1 - 0.9);
+    target.y = THREE.MathUtils.clamp(target.y, PEN.z0 + 0.9, PEN.z1 - 0.9);
+  }
+
+  private penTarget(rng: () => number): THREE.Vector2 {
+    for (let tries = 0; tries < 24; tries += 1) {
+      const x = PEN.x0 + 1 + rng() * (PEN.x1 - PEN.x0 - 2);
+      const z = PEN.z0 + 1 + rng() * (PEN.z1 - PEN.z0 - 2);
+      const inHouse =
+        x > HOUSE.x0 - 0.35 && x < HOUSE.x1 + 0.35 && z > HOUSE.z0 - 0.35 && z < HOUSE.z1 + 0.35;
+      if (!inHouse) return new THREE.Vector2(x, z);
+    }
+    return new THREE.Vector2((PEN.x0 + PEN.x1) / 2, (PEN.z0 + PEN.z1) / 2);
   }
 
   update(dt: number, workingSpots: ReadonlySet<string>, gaming: boolean): void {
@@ -1629,9 +2095,7 @@ export class OfficeWorld {
       plant.node.rotation.z = Math.sin(t * 0.6 + plant.phase) * 0.02;
     }
 
-    for (const cloud of this.clouds) {
-      cloud.group.position.x = cloud.baseX + Math.sin(t * 0.03 + cloud.phase) * cloud.sway;
-    }
+    this.updatePets(dt, t);
 
     for (const bird of this.birds) {
       if (bird.state === 'perch') {
@@ -1639,11 +2103,25 @@ export class OfficeWorld {
         // Wings tuck up against the body instead of beating.
         bird.wings[0]!.rotation.x = -1.25;
         bird.wings[1]!.rotation.x = 1.25;
-        if (bird.timer <= 0) {
-          bird.state = 'fly';
-          bird.perch = null;
-          bird.target.copy(this.birdWaypoint(bird.rng));
+
+        if (bird.perch?.ground) {
+          // Feeding on the lawn: peck between hops, and bolt if a pet closes in.
+          const peck = Math.sin(t * 7 + bird.phase);
+          bird.group.rotation.z = peck > 0.55 ? -0.34 * ((peck - 0.55) / 0.45) : 0;
+          const threatened = this.pets.some(
+            (pet) => pet.group.position.distanceTo(bird.group.position) < 1.4,
+          );
+          if (threatened) {
+            this.birdEscapeCount += 1;
+            this.takeOff(bird);
+            continue;
+          }
+          this.forage(bird, dt);
+        } else {
+          bird.group.rotation.z = 0;
         }
+
+        if (bird.timer <= 0) this.takeOff(bird);
         continue;
       }
 

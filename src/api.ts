@@ -47,10 +47,23 @@ const ROLE_SIGNAL: Record<BusyRole, AgentSignal> = {
 /** Read-only view of what the scene put around the building, for live checks. */
 export interface ScenerySnapshot {
   trees: number;
-  clouds: number;
   birds: number;
   /** Birds resting on a tree or the lawn right now. */
   perched: number;
+  /** Of those, the ones foraging on the ground. */
+  groundBirds: number;
+  /** Foraging birds inside the pet pen, where a chase can start. */
+  penBirds: number;
+  /** The pen pets and their chase state, for live checks. */
+  pets: {
+    cats: number;
+    dogs: number;
+    chasing: boolean;
+    chases: number;
+    /** Chases aimed at a lawn bird, and birds that took off because of one. */
+    birdChases: number;
+    escapes: number;
+  };
   /** Sun disc in normalised device coordinates; `aligned` means it sits on the light ray. */
   sun: { x: number; y: number; visible: boolean; aligned: boolean };
 }
