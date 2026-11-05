@@ -4,6 +4,19 @@ Semua perubahan penting pada VirtOffice dicatat di sini. Format mengikuti
 [Keep a Changelog](https://keepachangelog.com/id/1.1.0/) dan versi mengikuti
 [Semantic Versioning](https://semver.org/lang/id/).
 
+## [0.20.0] - 2026-11-05
+
+### Berubah
+
+- Papan klip File List sekarang bekerja tanpa suara. Menandai Copy/Cut tidak lagi menulis pesan apa pun dan tidak lagi memunculkan bar "chip" di bawah toolbar — yang tersisa cuma baris yang redup (untuk Cut) dan tombol Tempel yang ikut aktif. Panel chip beserta seluruh pesannya (`clipModeCopy`, `clipModeCut`, `clipLabel`, `clipHint`, `clipCopied`, `clipCut`, `clipCleared`) dihapus dari `src/style.css` dan `src/i18n/ns/files.ts`; hasil copy/move yang sukses juga diam (`copiedTo`/`movedTo` dihapus, `transferItem()` tidak menulis pesan lagi).
+- Tiap kegagalan di File List tampil sebagai dialog popup, bukan satu baris teks yang mudah terlewat: `showError()` di `src/chat/files.ts` memasang shell `.modal` yang sudah ada (milik folder picker) dengan pesan plus satu tombol **Tutup**; `Esc` atau klik backdrop menutupnya. Dipakai di 10 titik — nama path ditolak server, rename/hapus/pindah gagal, tempel ke folder asal, pratinjau file yang hilang, error pencarian, gagal baca file, gagal salin text, dan batch unggah yang ditolak. Cuma satu kartu yang boleh muncul sekaligus supaya seretan 200 file tidak menumpuk 200 dialog.
+- `noSelection` (belum ada baris yang diklik saat shortcut papan klip ditekan) ikut pindah ke dialog karena ia memang penolakan, bukan informasi.
+
+### Ditambahkan
+
+- Kelas `.modal__card--alert`: kartu dialog selebar `min(420px, 100%)` dengan tombol **Tutup** rata kanan (`files__error-ok`), khusus untuk pesan satu-dua kalimat. Ditulis dua kelas (`.modal__card.modal__card--alert`) supaya menang atas definisi `.modal__card` yang letaknya jauh di bawah di `src/style.css`.
+- Teks dua bahasa `files.errTitle` ("Gagal" / "Failed") dan `files.errClose` ("Tutup" / "Close").
+
 ## [0.19.0] - 2026-11-05
 
 ### Ditambahkan

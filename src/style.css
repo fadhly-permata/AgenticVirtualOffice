@@ -902,72 +902,24 @@ body.chat-open .launcher,
   color: var(--err, #f6b39f);
 }
 
-/* Baris penanda Copy/Cut: menempel ke folder yang dipilih lewat tombol Tempel. */
-.files__clip {
-  display: flex;
-  flex: none;
-  align-items: center;
-  gap: 7px;
-  padding: 6px 11px;
-  border-bottom: 1px solid var(--border, rgba(255, 255, 255, 0.07));
-  background: var(--accent-soft, rgba(226, 180, 74, 0.1));
-  color: var(--ink-dim);
-  font-size: 11.5px;
+/* Isi dialog kegagalan File List: path panjang harus bisa melingkar, bukan memotong. */
+.files__error {
+  margin: 0;
+  color: var(--ink-dim, rgba(244, 239, 230, 0.7));
+  font-size: 12.5px;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
 }
 
-.files__clip[hidden] {
-  display: none;
+/* Satu kalimat gagal tidak butuh kartu selebar browser folder. Dua kelas supaya
+   menang atas .modal__card yang definisinya ada jauh di bawah blok ini. */
+.modal__card.modal__card--alert {
+  width: min(420px, 100%);
 }
 
-.files__clip > svg {
-  flex: none;
-  color: var(--accent);
-}
-
-.files__clip-name {
-  overflow: hidden;
-  color: var(--ink);
-  font-size: 12px;
-  font-weight: 600;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.files__clip-hint {
-  flex: 1;
-  min-width: 0;
-  overflow: hidden;
-  color: var(--ink-faint, rgba(244, 239, 230, 0.45));
-  text-align: right;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.files__clip-paste,
-.files__clip-clear {
-  flex: none;
-  padding: 4px 10px;
-  border: 1px solid var(--border-strong, rgba(255, 255, 255, 0.14));
-  border-radius: 8px;
-  background: var(--glass, rgba(255, 255, 255, 0.06));
-  color: var(--ink);
-  font: inherit;
-  font-size: 12px;
-  cursor: pointer;
-}
-
-.files__clip-paste {
-  border-color: var(--accent, rgba(226, 180, 74, 0.55));
-  background: var(--accent-soft, rgba(226, 180, 74, 0.16));
-  color: var(--accent);
-}
-
-.files__clip-clear {
-  display: grid;
-  place-items: center;
-  width: 24px;
-  height: 24px;
-  padding: 0;
+.modal__card--alert .files__error-ok {
+  align-self: flex-end;
+  min-width: 104px;
 }
 
 .files__list {

@@ -207,9 +207,6 @@ export function mountFiles(container: HTMLElement, hooks: FilesHooks = {}): File
   });
   pasteButton.disabled = true;
 
-  const clipBar = el('div', 'files__clip');
-  clipBar.hidden = true;
-
   const bar = el('div', 'files__bar');
   bar.append(searchForm, toolRow);
 
@@ -238,7 +235,7 @@ export function mountFiles(container: HTMLElement, hooks: FilesHooks = {}): File
   const split = splitHandle(panes, viewer);
   panes.append(list, split.el, viewer);
 
-  root.append(rootBar, bar, clipBar, messageEl, promptEl, panes);
+  root.append(rootBar, bar, messageEl, promptEl, panes);
   container.append(root);
   setMode('name');
   paintSearch();
@@ -259,6 +256,53 @@ export function mountFiles(container: HTMLElement, hooks: FilesHooks = {}): File
   function paintMessage(): void {
     messageEl.textContent = message;
     messageEl.hidden = !message;
+  }
+
+  /* ------------------------------------ dialog gagal ------------------------------------ */
+
+  let errorModal: HTMLElement | null = null;
+
+  function closeError(): void {
+    if (!errorModal) return;
+    errorModal.remove();
+    errorModal = null;
+    document.body.classList.remove('modal-open');
+    window.removeEventListener('keydown', onErrorKey);
+  }
+
+  function onErrorKey(event: KeyboardEvent): void {
+    if (event.key === 'Escape') closeError();
+  }
+
+  /**
+   * Kegagalan ditampilkan sebagai dialog, bukan baris teks yang mudah terlewat.
+   * Shell-nya kelas .modal milik folder picker supaya permukaannya sama.
+   */
+  function showError(text: string): void {
+    if (!text) return;
+    // Satu kartu per kali: seretan 200 file yang gagal tidak boleh menumpuk 200 dialog.
+    closeError();
+    const modal = el('div', 'modal');
+    const backdrop = el('div', 'modal__backdrop');
+    const card = el('section', 'modal__card modal__card--alert');
+    card.setAttribute('role', 'dialog');
+    card.setAttribute('aria-modal', 'true');
+    card.setAttribute('aria-labelledby', 'files-error-title');
+    const head = el('header', 'modal__head');
+    const title = el('h2', '', t('files.errTitle'));
+    title.id = 'files-error-title';
+    head.append(title);
+    const ok = el('button', 'button files__error-ok', t('files.errClose'));
+    ok.type = 'button';
+    ok.addEventListener('click', closeError);
+    backdrop.addEventListener('click', closeError);
+    card.append(head, el('p', 'files__error', text), ok);
+    modal.append(backdrop, card);
+    document.body.append(modal);
+    document.body.classList.add('modal-open');
+    window.addEventListener('keydown', onErrorKey);
+    errorModal = modal;
+    ok.focus();
   }
 
   function applySplit(): void {
@@ -319,7 +363,7 @@ export function mountFiles(container: HTMLElement, hooks: FilesHooks = {}): File
     try {
       await action.submit(value);
     } catch (error) {
-      message = describeError(error);
+      showError(describeError(error));
     } finally {
       busy = false;
       paintMessage();
@@ -335,8 +379,7 @@ export function mountFiles(container: HTMLElement, hooks: FilesHooks = {}): File
 
   function askCreate(kind: FileKind, dir = targetDir()): void {
     if (!workspace) {
-      message = t('files.needWorkspace');
-      paintMessage();
+      showError(t('files.needWorkspace'));
       return;
     }
     prompt = {
@@ -419,44 +462,18 @@ export function mountFiles(container: HTMLElement, hooks: FilesHooks = {}): File
     }
   }
 
-  function renderClip(): void {
-    clipBar.textContent = '';
-    clipBar.hidden = !clip;
-    if (!clip) return;
-    const item = clip;
-    clipBar.append(icon(item.cut ? ICON.cut : ICON.copy, 13));
-    clipBar.append(
-      el(
-        'span',
-        'files__clip-name',
-        t('files.clipLabel', { mode: t(item.cut ? 'files.clipModeCut' : 'files.clipModeCopy'), name: item.name })
-      )
-    );
-    clipBar.append(el('span', 'files__clip-hint', t('files.clipHint')));
-
-    const paste = el('button', 'files__clip-paste', t('menu.paste'));
-    paste.type = 'button';
-    paste.addEventListener('click', () => void transferItem(item, targetDir()));
-    const clear = iconButton(t('menu.clearClip'), ICON.close, clearClip);
-    clear.className = 'files__clip-clear';
-    clipBar.append(paste, clear);
-    paintClipMarks();
-    paintTools();
-  }
-
+  /** Menandai tanpa suara: yang tersisa cuma baris yang redup dan tombol Tempel yang aktif. */
   function markClip(entry: TreeEntry, cut: boolean): void {
     clip = { path: entry.path, name: entry.name, dir: entry.dir, cut };
-    renderClip();
-    message = t(cut ? 'files.clipCut' : 'files.clipCopied', { name: entry.name });
-    paintMessage();
+    paintClipMarks();
+    paintTools();
   }
 
   function clearClip(): void {
     if (!clip) return;
     clip = null;
-    renderClip();
-    message = t('files.clipCleared');
-    paintMessage();
+    paintClipMarks();
+    paintTools();
   }
 
   /** Pindah = rename lintas folder, salin = endpoint copy; keduanya pakai path relatif. */
@@ -464,8 +481,7 @@ export function mountFiles(container: HTMLElement, hooks: FilesHooks = {}): File
     if (busy) return;
     const to = dir ? `${dir}/${item.name}` : item.name;
     if (item.cut && to === item.path) {
-      message = t('files.alreadyThere');
-      paintMessage();
+      showError(t('files.alreadyThere'));
       return;
     }
     busy = true;
@@ -481,9 +497,8 @@ export function mountFiles(container: HTMLElement, hooks: FilesHooks = {}): File
       reveal(done.to);
       invalidate();
       await redraw();
-      message = t(item.cut ? 'files.movedTo' : 'files.copiedTo', { from: item.path, to: done.to });
     } catch (error) {
-      message = describeError(error);
+      showError(describeError(error));
     } finally {
       busy = false;
       paintMessage();
@@ -497,8 +512,7 @@ export function mountFiles(container: HTMLElement, hooks: FilesHooks = {}): File
   function markFromKeys(cut: boolean): boolean {
     const entry = selectedEntry();
     if (!entry) {
-      message = t('files.noSelection');
-      paintMessage();
+      showError(t('files.noSelection'));
       return false;
     }
     markClip(entry, cut);
@@ -664,10 +678,11 @@ export function mountFiles(container: HTMLElement, hooks: FilesHooks = {}): File
     const notes: string[] = [];
     if (done.length === 1) notes.push(t('files.uploadedOne', { name: done[0] }));
     if (done.length > 1) notes.push(t('files.uploadedMany', { count: done.length }));
-    if (failed.length) notes.push(t('files.uploadFailed', { names: failed.join(', '), reason }));
     if (drop.capped) notes.push(t('files.uploadCapped', { count: MAX_DROP_FILES }));
     message = notes.join(' ');
     paintMessage();
+    // Yang gagal tetap lewat dialog: satu baris teks terlalu mudah terlewat di tengah batch.
+    if (failed.length) showError(t('files.uploadFailed', { names: failed.join(', '), reason }));
   }
 
   function bindDragAndDrop(): void {
@@ -970,10 +985,10 @@ export function mountFiles(container: HTMLElement, hooks: FilesHooks = {}): File
     try {
       await navigator.clipboard.writeText(path);
       message = t('files.copiedPath');
+      paintMessage();
     } catch {
-      message = t('viewer.copyFailed');
+      showError(t('viewer.copyFailed'));
     }
-    paintMessage();
   }
 
   function bindContextMenu(): void {
@@ -1142,8 +1157,7 @@ export function mountFiles(container: HTMLElement, hooks: FilesHooks = {}): File
             paintMessage();
           })
           .catch(() => {
-            message = t('viewer.copyFailed');
-            paintMessage();
+            showError(t('viewer.copyFailed'));
           });
       });
 
@@ -1243,8 +1257,9 @@ export function mountFiles(container: HTMLElement, hooks: FilesHooks = {}): File
         rows[target - 1].classList.add('code__row--active');
         body?.scrollTo({ top: Math.max(0, rows[target - 1].offsetTop - 40) });
       } else {
-        message = t('viewer.gotoMissing', { line: Number.isFinite(target) ? target : 0, count: rows.length });
-        paintMessage();
+        showError(
+          t('viewer.gotoMissing', { line: Number.isFinite(target) ? target : 0, count: rows.length })
+        );
       }
       paintFindCount();
       return;
@@ -1496,8 +1511,7 @@ export function mountFiles(container: HTMLElement, hooks: FilesHooks = {}): File
       await redraw();
     } catch (error) {
       if (token !== renderToken) return;
-      message = describeError(error);
-      paintMessage();
+      showError(describeError(error));
     }
   }
 
@@ -1537,8 +1551,7 @@ export function mountFiles(container: HTMLElement, hooks: FilesHooks = {}): File
       paintMessage();
     } catch (error) {
       if (token !== renderToken) return;
-      message = describeError(error);
-      paintMessage();
+      showError(describeError(error));
     }
   }
 
@@ -1548,7 +1561,7 @@ export function mountFiles(container: HTMLElement, hooks: FilesHooks = {}): File
     message = '';
     paintMessage();
     renderPrompt();
-    renderClip();
+    paintTools();
     paintSearchLabels();
 
     if (!workspace) {
