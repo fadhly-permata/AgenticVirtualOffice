@@ -152,6 +152,7 @@ function boot(target: HTMLCanvasElement): void {
       trees: world.treeCount,
       clouds: world.cloudCount,
       birds: world.birdCount,
+      mist: world.mistCount,
       sun: {
         x: Number(projected.x.toFixed(3)),
         y: Number(projected.y.toFixed(3)),

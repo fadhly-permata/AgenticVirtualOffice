@@ -7,6 +7,7 @@ import {
   glowSprite,
   grassNoise,
   idleScreenTexture,
+  mistSprite,
   plasterNoise,
   softShadow,
   tvSlides as createTvSlides,
@@ -161,9 +162,11 @@ export class OfficeWorld {
   treeCount = 0;
   cloudCount = 0;
   birdCount = 0;
+  mistCount = 0;
 
   private readonly sunGlow: THREE.Sprite;
   private readonly cloudMaterial: THREE.MeshStandardMaterial;
+  private readonly mistMaterial: THREE.SpriteMaterial;
   private readonly clouds: CloudRef[] = [];
   private readonly birds: BirdRef[] = [];
   private readonly screens: ScreenRef[] = [];
@@ -235,6 +238,13 @@ export class OfficeWorld {
       roughness: 1,
       metalness: 0,
       flatShading: true,
+    });
+    this.mistMaterial = new THREE.SpriteMaterial({
+      map: mistSprite(),
+      color: 0xc9dae7,
+      transparent: true,
+      opacity: 0.42,
+      depthWrite: false,
     });
     const sunMaterial = new THREE.MeshBasicMaterial({ color: 0xfff1c6, toneMapped: false });
     this.sunDisc = new THREE.Mesh(new THREE.SphereGeometry(SUN_RADIUS, 24, 16), sunMaterial);
@@ -1143,24 +1153,23 @@ export class OfficeWorld {
   }
 
   private buildScenery(): void {
-    // Two staggered rows against the walled sides read as a forest; the two open
-    // sides get one row of shorter trees so the camera keeps its view inside.
+    // One tidy row of three trees per side, set back from the walls so the
+    // garden reads as a clearing. The two open sides stay shorter so the
+    // camera keeps its view inside.
     const rows: [number, number, number, number, number, number, number][] = [
       // x0, z0, x1, z1, count, minHeight, maxHeight
-      [-1.2, -1.3, 27.2, -1.3, 10, 3.6, 4.6],
-      [0.6, -2.5, 25.4, -2.5, 8, 4.4, 5.2],
-      [-1.3, 0.9, -1.3, 22.9, 7, 3.6, 4.6],
-      [-2.5, 2.2, -2.5, 21.6, 6, 4.4, 5.2],
-      [28.2, 1.4, 28.2, 20.4, 7, 2.6, 3.4],
-      [1.6, 23.2, 24.4, 23.2, 8, 2.6, 3.4],
+      [4.0, -2.7, 22.0, -2.7, 3, 3.8, 4.8],
+      [-2.7, 3.5, -2.7, 17.5, 3, 3.8, 4.8],
+      [28.7, 3.5, 28.7, 17.5, 3, 2.8, 3.5],
+      [4.0, 23.7, 22.0, 23.7, 3, 2.8, 3.5],
     ];
     let index = 0;
     for (const [x0, z0, x1, z1, count, minHeight, maxHeight] of rows) {
       for (let step = 0; step < count; step += 1) {
         const at = count > 1 ? step / (count - 1) : 0.5;
         const seed = index + 1;
-        const jitterX = Math.sin(seed * 12.9898) * 0.22;
-        const jitterZ = Math.sin(seed * 78.233) * 0.22;
+        const jitterX = Math.sin(seed * 12.9898) * 0.16;
+        const jitterZ = Math.sin(seed * 78.233) * 0.16;
         const height = minHeight + (maxHeight - minHeight) * (0.5 + 0.5 * Math.sin(seed * 2.4));
         this.surroundings.add(
           this.tree(x0 + (x1 - x0) * at + jitterX, z0 + (z1 - z0) * at + jitterZ, height, index * 1.7),
@@ -1171,15 +1180,14 @@ export class OfficeWorld {
     this.treeCount = index;
 
     const bushes: [number, number, number][] = [
-      [27.5, 4.8, 0.6],
-      [27.7, 11.0, 0.5],
-      [27.5, 16.8, 0.55],
-      [4.6, 22.2, 0.55],
-      [10.2, 22.3, 0.5],
-      [15.8, 22.2, 0.6],
-      [21.4, 22.3, 0.5],
+      [-2.9, -2.9, 0.55],
+      [28.9, -2.9, 0.5],
+      [-2.9, 23.9, 0.5],
+      [28.9, 23.9, 0.55],
     ];
     for (const [x, z, size] of bushes) this.surroundings.add(this.bush(x, z, size));
+
+    this.buildMist();
 
     const clouds: [number, number, number, number][] = [
       [-2, 7.2, -3, 1.05],
@@ -1198,6 +1206,29 @@ export class OfficeWorld {
 
     this.buildBirds();
     this.surroundings.add(this.sunDisc);
+  }
+
+  /** Fog banks hugging the outer rim, so the tree line dissolves into haze. */
+  private buildMist(): void {
+    const rim = GARDEN_MARGIN + 0.8;
+    const spots: [number, number][] = [];
+    for (let x = -3; x <= OFFICE_WIDTH + 3; x += 5.3) {
+      spots.push([x, -rim], [x, OFFICE_DEPTH + rim]);
+    }
+    for (let z = 0.5; z <= OFFICE_DEPTH - 0.5; z += 5) {
+      spots.push([-rim, z], [OFFICE_WIDTH + rim, z]);
+    }
+
+    spots.forEach(([x, z], index) => {
+      const sprite = new THREE.Sprite(this.mistMaterial);
+      const wide = 9 + Math.abs(Math.sin(index * 1.7)) * 1.8;
+      const tall = 3.8 + Math.abs(Math.cos(index * 2.1)) * 1;
+      sprite.scale.set(wide, tall, 1);
+      sprite.position.set(x, 0.5 + Math.sin(index * 0.9) * 0.14, z);
+      sprite.renderOrder = 2;
+      this.surroundings.add(sprite);
+    });
+    this.mistCount = spots.length;
   }
 
   private buildBirds(): void {
@@ -1488,6 +1519,14 @@ export class OfficeWorld {
     this.cloudMaterial.color.copy(cloudColor);
     this.cloudMaterial.emissive.copy(cloudColor);
     this.cloudMaterial.emissiveIntensity = 0.12 + 0.14 * cycle.nightFactor;
+
+    const mistColor = new THREE.Color(0xc9dae7).lerp(
+      new THREE.Color(0x7f95b4),
+      cycle.nightFactor * 0.85,
+    );
+    mistColor.lerp(new THREE.Color(0xffd8c2), cycle.twilightFactor * 0.3);
+    this.mistMaterial.color.copy(mistColor);
+    this.mistMaterial.opacity = 0.42 - 0.06 * cycle.nightFactor;
   }
 
   update(dt: number, workingSpots: ReadonlySet<string>, gaming: boolean): void {

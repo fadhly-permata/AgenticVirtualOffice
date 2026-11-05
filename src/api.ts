@@ -49,6 +49,7 @@ export interface ScenerySnapshot {
   trees: number;
   clouds: number;
   birds: number;
+  mist: number;
   /** Sun disc in normalised device coordinates; `aligned` means it sits on the light ray. */
   sun: { x: number; y: number; visible: boolean; aligned: boolean };
 }

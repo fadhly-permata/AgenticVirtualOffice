@@ -30,9 +30,10 @@ describe('OfficeWorld', () => {
 
   it('surrounds the building with a garden, trees, clouds and a sun', () => {
     const world = new OfficeWorld();
-    expect(world.treeCount).toBeGreaterThanOrEqual(40);
+    expect(world.treeCount).toBe(12);
     expect(world.cloudCount).toBeGreaterThanOrEqual(4);
     expect(world.birdCount).toBeGreaterThanOrEqual(3);
+    expect(world.mistCount).toBeGreaterThanOrEqual(12);
 
     const bounds = new THREE.Box3().setFromObject(world.surroundings);
     expect(bounds.min.x).toBeLessThan(-2.5);
