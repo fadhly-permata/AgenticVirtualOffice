@@ -65,6 +65,10 @@ export interface ScenerySnapshot {
     escapes: number;
     /** Pets out playing on the lawn right now, by kind. */
     outside: { cats: number; dogs: number };
+    /** The tennis ball: whether the dog is carrying it, and drops so far. */
+    ball: { carried: boolean; fetches: number };
+    /** Whether the cat is licking itself right now. */
+    grooming: boolean;
   };
   /** Sun disc in normalised device coordinates; `aligned` means it sits on the light ray. */
   sun: { x: number; y: number; visible: boolean; aligned: boolean };

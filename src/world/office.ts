@@ -90,15 +90,17 @@ interface BirdRef {
   hopTo: THREE.Vector3;
 }
 
-/** One pet: idling, wandering, or caught in a chase around the pen. */
+/** One pet: idling, wandering, fetching, or caught in a chase around the pen. */
 interface PetRef {
   group: THREE.Group;
   kind: 'cat' | 'dog';
   legs: THREE.Object3D[];
   tail: THREE.Object3D;
+  /** Head pivot, used for the cat's grooming dips. */
+  head: THREE.Object3D | null;
   /** Ground target in world XZ; the chasing pair keeps retargeting each frame. */
   target: THREE.Vector2;
-  state: 'idle' | 'wander' | 'chase' | 'flee';
+  state: 'idle' | 'wander' | 'chase' | 'flee' | 'fetch' | 'carry';
   /** Set when this pet is stalking a lawn bird instead of the other pet. */
   prey: BirdRef | null;
   timer: number;
@@ -109,11 +111,22 @@ interface PetRef {
   rng: () => number;
   /** Which side of the fence this pet is on. */
   region: 'pen' | 'lawn';
-  /** The dog's outing: heading out, playing on the lawn, or heading home. */
+  /** A gate outing: heading out, playing on the lawn, or heading home. */
   trip: 'none' | 'exit' | 'play' | 'home';
-  /** Seconds of lawn play left before the dog walks itself back in. */
+  /** Seconds of lawn play left before the pet walks itself back in. */
   outing: number;
+  /** Seconds left before a wander picks a fresh, differently aimed target. */
+  leg: number;
+  /** Seconds left of the cat's grooming session. */
+  groom: number;
 }
+
+/**
+ * Body clearance per pet, so noses stop short of the fence instead of clipping
+ * it. Scaled model reach from the centre is ~0.72 for the cat and ~1.13 for the
+ * dog, leaving a clear gap to the rail.
+ */
+const PET_INSET = { cat: 1.0, dog: 1.4 } as const;
 
 /** Window band shared by the glass panes and the wall cut-outs. */
 const WINDOW_CENTER_Y = 2.32;
@@ -137,10 +150,10 @@ const HOUSE = { x0: 35.6, x1: 37.45, z0: 29.45, z1: 30.95 };
 const GATE = { x: PEN.x0, z: (PEN.z0 + PEN.z1) / 2 };
 /** Half-width of the gap a pet can slip through, with a little body clearance. */
 const GATE_CLEAR = 0.6;
-/** Front lawn the dog is allowed to roam, kept clear of the building and tree row. */
-const LAWN = { x0: -11.2, x1: PEN.x0 - 0.6, z0: 22.6, z1: 33.2 };
-/** Concrete spot just outside the gap, where a returning dog lines itself up. */
-const OUTSIDE_GATE = { x: PEN.x0 - 1.15, z: GATE.z };
+/** Front lawn the pets may roam, kept clear of the building, tree row and pen fence. */
+const LAWN = { x0: -11.2, x1: PEN.x0 - 1.25, z0: 22.6, z1: 33.2 };
+/** Up the lawn from the gap, where a returning pet lines itself up with the gate. */
+const OUTSIDE_GATE = { x: PEN.x0 - 1.45, z: GATE.z };
 
 const FLOOR_COLOR: Record<RoomId, number> = {
   workspace: C.floorWorkspace,
@@ -228,11 +241,15 @@ export class OfficeWorld {
   /** Chases aimed at a lawn bird, and birds that bolted because of one. */
   birdChaseCount = 0;
   birdEscapeCount = 0;
+  /** How many times the dog has fetched and dropped the tennis ball. */
+  fetchCount = 0;
 
   private readonly sunGlow: THREE.Sprite;
   private readonly birds: BirdRef[] = [];
   private readonly perches: PerchSpot[] = [];
   private readonly pets: PetRef[] = [];
+  private toy: THREE.Mesh | null = null;
+  private toyState: 'free' | 'carried' = 'free';
   private readonly screens: ScreenRef[] = [];
   private readonly lampLights: LampRef[] = [];
   private readonly lampMaterials: THREE.MeshStandardMaterial[] = [];
@@ -288,6 +305,24 @@ export class OfficeWorld {
 
   get dogsOutside(): number {
     return this.pets.filter((pet) => pet.kind === 'dog' && pet.region === 'lawn').length;
+  }
+
+  /** The tennis ball's spot on the sand, in world XZ. */
+  get ballSpot(): { x: number; z: number } {
+    if (!this.toy) return { x: (PEN.x0 + PEN.x1) / 2, z: (PEN.z0 + PEN.z1) / 2 };
+    return {
+      x: (PEN.x0 + PEN.x1) / 2 + this.toy.position.x,
+      z: (PEN.z0 + PEN.z1) / 2 + this.toy.position.z,
+    };
+  }
+
+  get ballCarried(): boolean {
+    return this.toyState === 'carried';
+  }
+
+  /** Whether the cat is mid-groom right now. */
+  get catGrooming(): boolean {
+    return this.pets.some((pet) => pet.kind === 'cat' && pet.groom > 0);
   }
 
   constructor() {
@@ -1565,7 +1600,10 @@ export class OfficeWorld {
 
     g.add(cyl(0.14, 0.12, 0.07, mat(0x9fb9c9, { roughness: 0.4 }), -hw + 0.55, 0.08, -0.5, 12));
     g.add(cyl(0.14, 0.12, 0.07, mat(0x9b7a56, { roughness: 1 }), -hw + 0.55, 0.08, 0.25, 12));
-    g.add(ball(0.13, mat(0xc9d05e, { roughness: 0.95 }), 0.6, 0.17, -1.3, 10));
+    const tennis = ball(0.13, mat(0xc9d05e, { roughness: 0.95 }), 0, 0, 0, 10);
+    tennis.position.set(0.6, 0.17, -1.3);
+    g.add(tennis);
+    this.toy = tennis;
 
     this.addPets();
   }
@@ -1593,7 +1631,7 @@ export class OfficeWorld {
 
   private petRef(
     kind: 'cat' | 'dog',
-    parts: { group: THREE.Group; legs: THREE.Object3D[]; tail: THREE.Object3D },
+    parts: { group: THREE.Group; legs: THREE.Object3D[]; tail: THREE.Object3D; head: THREE.Object3D },
     rng: () => number,
     scale: number,
   ): PetRef {
@@ -1603,6 +1641,7 @@ export class OfficeWorld {
       kind,
       legs: parts.legs,
       tail: parts.tail,
+      head: parts.head,
       target: new THREE.Vector2(),
       state: 'idle',
       prey: null,
@@ -1615,10 +1654,17 @@ export class OfficeWorld {
       region: 'pen',
       trip: 'none',
       outing: 0,
+      leg: 1 + rng() * 2,
+      groom: 0,
     };
   }
 
-  private dogModel(): { group: THREE.Group; legs: THREE.Object3D[]; tail: THREE.Object3D } {
+  private dogModel(): {
+    group: THREE.Group;
+    legs: THREE.Object3D[];
+    tail: THREE.Object3D;
+    head: THREE.Object3D;
+  } {
     const g = new THREE.Group();
     const fur = mat(0xc9945f, { roughness: 0.95 });
     const cream = mat(0xe8d6b8, { roughness: 0.95 });
@@ -1665,10 +1711,15 @@ export class OfficeWorld {
         object.receiveShadow = true;
       }
     });
-    return { group: g, legs, tail };
+    return { group: g, legs, tail, head };
   }
 
-  private catModel(): { group: THREE.Group; legs: THREE.Object3D[]; tail: THREE.Object3D } {
+  private catModel(): {
+    group: THREE.Group;
+    legs: THREE.Object3D[];
+    tail: THREE.Object3D;
+    head: THREE.Object3D;
+  } {
     const g = new THREE.Group();
     const fur = mat(0xc98a5a, { roughness: 0.95 });
     const cream = mat(0xf0e2c8, { roughness: 0.95 });
@@ -1719,7 +1770,7 @@ export class OfficeWorld {
         object.receiveShadow = true;
       }
     });
-    return { group: g, legs, tail };
+    return { group: g, legs, tail, head };
   }
 
   // ------------------------------------------------------------- shared ----
@@ -1912,9 +1963,14 @@ export class OfficeWorld {
       for (const pet of this.pets) {
         if ((pet.state === 'chase' || pet.state === 'flee') && !pet.prey) this.endChase(pet);
       }
-      const hunter =
-        this.pets.find((pet) => pet.region === 'pen' && pet.cooldown <= 0) ??
-        this.pets.find((pet) => pet.region === 'pen');
+      const free = this.pets.filter(
+        (pet) =>
+          pet.region === 'pen' &&
+          pet.trip === 'none' &&
+          pet.state !== 'fetch' &&
+          pet.state !== 'carry',
+      );
+      const hunter = free.find((pet) => pet.cooldown <= 0) ?? free[0];
       if (hunter) {
         hunter.state = 'chase';
         hunter.prey = groundBird;
@@ -1925,8 +1981,11 @@ export class OfficeWorld {
       }
     } else if (!this.petsChasing && cat && dog) {
       const gap = cat.group.position.distanceTo(dog.group.position);
-      const together = cat.region === dog.region;
-      if (together && gap < 2.6 && cat.cooldown <= 0 && dog.cooldown <= 0) {
+      const together =
+        cat.region === dog.region && cat.trip === 'none' && dog.trip === 'none';
+      const busy =
+        cat.state === 'fetch' || cat.state === 'carry' || dog.state === 'fetch' || dog.state === 'carry';
+      if (together && !busy && gap < 2.6 && cat.cooldown <= 0 && dog.cooldown <= 0) {
         this.startChase(cat, dog);
       }
     }
@@ -1971,10 +2030,41 @@ export class OfficeWorld {
         pet.group.position.x + (dx / length) * 3,
         pet.group.position.z + (dz / length) * 3,
       );
-      this.clampPetTarget(pet.target);
+      this.clampPetTarget(pet.target, pet);
       if (pet.timer <= 0) this.endChase(pet);
-    } else if (pet.state === 'idle' && pet.timer <= 0) {
+    } else if (pet.state === 'fetch' && this.toy) {
+      const spot = this.ballSpot;
+      pet.target.set(spot.x, spot.z);
+      if (Math.hypot(spot.x - pet.group.position.x, spot.z - pet.group.position.z) < 0.55) {
+        this.toyState = 'carried';
+        pet.state = 'carry';
+        pet.target.copy(this.penTarget(pet.rng, pet));
+      }
+    } else if (pet.state === 'carry') {
+      const reach = Math.hypot(
+        pet.target.x - pet.group.position.x,
+        pet.target.y - pet.group.position.z,
+      );
+      if (reach < 0.24) this.dropBall(pet);
+    } else if (pet.state === 'idle' && pet.timer <= 0 && pet.groom <= 0) {
       this.beginWander(pet);
+    }
+
+    // Fresh headings now and then, so the cat and dog never march in lockstep.
+    if (pet.state === 'wander' && pet.trip !== 'exit' && pet.trip !== 'home') {
+      pet.leg -= dt;
+      if (pet.leg <= 0) {
+        pet.leg = pet.kind === 'dog' ? 1.1 + pet.rng() * 1.4 : 1.6 + pet.rng() * 1.9;
+        if (pet.kind === 'cat' && pet.groom <= 0 && pet.rng() < 0.35) {
+          pet.state = 'idle';
+          pet.groom = 1.4 + pet.rng() * 1.4;
+          pet.timer = pet.groom + 0.2;
+        } else {
+          pet.target.copy(
+            pet.region === 'lawn' ? this.lawnTarget(pet.rng) : this.penTarget(pet.rng, pet),
+          );
+        }
+      }
     }
 
     const speed =
@@ -1982,11 +2072,15 @@ export class OfficeWorld {
         ? 3.2
         : pet.state === 'flee'
           ? 3.5
-          : pet.state === 'wander'
-            ? pet.kind === 'dog'
-              ? 1.05
-              : 0.9
-            : 0;
+          : pet.state === 'fetch'
+            ? 1.7
+            : pet.state === 'carry'
+              ? 1.15
+              : pet.state === 'wander'
+                ? pet.kind === 'dog'
+                  ? 1.05
+                  : 0.9
+                : 0;
 
     const dx = pet.target.x - pet.group.position.x;
     const dz = pet.target.y - pet.group.position.z;
@@ -2011,6 +2105,16 @@ export class OfficeWorld {
 
     this.stepTrip(pet, dt);
 
+    if (pet.state === 'carry' && this.toy) {
+      const forwardX = Math.cos(pet.heading);
+      const forwardZ = -Math.sin(pet.heading);
+      this.toy.position.set(
+        pet.group.position.x + forwardX * 0.95 - (PEN.x0 + PEN.x1) / 2,
+        0.88,
+        pet.group.position.z + forwardZ * 0.95 - (PEN.z0 + PEN.z1) / 2,
+      );
+    }
+
     if (pet.state === 'wander' && distance < 0.18) {
       const traveling = pet.trip === 'exit' || pet.trip === 'home';
       if (!traveling) {
@@ -2019,8 +2123,33 @@ export class OfficeWorld {
       }
     }
 
-    const running = pet.state === 'chase' || pet.state === 'flee';
-    const swing = moving ? Math.sin(pet.stride) * (running ? 0.7 : 0.42) : 0;
+    if (pet.groom > 0 && pet.state !== 'idle') pet.groom = 0;
+    if (pet.kind === 'cat' && pet.head) {
+      if (pet.state === 'idle' && pet.groom <= 0 && pet.rng() < dt * 0.35) {
+        pet.groom = 1.4 + pet.rng() * 1.4;
+        pet.timer = Math.max(pet.timer, pet.groom + 0.2);
+      }
+      if (pet.groom > 0) {
+        pet.groom -= dt;
+        const lick = Math.sin(t * 11 + pet.phase);
+        pet.head.rotation.z = -0.54 - 0.08 * (0.5 + 0.5 * lick);
+        pet.head.rotation.y = 1.0 + 0.14 * lick;
+      } else {
+        const ease = Math.min(1, dt * 7);
+        pet.head.rotation.z += (0 - pet.head.rotation.z) * ease;
+        pet.head.rotation.y += (0 - pet.head.rotation.y) * ease;
+      }
+    }
+
+    const pace =
+      pet.state === 'chase' || pet.state === 'flee'
+        ? 0.7
+        : pet.state === 'fetch'
+          ? 0.58
+          : pet.state === 'carry'
+            ? 0.36
+            : 0.42;
+    const swing = moving ? Math.sin(pet.stride) * pace : 0;
     pet.legs.forEach((leg, index) => {
       leg.rotation.z = swing * (index === 0 || index === 3 ? 1 : -1);
     });
@@ -2035,10 +2164,12 @@ export class OfficeWorld {
     pet.timer = 0.5 + pet.rng() * 1.2;
   }
 
-  /** Pick the next wander spot; either pet occasionally starts a trip out the gate. */
+  /** Pick the next wander spot; pets occasionally start a gate trip or a fetch. */
   private beginWander(pet: PetRef): void {
     pet.state = 'wander';
     pet.timer = 9;
+    pet.leg = pet.kind === 'dog' ? 1.1 + pet.rng() * 1.4 : 1.6 + pet.rng() * 1.9;
+    const inset = PET_INSET[pet.kind];
     if (pet.region === 'lawn') {
       pet.target.copy(
         pet.trip === 'home' ? new THREE.Vector2(OUTSIDE_GATE.x, OUTSIDE_GATE.z) : this.lawnTarget(pet.rng),
@@ -2046,23 +2177,65 @@ export class OfficeWorld {
       return;
     }
     if (pet.trip === 'exit') {
-      pet.target.set(PEN.x0 + 1.0, GATE.z);
+      pet.target.set(PEN.x0 + inset + 0.2, GATE.z);
       return;
     }
-    const roamChance = pet.kind === 'dog' ? 0.4 : 0.34;
+    if (
+      pet.kind === 'dog' &&
+      pet.trip === 'none' &&
+      this.toyState === 'free' &&
+      pet.rng() < 0.4
+    ) {
+      const spot = this.ballSpot;
+      pet.target.set(spot.x, spot.z);
+      pet.state = 'fetch';
+      return;
+    }
+    const roamChance = pet.kind === 'dog' ? 0.35 : 0.34;
     if (pet.trip === 'none' && pet.rng() < roamChance) {
       pet.trip = 'exit';
       pet.outing =
         pet.kind === 'dog' ? 11 + pet.rng() * 9 : 9 + pet.rng() * 6;
-      pet.target.set(PEN.x0 + 1.0, GATE.z);
+      pet.target.set(PEN.x0 + inset + 0.2, GATE.z);
       return;
     }
-    pet.target.copy(this.penTarget(pet.rng));
+    pet.target.copy(this.penTarget(pet.rng, pet));
+  }
+
+  /** Set the tennis ball down just ahead of the dog, then let it wander again. */
+  private dropBall(pet: PetRef): void {
+    if (!this.toy) return;
+    // Let go a little off to one side now and then, so the ball never lands in
+    // the same dead-ahead spot twice.
+    const angle = pet.heading + (pet.rng() - 0.5) * 1.2;
+    const reach = 0.35 + pet.rng() * 0.35;
+    const forwardX = Math.cos(angle);
+    const forwardZ = -Math.sin(angle);
+    const halfX = (PEN.x1 - PEN.x0) / 2 - 0.95;
+    const halfZ = (PEN.z1 - PEN.z0) / 2 - 0.95;
+    this.toy.position.set(
+      THREE.MathUtils.clamp(
+        pet.group.position.x + forwardX * reach - (PEN.x0 + PEN.x1) / 2,
+        -halfX,
+        halfX,
+      ),
+      0.17,
+      THREE.MathUtils.clamp(
+        pet.group.position.z + forwardZ * reach - (PEN.z0 + PEN.z1) / 2,
+        -halfZ,
+        halfZ,
+      ),
+    );
+    this.toyState = 'free';
+    pet.state = 'idle';
+    pet.timer = 1 + pet.rng() * 1.8;
+    this.fetchCount += 1;
   }
 
   /** Advance a pet's outing across the fence line and count down its play time. */
   private stepTrip(pet: PetRef, dt: number): void {
     if (pet.state === 'chase' || pet.state === 'flee') return;
+    const inset = PET_INSET[pet.kind];
     const { position } = pet.group;
     if (pet.trip === 'exit' && pet.region === 'pen') {
       if (position.x < LAWN.x1) {
@@ -2070,7 +2243,10 @@ export class OfficeWorld {
         pet.trip = 'play';
         pet.state = 'wander';
         pet.target.copy(this.lawnTarget(pet.rng));
-      } else if (position.x < PEN.x0 + 1.25 && Math.abs(position.z - GATE.z) < GATE_CLEAR) {
+      } else if (
+        position.x < PEN.x0 + inset + 0.35 &&
+        Math.abs(position.z - GATE.z) < GATE_CLEAR
+      ) {
         pet.target.set(OUTSIDE_GATE.x, OUTSIDE_GATE.z);
       }
     } else if (pet.trip === 'play') {
@@ -2081,13 +2257,13 @@ export class OfficeWorld {
         pet.target.set(OUTSIDE_GATE.x, OUTSIDE_GATE.z);
       }
     } else if (pet.trip === 'home' && pet.region === 'lawn') {
-      if (position.x > PEN.x0 + 0.9) {
+      if (position.x > PEN.x0 + inset + 0.05) {
         pet.region = 'pen';
         pet.trip = 'none';
         pet.state = 'wander';
-        pet.target.copy(this.penTarget(pet.rng));
+        pet.target.copy(this.penTarget(pet.rng, pet));
       } else if (position.x > OUTSIDE_GATE.x - 0.1 && Math.abs(position.z - GATE.z) < GATE_CLEAR) {
-        pet.target.set(PEN.x0 + 0.95, GATE.z);
+        pet.target.set(PEN.x0 + inset + 0.15, GATE.z);
       } else {
         pet.target.set(OUTSIDE_GATE.x, OUTSIDE_GATE.z);
       }
@@ -2097,14 +2273,17 @@ export class OfficeWorld {
   /** Keep a pet on its side of the fence, allowing gate trips through the gap. */
   private keepPetInArea(pet: PetRef): void {
     const { position } = pet.group;
+    const inset = PET_INSET[pet.kind];
     const inGateLine = Math.abs(position.z - GATE.z) < GATE_CLEAR;
     const crossing = (pet.trip === 'exit' || pet.trip === 'home') && inGateLine;
 
     if (pet.region === 'lawn') {
+      // A returning pet must be able to step far enough inside the fence line
+      // for the region switch to fire, whatever its body inset is.
       position.x = THREE.MathUtils.clamp(
         position.x,
         LAWN.x0,
-        crossing ? PEN.x0 + 1.2 : LAWN.x1,
+        crossing ? PEN.x0 + inset + 0.4 : LAWN.x1,
       );
       position.z = THREE.MathUtils.clamp(position.z, LAWN.z0, LAWN.z1);
       if (crossing && position.x > LAWN.x1) {
@@ -2113,9 +2292,13 @@ export class OfficeWorld {
       return;
     }
 
-    const nearGate = crossing && position.x < PEN.x0 + 1.4;
-    position.x = THREE.MathUtils.clamp(position.x, nearGate ? PEN.x0 - 1.4 : PEN.x0 + 0.9, PEN.x1 - 0.9);
-    position.z = THREE.MathUtils.clamp(position.z, PEN.z0 + 0.9, PEN.z1 - 0.9);
+    const nearGate = crossing && position.x < PEN.x0 + inset + 0.35;
+    position.x = THREE.MathUtils.clamp(
+      position.x,
+      nearGate ? PEN.x0 - 1.4 : PEN.x0 + inset,
+      PEN.x1 - inset,
+    );
+    position.z = THREE.MathUtils.clamp(position.z, PEN.z0 + inset, PEN.z1 - inset);
     if (nearGate) {
       position.z = THREE.MathUtils.clamp(position.z, GATE.z - GATE_CLEAR, GATE.z + GATE_CLEAR);
     }
@@ -2139,9 +2322,10 @@ export class OfficeWorld {
     position.z = nearest[1];
   }
 
-  private clampPetTarget(target: THREE.Vector2): void {
-    target.x = THREE.MathUtils.clamp(target.x, PEN.x0 + 0.9, PEN.x1 - 0.9);
-    target.y = THREE.MathUtils.clamp(target.y, PEN.z0 + 0.9, PEN.z1 - 0.9);
+  private clampPetTarget(target: THREE.Vector2, pet: PetRef): void {
+    const inset = PET_INSET[pet.kind];
+    target.x = THREE.MathUtils.clamp(target.x, PEN.x0 + inset, PEN.x1 - inset);
+    target.y = THREE.MathUtils.clamp(target.y, PEN.z0 + inset, PEN.z1 - inset);
   }
 
   private lawnTarget(rng: () => number): THREE.Vector2 {
@@ -2151,10 +2335,11 @@ export class OfficeWorld {
     );
   }
 
-  private penTarget(rng: () => number): THREE.Vector2 {
+  private penTarget(rng: () => number, pet: PetRef): THREE.Vector2 {
+    const inset = PET_INSET[pet.kind];
     for (let tries = 0; tries < 24; tries += 1) {
-      const x = PEN.x0 + 1 + rng() * (PEN.x1 - PEN.x0 - 2);
-      const z = PEN.z0 + 1 + rng() * (PEN.z1 - PEN.z0 - 2);
+      const x = PEN.x0 + inset + rng() * (PEN.x1 - PEN.x0 - inset * 2);
+      const z = PEN.z0 + inset + rng() * (PEN.z1 - PEN.z0 - inset * 2);
       const inHouse =
         x > HOUSE.x0 - 0.35 && x < HOUSE.x1 + 0.35 && z > HOUSE.z0 - 0.35 && z < HOUSE.z1 + 0.35;
       if (!inHouse) return new THREE.Vector2(x, z);
