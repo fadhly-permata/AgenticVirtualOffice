@@ -120,6 +120,8 @@ The active workspace as a tree, with the full workspace path printed at the top.
 
 Rows also carry a clipboard: right-click gives **Copy** / **Cut** / **Paste into …**, and `Ctrl+C`, `Ctrl+X`, `Ctrl+V` do the same while this page is showing (inputs and text selections keep their normal shortcuts). The marked item sits in a chip under the toolbar, a cut row goes dim, and pasting into a folder that already holds it just says so instead of touching the disk. Any row can be dragged onto a folder to move it — hold `Ctrl` while dropping to copy instead, and drop on empty list space to target the workspace root. The target folder is highlighted during the drag. Copies pasted where the name is taken come out as `a (2).ts` / `docs (2)` rather than failing.
 
+Files can also be dropped straight from Windows Explorer onto the tree to upload them. The row under the cursor picks the destination folder (a file row means its parent), empty list space means the workspace root, and a name that is already taken becomes `a (2).txt`. Each file is one `POST /api/chat/files/upload` request whose body is the raw bytes, streamed to disk instead of buffered, capped at 50 MB; files go one after another with a progress line, and the tree reloads when the batch ends. Dropped folders are counted and skipped with a note — upload the files inside them. A drop that misses the tree is swallowed by the page, so the browser never navigates to the dropped file and loses the app.
+
 The preview window docks below the list or beside it (**Settings → Preview → Preview window position**); side-by-side only applies when maximised. The divider between list and preview drags to any split between 20–80%, the ratio is stored locally, and **Restore defaults** puts it back. The same rules apply to diffs in Source Control.
 
 Paths travel relative to the workspace root and the bridge rejects `..`, absolute paths, drive letters, and separator characters — see `server/files.mjs`.
@@ -212,6 +214,7 @@ Everything the popup does goes through these routes on the same origin.
 | POST | `/api/chat/files` | create file/folder (`path`, `kind`) |
 | POST | `/api/chat/files/rename` | rename / move (`from`, `to`) |
 | POST | `/api/chat/files/copy` | copy file/folder recursively (`from`, `to`, `unique`) |
+| POST | `/api/chat/files/upload?path=` | upload one file; the raw request body is streamed to disk |
 | POST | `/api/chat/files/delete` | delete file or folder recursively |
 | GET | `/api/chat/scm/status` | branch, upstream, last commit, change list |
 | GET | `/api/chat/scm/diff?path=&staged=1` | one-file diff; untracked renders as all-added |
@@ -280,7 +283,7 @@ src/
     chat.ts         popup controller, SSE streaming, sessions, permissions, composer, rail
     toolswitch.ts   HUD tool pill: menu, inline confirm, switching state, undo toast
     client.ts       fetch wrapper for /api/chat
-    files.ts        File List page: tree, preview, CRUD, search
+    files.ts        File List page: tree, preview, CRUD, search, upload
     scm.ts          Source Control page: status, diff, commit, branches, history
     settings.ts     Settings page: language, theme, preview, agent pause
     about.ts        About page: identity, author, links

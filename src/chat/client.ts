@@ -151,6 +151,13 @@ export const chatApi = {
     }),
   deleteFile: (path: string) =>
     request<{ path: string }>('/api/chat/files/delete', { method: 'POST', body: JSON.stringify({ path }) }),
+  /** Berkas dikirim apa adanya sebagai body, tanpa multipart; server menyalurkannya ke disk. */
+  uploadFile: (path: string, file: File) =>
+    request<{ path: string; size: number }>(
+      `/api/chat/files/upload?path=${encodeURIComponent(path)}`,
+      { method: 'POST', body: file, headers: { 'content-type': 'application/octet-stream' } },
+      300_000
+    ),
   scmStatus: () => request<ScmStatus>('/api/chat/scm/status', {}, 20_000),
   scmDiff: (path: string, staged: boolean) =>
     request<ScmDiff>(

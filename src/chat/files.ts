@@ -474,17 +474,27 @@ export function mountFiles(container: HTMLElement, hooks: FilesHooks = {}): File
     return Boolean(dragging || (types && Array.from(types).includes(DRAG_TYPE)));
   }
 
+  function hasFiles(event: DragEvent): boolean {
+    const types = event.dataTransfer?.types;
+    return Boolean(types && Array.from(types).includes('Files'));
+  }
+
   /** Folder tujuan di bawah kursor; file row menerima untuk folder induknya. */
-  function dropTarget(event: DragEvent): { dir: string; node: HTMLElement } | null {
-    if (!dragging || !hasOwnDrag(event)) return null;
+  function folderUnder(event: DragEvent): { dir: string; node: HTMLElement } {
     const rowEl = rowUnder(event);
     if (!rowEl?.dataset.path) return { dir: '', node: list };
     const path = rowEl.dataset.path;
-    if (path === dragging.path) return null;
-    const dir = rowEl.dataset.dir === 'true' ? path : parentOf(path);
+    return { dir: rowEl.dataset.dir === 'true' ? path : parentOf(path), node: rowEl };
+  }
+
+  function dropTarget(event: DragEvent): { dir: string; node: HTMLElement } | null {
+    if (!dragging || !hasOwnDrag(event)) return null;
+    const hit = folderUnder(event);
+    if (!hit.node.dataset.path) return hit;
+    if (hit.node.dataset.path === dragging.path) return null;
     // Menaruh folder ke dalam dirinya sendiri akan menghapus seluruh cabangnya.
-    if (dir === dragging.path || dir.startsWith(`${dragging.path}/`)) return null;
-    return { dir, node: rowEl };
+    if (hit.dir === dragging.path || hit.dir.startsWith(`${dragging.path}/`)) return null;
+    return hit;
   }
 
   function paintDrop(node: HTMLElement | null): void {
@@ -492,6 +502,65 @@ export function mountFiles(container: HTMLElement, hooks: FilesHooks = {}): File
     dropNode?.classList.remove('files__row--drop', 'files__list--drop');
     dropNode = node;
     if (node) node.classList.add(node === list ? 'files__list--drop' : 'files__row--drop');
+  }
+
+  /** Item Explorer hanya terbaca sinkron saat drop, jadi daftarnya diambil lebih dulu. */
+  function droppedFiles(event: DragEvent): { files: File[]; folders: number } {
+    const data = event.dataTransfer;
+    const files: File[] = [];
+    let folders = 0;
+    if (!data) return { files, folders };
+    if (!data.items.length) {
+      for (const file of Array.from(data.files)) files.push(file);
+      return { files, folders };
+    }
+    for (const item of Array.from(data.items)) {
+      if (item.kind !== 'file') continue;
+      // Folder cuma terlihat lewat entry; daftar File[] saja tidak bisa mengenalinya.
+      if (item.webkitGetAsEntry?.()?.isDirectory) folders += 1;
+      else {
+        const file = item.getAsFile();
+        if (file) files.push(file);
+      }
+    }
+    return { files, folders };
+  }
+
+  /** Satu berkas per permintaan, berurutan: dua tulis bersamaan sulit dibaca progresnya. */
+  async function uploadAll(dropped: { files: File[]; folders: number }, dir: string): Promise<void> {
+    if (busy) return;
+    if (!dropped.files.length) {
+      message = dropped.folders ? t('files.uploadFolders', { count: dropped.folders }) : '';
+      paintMessage();
+      return;
+    }
+    busy = true;
+    const done: string[] = [];
+    const failed: string[] = [];
+    let reason = '';
+    for (const [index, file] of dropped.files.entries()) {
+      message = t('files.uploading', { index: index + 1, total: dropped.files.length, name: file.name });
+      paintMessage();
+      try {
+        const up = await chatApi.uploadFile(dir ? `${dir}/${file.name}` : file.name, file);
+        // Nama bisa berubah jadi '(2)' di server, jadi path hasilnya yang dipakai.
+        done.push(up.path);
+        reveal(up.path);
+      } catch (error) {
+        failed.push(file.name);
+        reason = describeError(error);
+      }
+    }
+    invalidate();
+    await redraw();
+    busy = false;
+    const notes: string[] = [];
+    if (done.length === 1) notes.push(t('files.uploadedOne', { name: done[0] }));
+    if (done.length > 1) notes.push(t('files.uploadedMany', { count: done.length }));
+    if (failed.length) notes.push(t('files.uploadFailed', { names: failed.join(', '), reason }));
+    if (dropped.folders) notes.push(t('files.uploadFolders', { count: dropped.folders }));
+    message = notes.join(' ');
+    paintMessage();
   }
 
   function bindDragAndDrop(): void {
@@ -514,14 +583,18 @@ export function mountFiles(container: HTMLElement, hooks: FilesHooks = {}): File
     });
 
     list.addEventListener('dragover', (event) => {
-      if (dropTarget(event)) {
+      const hit = dropTarget(event);
+      if (hit) {
         event.preventDefault();
         if (event.dataTransfer) event.dataTransfer.dropEffect = event.ctrlKey || event.metaKey ? 'copy' : 'move';
-        paintDrop(dropTarget(event)?.node ?? null);
+        paintDrop(hit.node);
         return;
       }
-      // Seretan dari Explorer tidak ditampung; cegah supaya halaman tidak berpindah ke file itu.
-      if (!hasOwnDrag(event) && event.dataTransfer?.types?.includes('Files')) event.preventDefault();
+      if (hasFiles(event) && !dragging) {
+        event.preventDefault();
+        if (event.dataTransfer) event.dataTransfer.dropEffect = 'copy';
+        paintDrop(folderUnder(event).node);
+      }
     });
 
     list.addEventListener('dragleave', (event) => {
@@ -529,6 +602,13 @@ export function mountFiles(container: HTMLElement, hooks: FilesHooks = {}): File
     });
 
     list.addEventListener('drop', (event) => {
+      if (!dragging && hasFiles(event)) {
+        const dropped = droppedFiles(event);
+        event.preventDefault();
+        paintDrop(null);
+        void uploadAll(dropped, folderUnder(event).dir);
+        return;
+      }
       const hit = dropTarget(event);
       const item = dragging;
       paintDrop(null);
@@ -544,6 +624,15 @@ export function mountFiles(container: HTMLElement, hooks: FilesHooks = {}): File
       for (const rowEl of Array.from(list.querySelectorAll<HTMLElement>('.files__row--drag'))) {
         rowEl.classList.remove('files__row--drag');
       }
+    });
+
+    // Lepes di luar pohon tetap ditelan: tanpa ini browser membuka file itu dan
+    // halaman berpindah, lalu semua state aplikasi hilang.
+    document.addEventListener('dragover', (event) => {
+      if (!dragging && hasFiles(event)) event.preventDefault();
+    });
+    document.addEventListener('drop', (event) => {
+      if (!dragging && hasFiles(event)) event.preventDefault();
     });
   }
 

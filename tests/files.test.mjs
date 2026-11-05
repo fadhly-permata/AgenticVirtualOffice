@@ -12,6 +12,7 @@ import {
   resolveInside,
   searchIn,
   treeAt,
+  writeUpload,
 } from '../server/files.mjs';
 
 const temps = [];
@@ -35,6 +36,17 @@ afterEach(async () => {
 
 const status = (error) => (error instanceof HttpError ? error.status : `unexpected: ${error?.message}`);
 const rejected = (promise) => promise.then(() => 'resolved').catch(status);
+
+const streamOf = (parts) =>
+  (async function* source() {
+    for (const part of parts) yield Buffer.from(part, 'utf8');
+  })();
+
+const brokenStream = (parts) =>
+  (async function* source() {
+    for (const part of parts) yield Buffer.from(part, 'utf8');
+    throw new Error('putus');
+  })();
 
 describe('path guard', () => {
   it('accepts relative paths in both separators', () => {
@@ -195,6 +207,55 @@ describe('copy', () => {
     expect(await rejected(copyEntry(root, 'a.txt', '../escape'))).toBe(400);
     expect(await rejected(copyEntry(root, '', 'x'))).toBe(400);
     expect(await rejected(copyEntry(root, 'a.txt', ''))).toBe(400);
+  });
+});
+
+describe('upload', () => {
+  it('streams the body to disk and reports path and size', async () => {
+    const root = await workspace();
+    const up = await writeUpload(root, 'catatan.md', streamOf(['halo ', 'dunia']));
+    expect(up).toEqual({ path: 'catatan.md', size: 10 });
+    expect(await fs.readFile(path.join(root, 'catatan.md'), 'utf8')).toBe('halo dunia');
+  });
+
+  it('creates the parent folders it needs', async () => {
+    const root = await workspace();
+    const up = await writeUpload(root, 'docs/in/new.txt', streamOf(['x']));
+    expect(up.path).toBe('docs/in/new.txt');
+    expect(await fs.readFile(path.join(root, 'docs', 'in', 'new.txt'), 'utf8')).toBe('x');
+  });
+
+  it('renames a duplicate instead of overwriting it', async () => {
+    const root = await workspace();
+    await write(root, 'a.txt', 'lama');
+    const up = await writeUpload(root, 'a.txt', streamOf(['baru']));
+    expect(up.path).toBe('a (2).txt');
+    expect(await fs.readFile(path.join(root, 'a.txt'), 'utf8')).toBe('lama');
+    expect(await fs.readFile(path.join(root, 'a (2).txt'), 'utf8')).toBe('baru');
+  });
+
+  it('refuses a name that belongs to a folder', async () => {
+    const root = await workspace();
+    await fs.mkdir(path.join(root, 'assets'));
+    expect(await rejected(writeUpload(root, 'assets', streamOf(['x'])))).toBe(409);
+    expect(await fs.readdir(root)).toEqual(['assets']);
+  });
+
+  it('caps the size and leaves no partial file behind', async () => {
+    const root = await workspace();
+    expect(await rejected(writeUpload(root, 'big.bin', streamOf(['aaa', 'bbb']), 4))).toBe(413);
+    expect(await fs.readdir(root)).toEqual([]);
+  });
+
+  it('deletes the file when the stream breaks halfway', async () => {
+    const root = await workspace();
+    expect(await rejected(writeUpload(root, 'part.txt', brokenStream(['setengah '])))).toBe('unexpected: putus');
+    expect(await fs.readdir(root)).toEqual([]);
+  });
+
+  it.each(['../outside', 'C:\\Windows\\x.txt', ''])('refuses %s', async (input) => {
+    const root = await workspace();
+    expect(await rejected(writeUpload(root, input, streamOf(['x'])))).toBe(400);
   });
 });
 

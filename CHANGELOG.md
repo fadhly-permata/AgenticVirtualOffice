@@ -4,6 +4,17 @@ Semua perubahan penting pada VirtOffice dicatat di sini. Format mengikuti
 [Keep a Changelog](https://keepachangelog.com/id/1.1.0/) dan versi mengikuti
 [Semantic Versioning](https://semver.org/lang/id/).
 
+## [0.16.0] - 2026-11-05
+
+### Ditambahkan
+
+- File dari Explorer bisa dijatuhkan ke pohon File List untuk diunggah. Baris di bawah kursor menentukan folder tujuan (baris file berarti induknya; latar kosong berarti akar workspace), nama yang sudah dipakai menjadi `a (2).txt`, dan beberapa file dalam satu seretan dikirim berurutan dengan baris progres. Folder yang ikut dijatuhkan dihitung lalu dilewati dengan pesan, bukan diunggah setengah.
+- `POST /api/chat/files/upload?path=` (`writeUpload` di `server/files.mjs`): satu berkas per permintaan, body biner dialirkan langsung ke disk lewat `for await` tanpa parser multipart, dipanggil dari `chatApi.uploadFile` dengan `content-type: application/octet-stream`. Batas 50 MB (413), folder dengan nama yang diminta 409, `..`/path absolut/ nama kosong 400, dan berkas parsial dihapus bila stream putus atau client pergi di tengah jalan.
+
+### Berubah
+
+- Seretan `Files` dari luar aplikasi tidak lagi ditolak diam-diam seperti di 0.15.0 — sekarang ia diunggah. Penahan `dragover`/`drop` level dokumen dipasang supaya lepassan yang meleset dari pohon tidak membuat browser membuka file itu dan menghapus halaman aplikasi.
+
 ## [0.15.0] - 2026-11-05
 
 ### Ditambahkan

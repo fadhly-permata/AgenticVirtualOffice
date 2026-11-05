@@ -7,7 +7,7 @@ import { createCatalogCache } from './catalog.mjs';
 import { withSessionOwners } from './status.mjs';
 import { ClaudeBridge } from './claude.mjs';
 import { QoderBridge } from './qoder.mjs';
-import { createEntry, copyEntry, deleteEntry, readFileAt, readRawAt, renameEntry, resolveInside, searchIn, treeAt } from './files.mjs';
+import { createEntry, copyEntry, deleteEntry, readFileAt, readRawAt, renameEntry, resolveInside, searchIn, treeAt, writeUpload } from './files.mjs';
 import { HttpError, readJson, sendError, sendJson } from './http.mjs';
 import { lanInfo } from './network.mjs';
 import {
@@ -467,6 +467,11 @@ async function handleApi(req, res, url) {
       201,
       await copyEntry(workspaceOrThrow(), body.from, body.to, Boolean(body.unique))
     );
+  }
+
+  // Upload: satu berkas per permintaan, body binernya langsung dialirkan ke disk.
+  if (pathname === '/api/chat/files/upload' && method === 'POST') {
+    return sendJson(res, 201, await writeUpload(workspaceOrThrow(), searchParams.get('path') ?? '', req));
   }
 
   if (pathname === '/api/chat/files/delete' && method === 'POST') {

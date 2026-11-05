@@ -58,8 +58,16 @@ export const files: Catalog = {
   movedTo: ['Dipindah: {from} → {to}', 'Moved: {from} → {to}'],
   alreadyThere: ['Sudah ada di folder itu.', 'Already in that folder.'],
   dropHint: [
-    'Seret baris ke folder untuk memindah; tahan Ctrl untuk menyalin; Ctrl+C/X/V menandai dan menempel.',
-    'Drag a row onto a folder to move it; hold Ctrl to copy; Ctrl+C/X/V marks and pastes.',
+    'Seret baris ke folder untuk memindah; tahan Ctrl untuk menyalin; Ctrl+C/X/V menandai dan menempel; lepas file dari Explorer untuk mengunggah.',
+    'Drag a row onto a folder to move it; hold Ctrl to copy; Ctrl+C/X/V marks and pastes; drop files from Explorer to upload.',
+  ],
+  uploading: ['Mengunggah {index}/{total}: {name}', 'Uploading {index}/{total}: {name}'],
+  uploadedOne: ['{name} diunggah.', '{name} uploaded.'],
+  uploadedMany: ['{count} file diunggah.', '{count} files uploaded.'],
+  uploadFailed: ['Gagal mengunggah {names}: {reason}', 'Upload failed for {names}: {reason}'],
+  uploadFolders: [
+    '{count} folder dilewati — dari Explorer hanya file yang bisa diunggah.',
+    '{count} folder skipped — Explorer drops upload files only.',
   ],
   contextEmpty: [
     'Klik kanan file atau folder untuk aksi lain.',

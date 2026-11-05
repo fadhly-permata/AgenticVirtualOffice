@@ -2,6 +2,7 @@ import fs from 'node:fs/promises';
 import path from 'node:path';
 import { HttpError } from './http.mjs';
 
+const MAX_UPLOAD_BYTES = 50_000_000;
 const MAX_TREE_ENTRIES = 3000;
 const DEFAULT_FILE_BYTES = 262_144;
 const MAX_FILE_BYTES = 2_000_000;
@@ -302,6 +303,37 @@ export async function copyEntry(root, fromInput, toInput, unique = false) {
   await fs.mkdir(path.dirname(to.abs), { recursive: true });
   await fs.cp(from.abs, to.abs, { recursive: true, force: false, errorOnExist: true });
   return { from: from.rel, to: to.rel };
+}
+
+/**
+ * Satu berkas per permintaan; body dialirkan langsung ke disk supaya RAM tidak menahan
+ * file besar. Nama yang sudah ada diberi '(2)' seperti menyalin, dan potongan yang
+ * gagal (termasuk koneksi diputus di tengah) selalu dibersihkan.
+ */
+export async function writeUpload(root, input, stream, maxBytes = MAX_UPLOAD_BYTES) {
+  const wanted = resolveInside(root, input);
+  if (!wanted.rel) throw new HttpError(400, 'Nama file tidak boleh kosong.');
+  if (path.extname(wanted.rel) === '' && (await fs.stat(wanted.abs).then((s) => s.isDirectory()).catch(() => false))) {
+    throw new HttpError(409, 'Nama itu sudah dipakai sebuah folder.');
+  }
+  const to = (await exists(wanted.abs)) ? await uniqueTarget(root, wanted) : wanted;
+
+  await fs.mkdir(path.dirname(to.abs), { recursive: true });
+  const handle = await fs.open(to.abs, 'wx');
+  let size = 0;
+  try {
+    for await (const chunk of stream) {
+      size += chunk.length;
+      if (size > maxBytes) throw new HttpError(413, `File lebih dari ${Math.round(maxBytes / 1_000_000)} MB.`);
+      await handle.write(chunk);
+    }
+  } catch (error) {
+    await handle.close();
+    await fs.rm(to.abs, { force: true });
+    throw error;
+  }
+  await handle.close();
+  return { path: to.rel, size };
 }
 
 export async function deleteEntry(root, input) {
