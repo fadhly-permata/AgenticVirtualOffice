@@ -4,6 +4,18 @@ Semua perubahan penting pada VirtOffice dicatat di sini. Format mengikuti
 [Keep a Changelog](https://keepachangelog.com/id/1.1.0/) dan versi mengikuti
 [Semantic Versioning](https://semver.org/lang/id/).
 
+## [0.17.0] - 2026-11-05
+
+### Ditambahkan
+
+- Toolbar File List lengkap terlihat: icon **Cari** (sejajar dengan **Muat ulang**) menampilkan/menyembunyikan bar pencarian, dan **Salin** / **Potong** / **Tempel** sekarang punya tombol sendiri di samping menu kanan-klik dan `Ctrl+C`/`Ctrl+X`/`Ctrl+V`. **Tempel** otomatis redup selama belum ada yang ditandai. Setiap icon dipisahkan pembatas tipis (`files__sep`) supaya tujuh button tidak terbaca sebagai satu gumpalan.
+- Status tampil/sembunyi bar pencarian disimpan di `virtoOffice.previewPrefs` (`filesSearch`), jadi tetap seperti terakhir kali setelah halaman dimuat ulang.
+
+### Diperbaiki
+
+- Baris petunjuk "Seret baris ke folder…" di bawah toolbar dihapus; teksnya memakan satu baris penuh di panel yang sempit dan informasinya sudah ada di README.
+- `onlyRatioChanged` di `src/chat/prefs.ts` diganti `changedKeys()`: pemeriksaan "perubahan kecil apa yang tidak perlu menggambar ulang pane" sekarang satu mekanisme (rasio split dan tampil/sembunyi pencarian sama-sama tidak lagi mereset posisi gulir pohon).
+
 ## [0.16.0] - 2026-11-05
 
 ### Ditambahkan

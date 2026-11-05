@@ -5,7 +5,7 @@ import { openContextMenu } from './context-menu';
 import type { MenuEntry } from './context-menu';
 import { highlightLines, languageForPath } from './highlight';
 import { renderMarkdown } from './markdown';
-import { onlyRatioChanged, prefs, subscribePrefs } from './prefs';
+import { changedKeys, prefs, setPref, subscribePrefs } from './prefs';
 import { splitHandle } from './split';
 import type { FileContent, FileKind, SearchResult, SearchMode, TreeEntry, WorkspaceInfo } from './types';
 
@@ -161,17 +161,37 @@ export function mountFiles(container: HTMLElement, hooks: FilesHooks = {}): File
     if (searchInput.value.trim()) void runSearch(searchInput.value);
   });
   const refreshButton = iconButton(t('files.refresh'), ICON.refresh, () => refresh());
+  const searchButton = iconButton(t('files.hideSearch'), ICON.search, () => toggleSearch());
+  searchButton.setAttribute('aria-pressed', 'true');
+  const copyButton = iconButton(t('menu.copy'), ICON.copy, () => markFromKeys(false));
+  const cutButton = iconButton(t('menu.cut'), ICON.cut, () => markFromKeys(true));
+  const pasteButton = iconButton(t('menu.paste'), ICON.paste, () => {
+    if (clip) void transferItem(clip, targetDir());
+  });
   const newFileButton = iconButton(t('files.newFile'), ICON.filePlus, () => askCreate('file'));
   const newFolderButton = iconButton(t('files.newFolder'), ICON.folderPlus, () => askCreate('folder'));
-  toolRow.append(refreshButton, newFileButton, newFolderButton);
+
+  // Dipisahkan satu-satu: tanpa pembatas, tujuh icon kecil terbaca sebagai satu gumpalan.
+  const toolButtons = [
+    searchButton,
+    refreshButton,
+    copyButton,
+    cutButton,
+    pasteButton,
+    newFileButton,
+    newFolderButton,
+  ];
+  toolButtons.forEach((button, index) => {
+    if (index) toolRow.append(el('span', 'files__sep'));
+    toolRow.append(button);
+  });
+  pasteButton.disabled = true;
 
   const clipBar = el('div', 'files__clip');
   clipBar.hidden = true;
 
   const bar = el('div', 'files__bar');
   bar.append(searchForm, toolRow);
-
-  const dropHint = el('p', 'files__hint', t('files.dropHint'));
 
   const messageEl = el('p', 'files__message');
   messageEl.setAttribute('role', 'status');
@@ -198,9 +218,10 @@ export function mountFiles(container: HTMLElement, hooks: FilesHooks = {}): File
   const split = splitHandle(panes, viewer);
   panes.append(list, split.el, viewer);
 
-  root.append(rootBar, bar, clipBar, dropHint, messageEl, promptEl, panes);
+  root.append(rootBar, bar, clipBar, messageEl, promptEl, panes);
   container.append(root);
   setMode('name');
+  paintSearch();
   applySplit();
   paintRoot();
 
@@ -400,6 +421,7 @@ export function mountFiles(container: HTMLElement, hooks: FilesHooks = {}): File
     clear.className = 'files__clip-clear';
     clipBar.append(paste, clear);
     paintClipMarks();
+    paintTools();
   }
 
   function markClip(entry: TreeEntry, cut: boolean): void {
@@ -1422,8 +1444,33 @@ export function mountFiles(container: HTMLElement, hooks: FilesHooks = {}): File
     list.append(...rows);
   }
 
+  /** Bar pencarian bisa disembunyikan supaya pohon memakai seluruh tinggi panel. */
+  function paintSearch(): void {
+    const on = prefs().filesSearch;
+    searchForm.hidden = !on;
+    searchButton.setAttribute('aria-pressed', String(on));
+    const label = t(on ? 'files.hideSearch' : 'files.showSearch');
+    searchButton.title = label;
+    searchButton.setAttribute('aria-label', label);
+  }
+
+  function toggleSearch(): void {
+    const on = !prefs().filesSearch;
+    // Hasil pencarian tidak boleh tinggal di pohon saat kolom pencariannya disembunyikan.
+    if (!on && (searchInput.value || results)) {
+      searchInput.value = '';
+      void runSearch('');
+    }
+    setPref('filesSearch', on);
+    paintSearch();
+    if (on) searchInput.focus();
+  }
+
+  function paintTools(): void {
+    pasteButton.disabled = !clip;
+  }
+
   function paintSearchLabels(): void {
-    dropHint.textContent = t('files.dropHint');
     setMode(mode);
     searchInput.setAttribute('aria-label', t('files.searchAria'));
     list.setAttribute('aria-label', t('files.treeAria'));
@@ -1432,10 +1479,17 @@ export function mountFiles(container: HTMLElement, hooks: FilesHooks = {}): File
     clearButton.setAttribute('aria-label', t('files.clearSearch'));
     refreshButton.title = t('files.refresh');
     refreshButton.setAttribute('aria-label', t('files.refresh'));
+    copyButton.title = t('menu.copy');
+    copyButton.setAttribute('aria-label', t('menu.copy'));
+    cutButton.title = t('menu.cut');
+    cutButton.setAttribute('aria-label', t('menu.cut'));
+    pasteButton.title = t('menu.paste');
+    pasteButton.setAttribute('aria-label', t('menu.paste'));
     newFileButton.title = t('files.newFile');
     newFileButton.setAttribute('aria-label', t('files.newFile'));
     newFolderButton.title = t('files.newFolder');
     newFolderButton.setAttribute('aria-label', t('files.newFolder'));
+    paintSearch();
   }
 
   function refresh(): void {
@@ -1459,11 +1513,16 @@ export function mountFiles(container: HTMLElement, hooks: FilesHooks = {}): File
   let lastPrefs = prefs();
   subscribePrefs(() => {
     const next = prefs();
-    const ratioOnly = onlyRatioChanged(lastPrefs, next);
+    // Rasio split dan tampil/sembunyi bar pencarian tidak menyentuh isi pane: menulis ulang
+    // pohon justru membuang posisi gulir user tepat setelah ia mengaturnya.
+    const changed = changedKeys(lastPrefs, next);
+    const light =
+      changed.length === 1 && (changed[0] === 'previewRatio' || changed[0] === 'filesSearch');
     lastPrefs = next;
     wrap = next.wrap;
     applySplit();
-    if (ratioOnly) return;
+    paintSearch();
+    if (light) return;
     if (viewed) renderViewer();
     void redraw();
   });

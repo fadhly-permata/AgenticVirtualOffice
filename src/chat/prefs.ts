@@ -14,6 +14,8 @@ export interface Prefs {
   previewSplit: SplitMode;
   /** Porsi pratinjau terhadap pane (0.2–0.8), diatur dengan menyeret pembatas. */
   previewRatio: number;
+  /** Bar pencarian File List; bisa disembunyikan dari toolbar. */
+  filesSearch: boolean;
 }
 
 const STORAGE_PREFS = 'virtoOffice.previewPrefs';
@@ -29,6 +31,7 @@ export const DEFAULT_PREFS: Prefs = {
   scriptedPreview: false,
   previewSplit: 'horizontal',
   previewRatio: 0.56,
+  filesSearch: true,
 };
 
 /** Jaga porsi pratinjau tetap masuk akal, termasuk dari nilai localStorage yang rusak. */
@@ -61,6 +64,7 @@ function read(): Prefs {
           : DEFAULT_PREFS.scriptedPreview,
       previewSplit: parsed.previewSplit === 'vertical' ? 'vertical' : 'horizontal',
       previewRatio: clampRatio(parsed.previewRatio),
+      filesSearch: typeof parsed.filesSearch === 'boolean' ? parsed.filesSearch : DEFAULT_PREFS.filesSearch,
     };
   } catch {
     return { ...DEFAULT_PREFS };
@@ -84,17 +88,10 @@ export function resetPrefs(): Prefs {
   return current;
 }
 
-/** True kalau perubahan prefs hanya berasal dari geseran pembatas split. */
-export function onlyRatioChanged(before: Prefs, after: Prefs): boolean {
-  return (
-    before.previewRatio !== after.previewRatio &&
-    before.wrap === after.wrap &&
-    before.lineNumbers === after.lineNumbers &&
-    before.syntax === after.syntax &&
-    before.defaultView === after.defaultView &&
-    before.scriptedPreview === after.scriptedPreview &&
-    before.previewSplit === after.previewSplit
-  );
+/** Kunci yang nilainya berubah di antara dua prefs; dipakai pemanggil yang tidak mau
+ * menulis ulang pane hanya karena satu setelan kecil (rasio split, bar pencarian) bergerak. */
+export function changedKeys(before: Prefs, after: Prefs): (keyof Prefs)[] {
+  return (Object.keys(DEFAULT_PREFS) as (keyof Prefs)[]).filter((key) => before[key] !== after[key]);
 }
 
 export function subscribePrefs(listener: Listener): () => void {
