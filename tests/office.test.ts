@@ -49,16 +49,23 @@ describe('OfficeWorld', () => {
 
     let sawChase = false;
     let sawForaging = false;
+    let sawOutside = false;
+    let sawBackInside = false;
     for (let step = 0; step < 1800; step += 1) {
       world.update(0.1, new Set(), false);
       sawChase = sawChase || world.petsChasing;
       sawForaging = sawForaging || world.groundBirdCount > 0;
+      if (world.dogsOutside > 0) sawOutside = true;
+      else if (sawOutside) sawBackInside = true;
     }
     expect(world.chaseCount).toBeGreaterThan(0);
     expect(sawChase).toBe(true);
     expect(sawForaging).toBe(true);
     expect(world.birdChaseCount).toBeGreaterThan(0);
     expect(world.birdEscapeCount).toBeGreaterThan(0);
+    // The dog slips out the gate to play, then walks itself back into the pen.
+    expect(sawOutside).toBe(true);
+    expect(sawBackInside).toBe(true);
   });
 
   it('lets birds wander at random and settle on trees or grass', () => {

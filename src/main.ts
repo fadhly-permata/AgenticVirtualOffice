@@ -161,6 +161,7 @@ function boot(target: HTMLCanvasElement): void {
         chases: world.chaseCount,
         birdChases: world.birdChaseCount,
         escapes: world.birdEscapeCount,
+        outside: world.dogsOutside,
       },
       sun: {
         x: Number(projected.x.toFixed(3)),
