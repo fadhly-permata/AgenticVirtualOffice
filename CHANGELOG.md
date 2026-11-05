@@ -4,6 +4,14 @@ Semua perubahan penting pada VirtOffice dicatat di sini. Format mengikuti
 [Keep a Changelog](https://keepachangelog.com/id/1.1.0/) dan versi mengikuti
 [Semantic Versioning](https://semver.org/lang/id/).
 
+## [0.22.0] - 2026-11-06
+
+### Berubah
+
+- Posisi kursor tidak lagi menumpang di toolbar pratinjau. `.viewer__status` menempel di dasar jendela editor — kiri `baris N·kolom M`, kanan `K baris` — dan bagian `+a −b` hanya muncul kalau isi draft memang berbeda dari disk, jadi file yang baru dibuka tidak lagi berbunyi `+0 −0`. Baris status hanya ada di mode sunting; pratinjau baca-saja tetap tanpa.
+- Toolbar pratinjau bisa digeser menyamping saat pane atau jendela sempit: `overflow-x: auto` plus `flex: none` pada setiap anaknya, sehingga spacer yang menyusut lebih dulu dan ikon tidak pernah dipadatkan atau terpotong. Berlaku untuk mode sunting maupun mode baca yang membawa kotak cari; `viewer__count` ikut `white-space: nowrap`.
+- `viewer.editStatus` di `src/i18n/ns/viewer.ts` dipecah menjadi `editCaret`, `editInfo`, dan `editDiff`; `editorUi.status` menjadi `editorUi.caret` + `editorUi.info`, dan `renderViewer()` menempelkan baris status setelah host editor.
+
 ## [0.21.0] - 2026-11-05
 
 ### Ditambahkan

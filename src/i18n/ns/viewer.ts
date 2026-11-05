@@ -43,10 +43,9 @@ export const viewer: Catalog = {
   undo: ['Urungkan', 'Undo'],
   redo: ['Ulangi', 'Redo'],
   findReplace: ['Cari & ganti', 'Find & replace'],
-  editStatus: [
-    'baris {line}·kolom {column} — {lines} baris — +{added} −{removed}',
-    'line {line}:{column} — {lines} lines — +{added} −{removed}',
-  ],
+  editCaret: ['baris {line}·kolom {column}', 'line {line}:{column}'],
+  editInfo: ['{lines} baris', '{lines} lines'],
+  editDiff: ['{lines} baris · +{added} −{removed}', '{lines} lines · +{added} −{removed}'],
   unsavedDot: ['belum disimpan', 'not saved yet'],
   unsavedTitle: ['Perubahan belum disimpan', 'Unsaved changes'],
   unsavedBody: [

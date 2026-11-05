@@ -124,7 +124,7 @@ Every failure on this page shows as a popup, not a quiet line of text: a name th
 
 Files and whole folders can be dropped straight from Windows Explorer onto the tree to upload them. The row under the cursor picks the destination folder (a file row means its parent), empty list space means the workspace root, and a name that is already taken becomes `a (2).txt`. A dropped folder is walked recursively — `docs/img/logo.png` lands at `docs/img/logo.png`, and an empty branch such as `docs/empty` is created too, so the structure survives the drag. Each file is one `POST /api/chat/files/upload` request whose body is the raw bytes, streamed to disk instead of buffered, capped at 50 MB; files go one after another with a progress line, the tree reloads when the batch ends and expands to the last path written. One drag uploads at most 200 files (`MAX_DROP_FILES`) — enough for a real folder, short enough that a mistaken `node_modules` cannot turn the workspace into a disk copy, and the message says where it stopped. A drop that misses the tree is swallowed by the page, so the browser never navigates to the dropped file and loses the app.
 
-The preview window docks below the list or beside it (**Settings → Preview → Preview window position**); side-by-side only applies when maximised. The divider between list and preview drags to any split between 20–80%, the ratio is stored locally, and **Restore defaults** puts it back. The same rules apply to diffs in Source Control.
+The preview window docks below the list or beside it (**Settings → Preview → Preview window position**); side-by-side only applies when maximised. The divider between list and preview drags to any split between 20–80%, the ratio is stored locally, and **Restore defaults** puts it back. Narrow the pane (or the window) and the preview toolbar scrolls sideways instead of squashing its icons, and the tab strip already scrolls the same way. The same rules apply to diffs in Source Control.
 
 Paths travel relative to the workspace root and the bridge rejects `..`, absolute paths, drive letters, and separator characters — see `server/files.mjs`.
 
@@ -132,7 +132,9 @@ Rows are badged with git status the way VS Code's explorer does: the letter (`M`
 
 ### Editing a file
 
-Nothing here saves on its own. A text file opened from the tree becomes a CodeMirror 6 surface — loaded on demand, so the editor chunk is only fetched when something is actually opened for editing, and images, PDFs, markdown previews, binaries and truncated reads stay read-only. The toolbar gains **Undo**, **Redo** and **Save**, and until Save is pressed the tab carries a dirty dot. `Ctrl+S` saves; the status line beside the tabs shows caret position, line count and `+added −removed` against what is on disk.
+Nothing here saves on its own. A text file opened from the tree becomes a CodeMirror 6 surface — loaded on demand, so the editor chunk is only fetched when something is actually opened for editing, and images, PDFs, markdown previews, binaries and truncated reads stay read-only. The toolbar gains **Undo**, **Redo** and **Save**, and until Save is pressed the tab carries a dirty dot. `Ctrl+S` saves.
+
+Caret position, line count and `+added −removed` against what is on disk live in a status bar pinned to the bottom of the editor pane — `baris 12·kolom 4` on the left, `240 baris · +3 −1` on the right — not in the toolbar, where it used to crowd out the icons. The diff part only appears once the draft differs from the file on disk. The bar belongs to the editor: the read-only preview has none.
 
 Undo and redo are a snapshot stack owned by the app rather than the editor's own history, which is why the toolbar buttons keep working when focus is on the tree or the composer; a burst of typing collapses into one step (600 ms), and Save does not add a step — undoing after a save goes back to the edit and marks the tab dirty again, the way an editor should.
 

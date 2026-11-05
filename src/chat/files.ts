@@ -341,9 +341,12 @@ export function mountFiles(container: HTMLElement, hooks: FilesHooks = {}): File
     save: HTMLButtonElement;
     undo: HTMLButtonElement;
     redo: HTMLButtonElement;
-    status: HTMLElement;
+    caret: HTMLElement;
+    info: HTMLElement;
     dots: Map<string, HTMLElement>;
   } | null = null;
+  /** Baris status milik jendela editor, dibuat toolbar() lalu ditempel renderViewer(). */
+  let editBar: HTMLElement | null = null;
 
   function baseName(path: string): string {
     return path.split('/').pop() ?? path;
@@ -394,7 +397,8 @@ export function mountFiles(container: HTMLElement, hooks: FilesHooks = {}): File
     }
     const draft = drafts.get(activePath);
     if (!draft) {
-      editorUi.status.textContent = '';
+      editorUi.caret.textContent = '';
+      editorUi.info.textContent = '';
       return;
     }
     const caret = draft.caret();
@@ -402,13 +406,11 @@ export function mountFiles(container: HTMLElement, hooks: FilesHooks = {}): File
     editorUi.save.disabled = !draft.dirty();
     editorUi.undo.disabled = !draft.canUndo();
     editorUi.redo.disabled = !draft.canRedo();
-    editorUi.status.textContent = t('viewer.editStatus', {
-      line: caret.line,
-      column: caret.column,
-      lines: caret.lines,
-      added: delta.added,
-      removed: delta.removed,
-    });
+    editorUi.caret.textContent = t('viewer.editCaret', { line: caret.line, column: caret.column });
+    editorUi.info.textContent =
+      delta.added || delta.removed
+        ? t('viewer.editDiff', { lines: caret.lines, added: delta.added, removed: delta.removed })
+        : t('viewer.editInfo', { lines: caret.lines });
   }
 
   /** Tulis ke disk. force dipakai setelah user memilih menimpa file yang berubah di disk. */
@@ -1407,17 +1409,19 @@ export function mountFiles(container: HTMLElement, hooks: FilesHooks = {}): File
       }
       actions.append(wrapButton, zoomButton('out'), zoomButton('in'), copy);
 
-      // Mode sunting: Save/Undo/Redo di kanan, posisi kursor di kiri. Pencarian lama
-      // dilompati karena panel CodeMirror sudah cari sekaligus ganti.
+      // Mode sunting: tombol di kanan, posisi kursor pindah ke baris status di dasar editor.
+      // Pencarian lama dilompati karena panel CodeMirror sudah cari sekaligus ganti.
       if (editable(viewed)) {
         const draft = draftFor(viewed);
-        const status = el('span', 'viewer__edit-status');
+        const caret = el('span', 'viewer__status-caret');
+        const info = el('span', 'viewer__status-info');
+        editBar = el('div', 'viewer__status');
+        editBar.append(caret, info);
         const find = iconButton(t('viewer.findReplace'), ICON.search, () => draft.openFind());
         const undo = iconButton(t('viewer.undo'), ICON.undo, () => draft.undo());
         const redo = iconButton(t('viewer.redo'), ICON.redo, () => draft.redo());
         const save = iconButton(t('viewer.save'), ICON.save, () => void saveDraft(draft));
-        editorUi = { save, undo, redo, status, dots: tabDots };
-        barEl.append(status);
+        editorUi = { save, undo, redo, caret, info, dots: tabDots };
         actions.append(el('span', 'files__sep'), find, undo, redo, save);
       } else {
         editorUi = null;
@@ -1565,6 +1569,7 @@ export function mountFiles(container: HTMLElement, hooks: FilesHooks = {}): File
     viewer.textContent = '';
     tabDots.clear();
     findCount = null;
+    editBar = null;
     viewer.hidden = tabs.length === 0;
     split.sync();
     if (!viewed) {
@@ -1603,6 +1608,7 @@ export function mountFiles(container: HTMLElement, hooks: FilesHooks = {}): File
     if (editable(viewed)) {
       const draft = draftFor(viewed);
       viewer.append(draft.host);
+      if (editBar) viewer.append(editBar);
       draft.setWrap(wrap);
       draft.setFontSize(11.5 * zoom);
       paintEditorUi();
