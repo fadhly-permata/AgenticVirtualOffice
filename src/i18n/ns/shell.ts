@@ -67,6 +67,8 @@ export const shell: Catalog = {
 
   clockAria: ['Jam kantor', 'Office clock'],
   clockLabel: ['Waktu kantor', 'Office time'],
+  fpsAria: ['Penghitung frame per detik', 'Frames per second counter'],
+  fpsLabel: ['FPS', 'FPS'],
 
   legendAria: ['Status agen', 'Agent status'],
   agentsLabel: ['Agen', 'Agents'],

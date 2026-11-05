@@ -16,6 +16,8 @@ export interface Prefs {
   previewRatio: number;
   /** Bar pencarian File List; default tersembunyi, icon Cari menampilkannya. */
   filesSearch: boolean;
+  /** Penghitung FPS di bawah jam kantor. */
+  showFps: boolean;
 }
 
 const STORAGE_PREFS = 'virtoOffice.previewPrefs';
@@ -32,6 +34,7 @@ export const DEFAULT_PREFS: Prefs = {
   previewSplit: 'horizontal',
   previewRatio: 0.56,
   filesSearch: false,
+  showFps: true,
 };
 
 /** Jaga porsi pratinjau tetap masuk akal, termasuk dari nilai localStorage yang rusak. */
@@ -65,6 +68,7 @@ function read(): Prefs {
       previewSplit: parsed.previewSplit === 'vertical' ? 'vertical' : 'horizontal',
       previewRatio: clampRatio(parsed.previewRatio),
       filesSearch: typeof parsed.filesSearch === 'boolean' ? parsed.filesSearch : DEFAULT_PREFS.filesSearch,
+      showFps: typeof parsed.showFps === 'boolean' ? parsed.showFps : DEFAULT_PREFS.showFps,
     };
   } catch {
     return { ...DEFAULT_PREFS };

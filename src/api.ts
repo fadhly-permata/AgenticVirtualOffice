@@ -44,6 +44,15 @@ const ROLE_SIGNAL: Record<BusyRole, AgentSignal> = {
   delegated: 'thinking',
 };
 
+/** Read-only view of what the scene put around the building, for live checks. */
+export interface ScenerySnapshot {
+  trees: number;
+  clouds: number;
+  birds: number;
+  /** Sun disc in normalised device coordinates; `aligned` means it sits on the light ray. */
+  sun: { x: number; y: number; visible: boolean; aligned: boolean };
+}
+
 /**
  * Small surface the OpenCode bridge calls. It is exposed on `window.virtOffice`
  * so a local script, browser extension or WebSocket shim can drive the agents
@@ -63,13 +72,15 @@ export interface VirtOfficeApi {
   release(agentId: string): boolean;
   setTimeOfDay(hours: number): void;
   setTimeScale(hoursPerSecond: number): void;
+  scenery(): ScenerySnapshot | null;
 }
 
 export function installApi(
   agents: Agent[],
   clock: DayCycle,
   autopilot: Autopilot,
-  crew?: CrewFactory
+  crew?: CrewFactory,
+  scenery?: () => ScenerySnapshot
 ): VirtOfficeApi {
   const find = (key: string): Agent | undefined =>
     agents.find((agent) => agent.id === key || agent.name.toLowerCase() === key.toLowerCase());
@@ -178,6 +189,8 @@ export function installApi(
     setTimeScale: (hoursPerSecond) => {
       clock.setSpeed(hoursPerSecond);
     },
+
+    scenery: () => scenery?.() ?? null,
   };
 
   (window as Window & { virtOffice?: VirtOfficeApi }).virtOffice = api;

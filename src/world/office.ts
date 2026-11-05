@@ -5,6 +5,7 @@ import { C, mat } from '../core/palette';
 import {
   fabricWeave,
   glowSprite,
+  grassNoise,
   idleScreenTexture,
   plasterNoise,
   softShadow,
@@ -60,11 +61,37 @@ interface GlowRef {
   material: THREE.SpriteMaterial;
 }
 
+/** Cloud cluster drifting slowly above the diorama. */
+interface CloudRef {
+  group: THREE.Group;
+  phase: number;
+  baseX: number;
+  sway: number;
+}
+
+/** Small bird circling the building, wings flapping in `update`. */
+interface BirdRef {
+  group: THREE.Group;
+  wings: THREE.Object3D[];
+  radius: number;
+  height: number;
+  speed: number;
+  phase: number;
+}
+
 /** Window band shared by the glass panes and the wall cut-outs. */
 const WINDOW_CENTER_Y = 2.32;
 const WINDOW_HEIGHT = 1.95;
 const WINDOW_OPEN_Y0 = 1.3;
 const WINDOW_OPEN_Y1 = 3.34;
+
+/** How far the garden terrace reaches beyond the wall line, and its surface height. */
+const GARDEN_MARGIN = 3.2;
+const GARDEN_TOP = -0.42;
+
+/** Sun disc sits on the light's own ray, far enough to read as sky. */
+const SUN_DISTANCE = 88;
+const SUN_RADIUS = 1.5;
 
 const FLOOR_COLOR: Record<RoomId, number> = {
   workspace: C.floorWorkspace,
@@ -88,6 +115,8 @@ const M = {
   cushion: mat(0x9cb9a5, { map: fabricWeave(3, 3), roughness: 0.95 }),
   bean: mat(C.coral, { map: fabricWeave(3, 3), roughness: 0.95 }),
   beanDeep: mat(0xd0684f, { map: fabricWeave(3, 3), roughness: 0.95 }),
+  treeLeaf: mat(C.treeLeaf, { roughness: 0.9, flatShading: true }),
+  treeLeafLight: mat(C.treeLeafLight, { roughness: 0.9, flatShading: true }),
 } as const;
 
 /** Nudges a palette colour up or down in lightness. */
@@ -122,9 +151,21 @@ function subtractGaps(partition: Partition): { from: number; to: number }[] {
  */
 export class OfficeWorld {
   readonly root = new THREE.Group();
+  /** Walls, floors and furniture; the unit-test extents apply to this alone. */
+  readonly building = new THREE.Group();
+  /** Garden, trees, clouds and the sun disc around the building. */
+  readonly surroundings = new THREE.Group();
   readonly hemi: THREE.HemisphereLight;
   readonly sun: THREE.DirectionalLight;
+  readonly sunDisc: THREE.Mesh;
+  treeCount = 0;
+  cloudCount = 0;
+  birdCount = 0;
 
+  private readonly sunGlow: THREE.Sprite;
+  private readonly cloudMaterial: THREE.MeshStandardMaterial;
+  private readonly clouds: CloudRef[] = [];
+  private readonly birds: BirdRef[] = [];
   private readonly screens: ScreenRef[] = [];
   private readonly lampLights: LampRef[] = [];
   private readonly lampMaterials: THREE.MeshStandardMaterial[] = [];
@@ -189,15 +230,46 @@ export class OfficeWorld {
     });
     this.lampMaterials.push(this.bulbMaterial);
 
-    this.root.add(this.buildBase());
-    this.root.add(this.buildFloors());
-    this.root.add(this.buildOuterWalls());
-    this.root.add(this.buildPartitions());
-    this.root.add(this.buildWorkspace());
-    this.root.add(this.buildMeeting());
-    this.root.add(this.buildPantry());
-    this.root.add(this.buildLounge());
-    this.root.add(this.buildPendants());
+    this.cloudMaterial = new THREE.MeshStandardMaterial({
+      color: 0xffffff,
+      roughness: 1,
+      metalness: 0,
+      flatShading: true,
+    });
+    const sunMaterial = new THREE.MeshBasicMaterial({ color: 0xfff1c6, toneMapped: false });
+    this.sunDisc = new THREE.Mesh(new THREE.SphereGeometry(SUN_RADIUS, 24, 16), sunMaterial);
+    this.sunGlow = new THREE.Sprite(
+      new THREE.SpriteMaterial({
+        map: glowSprite(),
+        color: 0xffd27a,
+        transparent: true,
+        opacity: 0.42,
+        depthWrite: false,
+        blending: THREE.AdditiveBlending,
+        toneMapped: false,
+      }),
+    );
+    this.sunGlow.scale.setScalar(11);
+    this.sunDisc.add(this.sunGlow);
+    // applyDay puts it on the light ray as soon as the first frame runs.
+    this.sunDisc.position.set(OFFICE_WIDTH / 2, 40, OFFICE_DEPTH / 2 + 60);
+
+    this.building.add(
+      this.buildBase(),
+      this.buildFloors(),
+      this.buildOuterWalls(),
+      this.buildPartitions(),
+      this.buildWorkspace(),
+      this.buildMeeting(),
+      this.buildPantry(),
+      this.buildLounge(),
+      this.buildPendants(),
+    );
+    this.root.add(this.building);
+
+    this.surroundings.add(this.buildGarden());
+    this.buildScenery();
+    this.root.add(this.surroundings);
   }
 
   // ---------------------------------------------------------------- shell ---
@@ -1042,6 +1114,209 @@ export class OfficeWorld {
     return g;
   }
 
+  // ------------------------------------------------------------- scenery ----
+
+  /** Grass terrace around the plinth, so the building sits in a garden instead of a void. */
+  private buildGarden(): THREE.Group {
+    const g = new THREE.Group();
+    const w = OFFICE_WIDTH + GARDEN_MARGIN * 2;
+    const d = OFFICE_DEPTH + GARDEN_MARGIN * 2;
+    const grass = new THREE.MeshStandardMaterial({
+      color: C.lawn,
+      map: grassNoise(7, 6),
+      roughness: 1,
+    });
+    g.add(rbox(w, 0.78, d, 0.9, grass, OFFICE_WIDTH / 2, GARDEN_TOP - 0.39, OFFICE_DEPTH / 2));
+    g.add(
+      rbox(
+        w + 0.24,
+        0.34,
+        d + 0.24,
+        0.6,
+        mat(C.lawnEdge, { roughness: 1 }),
+        OFFICE_WIDTH / 2,
+        -1.03,
+        OFFICE_DEPTH / 2,
+      ),
+    );
+    return g;
+  }
+
+  private buildScenery(): void {
+    // Two staggered rows against the walled sides read as a forest; the two open
+    // sides get one row of shorter trees so the camera keeps its view inside.
+    const rows: [number, number, number, number, number, number, number][] = [
+      // x0, z0, x1, z1, count, minHeight, maxHeight
+      [-1.2, -1.3, 27.2, -1.3, 10, 3.6, 4.6],
+      [0.6, -2.5, 25.4, -2.5, 8, 4.4, 5.2],
+      [-1.3, 0.9, -1.3, 22.9, 7, 3.6, 4.6],
+      [-2.5, 2.2, -2.5, 21.6, 6, 4.4, 5.2],
+      [28.2, 1.4, 28.2, 20.4, 7, 2.6, 3.4],
+      [1.6, 23.2, 24.4, 23.2, 8, 2.6, 3.4],
+    ];
+    let index = 0;
+    for (const [x0, z0, x1, z1, count, minHeight, maxHeight] of rows) {
+      for (let step = 0; step < count; step += 1) {
+        const at = count > 1 ? step / (count - 1) : 0.5;
+        const seed = index + 1;
+        const jitterX = Math.sin(seed * 12.9898) * 0.22;
+        const jitterZ = Math.sin(seed * 78.233) * 0.22;
+        const height = minHeight + (maxHeight - minHeight) * (0.5 + 0.5 * Math.sin(seed * 2.4));
+        this.surroundings.add(
+          this.tree(x0 + (x1 - x0) * at + jitterX, z0 + (z1 - z0) * at + jitterZ, height, index * 1.7),
+        );
+        index += 1;
+      }
+    }
+    this.treeCount = index;
+
+    const bushes: [number, number, number][] = [
+      [27.5, 4.8, 0.6],
+      [27.7, 11.0, 0.5],
+      [27.5, 16.8, 0.55],
+      [4.6, 22.2, 0.55],
+      [10.2, 22.3, 0.5],
+      [15.8, 22.2, 0.6],
+      [21.4, 22.3, 0.5],
+    ];
+    for (const [x, z, size] of bushes) this.surroundings.add(this.bush(x, z, size));
+
+    const clouds: [number, number, number, number][] = [
+      [-2, 7.2, -3, 1.05],
+      [10, 9.0, -4, 1.3],
+      [26, 9.0, -3, 1.0],
+      [33, 8.5, 6, 0.9],
+      [-5, 8.0, 10, 0.85],
+    ];
+    clouds.forEach(([x, y, z, scale], index) => {
+      const group = this.cloud(scale);
+      group.position.set(x, y, z);
+      this.clouds.push({ group, phase: index * 1.9, baseX: x, sway: 0.7 + index * 0.22 });
+      this.surroundings.add(group);
+    });
+    this.cloudCount = clouds.length;
+
+    this.buildBirds();
+    this.surroundings.add(this.sunDisc);
+  }
+
+  private buildBirds(): void {
+    const material = mat(0x39424a, { roughness: 0.8 });
+    const specs: [number, number, number, number, number][] = [
+      // radius, height, speed, phase, scale — high enough to read against the sky,
+      // not so high that they leave the framed diorama.
+      // Keep the circle inside the framed sky: this camera sees about ±15 units
+      // sideways, so wide orbits spent most of their time off-screen.
+      [10, 11.5, 0.34, 0.2, 1.5],
+      [12.5, 12.4, 0.27, 2.1, 1.3],
+      [14, 10.8, 0.31, 4.0, 1.6],
+      [9, 13.2, 0.4, 5.2, 1.2],
+      [11, 12.0, 0.3, 1.2, 1.4],
+    ];
+    for (const [radius, height, speed, phase, scale] of specs) {
+      const group = new THREE.Group();
+      group.scale.setScalar(scale);
+      const body = box(0.34, 0.05, 0.07, material);
+      body.castShadow = false;
+      body.receiveShadow = false;
+      group.add(body);
+
+      const wings: THREE.Object3D[] = [];
+      for (const side of [-1, 1]) {
+        const pivot = new THREE.Group();
+        const wing = box(0.3, 0.014, 0.34, material, 0, 0, side * 0.2);
+        wing.castShadow = false;
+        wing.receiveShadow = false;
+        pivot.add(wing);
+        group.add(pivot);
+        wings.push(pivot);
+      }
+
+      group.position.set(
+        OFFICE_WIDTH / 2 + Math.cos(phase) * radius,
+        height,
+        OFFICE_DEPTH / 2 + Math.sin(phase) * radius,
+      );
+      this.birds.push({ group, wings, radius, height, speed, phase });
+      this.surroundings.add(group);
+    }
+    this.birdCount = specs.length;
+  }
+
+  private tree(x: number, z: number, height: number, phase: number): THREE.Group {
+    const g = new THREE.Group();
+    g.position.set(x, GARDEN_TOP, z);
+    g.add(this.contact(0, 0, height * 0.5, height * 0.5, 0.2, 0.012));
+
+    const trunkHeight = height * 0.5;
+    g.add(cyl(0.07, 0.13, trunkHeight, mat(C.treeTrunk, { roughness: 1 }), 0, trunkHeight / 2, 0, 7));
+
+    const canopy = new THREE.Group();
+    canopy.position.y = trunkHeight + height * 0.18;
+    const radius = height * 0.27;
+    const blobs: [number, number, number, number][] = [
+      [0, 0.12, 0, 1],
+      [radius * 0.62, -0.08, radius * 0.18, 0.78],
+      [-radius * 0.55, -0.02, -radius * 0.22, 0.7],
+      [radius * 0.08, radius * 0.5, -radius * 0.1, 0.6],
+    ];
+    blobs.forEach(([bx, by, bz, size], index) => {
+      const leaf = new THREE.Mesh(
+        new THREE.IcosahedronGeometry(radius * size, 0),
+        index % 2 === 0 ? M.treeLeaf : M.treeLeafLight,
+      );
+      leaf.position.set(bx, by, bz);
+      leaf.scale.set(1.2, 0.82, 1.2);
+      leaf.castShadow = true;
+      leaf.receiveShadow = true;
+      canopy.add(leaf);
+    });
+    g.add(canopy);
+    this.plants.push({ node: canopy, phase });
+    return g;
+  }
+
+  private bush(x: number, z: number, size: number): THREE.Group {
+    const g = new THREE.Group();
+    g.position.set(x, GARDEN_TOP, z);
+    const blobs: [number, number, number, number][] = [
+      [0, 0, 0, 1],
+      [size * 0.75, -0.08, size * 0.2, 0.7],
+      [-size * 0.6, -0.1, -size * 0.15, 0.62],
+    ];
+    blobs.forEach(([bx, by, bz, scale], index) => {
+      const leaf = new THREE.Mesh(
+        new THREE.IcosahedronGeometry(size * scale, 0),
+        index % 2 === 0 ? M.treeLeaf : M.treeLeafLight,
+      );
+      leaf.position.set(bx, size * 0.55 + by, bz);
+      leaf.scale.set(1.1, 0.7, 1.1);
+      leaf.castShadow = true;
+      leaf.receiveShadow = true;
+      g.add(leaf);
+    });
+    return g;
+  }
+
+  private cloud(scale: number): THREE.Group {
+    const g = new THREE.Group();
+    const puffs: [number, number, number, number][] = [
+      [0, 0, 0, 1],
+      [1.05, -0.18, 0.15, 0.72],
+      [-1.0, -0.22, -0.1, 0.66],
+      [0.4, 0.42, -0.15, 0.62],
+      [-0.45, 0.3, 0.2, 0.5],
+    ];
+    for (const [px, py, pz, size] of puffs) {
+      const puff = ball(0.85 * size * scale, this.cloudMaterial, px * scale, py * scale, pz * scale, 12);
+      puff.scale.set(1.35, 0.62, 1.0);
+      puff.castShadow = false;
+      puff.receiveShadow = false;
+      g.add(puff);
+    }
+    return g;
+  }
+
   // ------------------------------------------------------------- shared ----
 
   private plant(x: number, z: number, scale: number, phase: number): THREE.Group {
@@ -1119,7 +1394,7 @@ export class OfficeWorld {
   }
 
   /** Soft blob under a piece of furniture so it does not float. */
-  private contact(x: number, z: number, w: number, d: number, opacity = 0.22): THREE.Mesh {
+  private contact(x: number, z: number, w: number, d: number, opacity = 0.22, y = 0.05): THREE.Mesh {
     let material = this.contactMaterials.get(opacity);
     if (!material) {
       material = new THREE.MeshBasicMaterial({
@@ -1132,7 +1407,7 @@ export class OfficeWorld {
     }
     const mesh = new THREE.Mesh(new THREE.PlaneGeometry(w, d), material);
     mesh.rotation.x = -Math.PI / 2;
-    mesh.position.set(x, 0.05, z);
+    mesh.position.set(x, y, z);
     mesh.renderOrder = 1;
     return mesh;
   }
@@ -1194,6 +1469,25 @@ export class OfficeWorld {
     this.windowMaterial.color.copy(new THREE.Color(0x1a2438).lerp(new THREE.Color(0xcfeaf6), day));
     this.windowMaterial.emissive.copy(new THREE.Color(0x0b1322).lerp(new THREE.Color(0x9fd3e8), day));
     this.windowMaterial.emissiveIntensity = 0.12 + 0.35 * day;
+
+    // The disc rides the light's own ray, so what you see and what casts the
+    // shadows cannot drift apart. It leaves the frame when the sun is overhead;
+    // that is the camera looking down at the floor, not a missing sun.
+    const ray = this.sun.position.clone().sub(new THREE.Vector3(cx, 0, cz)).normalize();
+    this.sunDisc.position.set(cx + ray.x * SUN_DISTANCE, ray.y * SUN_DISTANCE, cz + ray.z * SUN_DISTANCE);
+    const up = altitude > -0.05;
+    this.sunDisc.visible = up;
+    const sunMaterial = this.sunDisc.material as THREE.MeshBasicMaterial;
+    sunMaterial.color.copy(this.sun.color);
+    const glow = this.sunGlow.material as THREE.SpriteMaterial;
+    glow.color.copy(this.sun.color);
+    glow.opacity = up ? 0.3 + 0.25 * (1 - smoothstep(0.02, 0.4, altitude)) : 0;
+
+    const cloudColor = new THREE.Color(0x2f3d55).lerp(new THREE.Color(0xffffff), day);
+    cloudColor.lerp(new THREE.Color(0xffd2b8), cycle.twilightFactor * 0.4);
+    this.cloudMaterial.color.copy(cloudColor);
+    this.cloudMaterial.emissive.copy(cloudColor);
+    this.cloudMaterial.emissiveIntensity = 0.12 + 0.14 * cycle.nightFactor;
   }
 
   update(dt: number, workingSpots: ReadonlySet<string>, gaming: boolean): void {
@@ -1247,6 +1541,25 @@ export class OfficeWorld {
 
     for (const plant of this.plants) {
       plant.node.rotation.z = Math.sin(t * 0.6 + plant.phase) * 0.02;
+    }
+
+    for (const cloud of this.clouds) {
+      cloud.group.position.x = cloud.baseX + Math.sin(t * 0.03 + cloud.phase) * cloud.sway;
+    }
+
+    const cx = OFFICE_WIDTH / 2;
+    const cz = OFFICE_DEPTH / 2;
+    for (const bird of this.birds) {
+      const angle = t * bird.speed + bird.phase;
+      bird.group.position.set(
+        cx + Math.cos(angle) * bird.radius,
+        bird.height + Math.sin(t * 0.9 + bird.phase) * 0.35,
+        cz + Math.sin(angle) * bird.radius,
+      );
+      bird.group.rotation.y = -(angle + Math.PI / 2);
+      const flap = Math.sin(t * 7 + bird.phase) * 0.55;
+      bird.wings[0]!.rotation.x = flap;
+      bird.wings[1]!.rotation.x = -flap;
     }
   }
 }

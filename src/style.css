@@ -157,6 +157,29 @@ body.is-ready #scene {
   transition: width 220ms linear;
 }
 
+.clock__fps {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  margin: 9px 0 0;
+  font-size: 9px;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+  color: var(--ink-dim);
+}
+
+.clock__fps[hidden] {
+  display: none;
+}
+
+#fps-value {
+  font-family: ui-monospace, 'SF Mono', 'Cascadia Mono', monospace;
+  font-size: 12px;
+  letter-spacing: 0.06em;
+  font-variant-numeric: tabular-nums;
+  color: var(--accent);
+}
+
 .panel--legend {
   left: 24px;
   bottom: 24px;

@@ -9,6 +9,7 @@ import { initTheme } from './theme';
 import { installApi } from './api';
 import type { CrewFactory } from './api';
 import { installChat } from './chat/chat';
+import { prefs, subscribePrefs } from './chat/prefs';
 import { ACTIVITY_LABEL } from './agents/activities';
 import { Agent } from './agents/agent';
 import { Autopilot } from './agents/autopilot';
@@ -141,13 +142,32 @@ function boot(target: HTMLCanvasElement): void {
 
   const autopilot = new Autopilot(agents);
   const clock = new DayCycle(8.1, 0.11);
-  const office = installApi(agents, clock, autopilot, crew);
+  const office = installApi(agents, clock, autopilot, crew, () => {
+    const projected = world.sunDisc.position.clone().project(camera);
+    const center = new THREE.Vector3(OFFICE_WIDTH / 2, 0, OFFICE_DEPTH / 2);
+    const lightRay = world.sun.position.clone().sub(center).normalize();
+    const discRay = world.sunDisc.position.clone().sub(center);
+    const aligned = discRay.lengthSq() > 0 && discRay.normalize().dot(lightRay) > 0.999;
+    return {
+      trees: world.treeCount,
+      clouds: world.cloudCount,
+      birds: world.birdCount,
+      sun: {
+        x: Number(projected.x.toFixed(3)),
+        y: Number(projected.y.toFixed(3)),
+        visible: world.sunDisc.visible && Math.abs(projected.x) <= 1 && Math.abs(projected.y) <= 1,
+        aligned,
+      },
+    };
+  });
 
   // ------------------------------------------------------------------ hud ---
 
   const timeEl = document.getElementById('time');
   const phaseEl = document.getElementById('phase');
   const progressEl = document.getElementById('progress');
+  const fpsEl = document.getElementById('fps');
+  const fpsValueEl = document.getElementById('fps-value');
   const countEl = document.getElementById('agent-count');
   const floorModeEl = document.getElementById('floor-mode');
   const legendEl = document.getElementById('legend');
@@ -155,6 +175,12 @@ function boot(target: HTMLCanvasElement): void {
   const stateEls = new Map<string, HTMLElement>();
   const legendRankById = new Map<string, number>();
   let legendOverflow = '';
+
+  function syncFpsVisibility(): void {
+    if (fpsEl) fpsEl.hidden = !prefs().showFps;
+  }
+  syncFpsVisibility();
+  subscribePrefs(syncFpsVisibility);
 
   /** Meeting table first, then the desks, then whoever is free — the busiest rows stay on top. */
   function legendRank(agent: Agent): number {
@@ -352,10 +378,13 @@ function boot(target: HTMLCanvasElement): void {
   let last = performance.now();
   let elapsed = 0;
   let hudTick = 0;
+  let fpsFrames = 0;
+  let fpsWindow = 0;
   let started = false;
 
   function frame(now: number): void {
-    const dt = Math.min(0.05, Math.max(0, (now - last) / 1000));
+    const delta = Math.max(0, (now - last) / 1000);
+    const dt = Math.min(0.05, delta);
     last = now;
     elapsed += dt;
 
@@ -386,6 +415,20 @@ function boot(target: HTMLCanvasElement): void {
     }
 
     renderer.render(scene, camera);
+
+    // FPS dari waktu frame mentah, bukan dt yang sudah dibatasi 50 ms.
+    if (!fpsEl || fpsEl.hidden) {
+      fpsFrames = 0;
+      fpsWindow = 0;
+    } else {
+      fpsFrames += 1;
+      fpsWindow += delta;
+      if (fpsWindow >= 0.5) {
+        if (fpsValueEl) fpsValueEl.textContent = String(Math.round(fpsFrames / fpsWindow));
+        fpsFrames = 0;
+        fpsWindow = 0;
+      }
+    }
 
     if (!started) {
       started = true;

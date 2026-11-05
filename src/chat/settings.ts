@@ -394,6 +394,7 @@ export function mountSettings(container: HTMLElement, hooks: SettingsHooks): Set
     root.append(group(t('settings.agent'), [row(t('settings.delay'), t('settings.delayHint'), delayInput)]));
 
     const other = group(t('settings.other'), [
+      row(t('settings.fps'), t('settings.fpsHint'), toggle('showFps', options.showFps)),
       row(t('settings.reset'), t('settings.resetHint'), resetButton),
       el('p', 'settings__note', t('settings.comingSoon')),
     ]);

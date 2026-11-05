@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { describe, expect, it } from 'vitest';
 import { DayCycle } from '../src/core/dayNight';
+import { OFFICE_DEPTH, OFFICE_WIDTH } from '../src/world/layout';
 import { OfficeWorld } from '../src/world/office';
 
 describe('OfficeWorld', () => {
@@ -18,13 +19,40 @@ describe('OfficeWorld', () => {
 
     expect(meshes).toBeGreaterThan(200);
 
-    const bounds = new THREE.Box3().setFromObject(world.root);
+    const bounds = new THREE.Box3().setFromObject(world.building);
     expect(bounds.min.x).toBeCloseTo(-0.8, 1);
     expect(bounds.max.x).toBeCloseTo(26.8, 1);
     expect(bounds.min.z).toBeCloseTo(-0.8, 1);
     expect(bounds.max.z).toBeCloseTo(21.8, 1);
     expect(bounds.min.y).toBeLessThan(0);
     expect(bounds.max.y).toBeGreaterThan(4);
+  });
+
+  it('surrounds the building with a garden, trees, clouds and a sun', () => {
+    const world = new OfficeWorld();
+    expect(world.treeCount).toBeGreaterThanOrEqual(40);
+    expect(world.cloudCount).toBeGreaterThanOrEqual(4);
+    expect(world.birdCount).toBeGreaterThanOrEqual(3);
+
+    const bounds = new THREE.Box3().setFromObject(world.surroundings);
+    expect(bounds.min.x).toBeLessThan(-2.5);
+    expect(bounds.min.z).toBeLessThan(-2.5);
+    expect(bounds.max.x).toBeGreaterThan(28.5);
+    expect(bounds.max.y).toBeGreaterThan(8);
+  });
+
+  it('keeps the visible sun on the light ray', () => {
+    const world = new OfficeWorld();
+    world.applyDay(new DayCycle(8.1, 0));
+    const centre = new THREE.Vector3(OFFICE_WIDTH / 2, 0, OFFICE_DEPTH / 2);
+    const light = world.sun.position.clone().sub(centre).normalize();
+    const disc = world.sunDisc.position.clone().sub(centre).normalize();
+
+    expect(disc.dot(light)).toBeGreaterThan(0.9999);
+    expect(world.sunDisc.visible).toBe(true);
+
+    world.applyDay(new DayCycle(23, 0));
+    expect(world.sunDisc.visible).toBe(false);
   });
 
   it('applies every time of day and animation tick safely', () => {
