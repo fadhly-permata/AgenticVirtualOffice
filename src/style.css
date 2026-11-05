@@ -894,6 +894,83 @@ body.chat-open .launcher,
   color: var(--err, #f6b39f);
 }
 
+/* Baris penanda Copy/Cut: menempel ke folder yang dipilih lewat tombol Tempel. */
+.files__clip {
+  display: flex;
+  flex: none;
+  align-items: center;
+  gap: 7px;
+  padding: 6px 11px;
+  border-bottom: 1px solid var(--border, rgba(255, 255, 255, 0.07));
+  background: var(--accent-soft, rgba(226, 180, 74, 0.1));
+  color: var(--ink-dim);
+  font-size: 11.5px;
+}
+
+.files__clip[hidden] {
+  display: none;
+}
+
+.files__clip > svg {
+  flex: none;
+  color: var(--accent);
+}
+
+.files__clip-name {
+  overflow: hidden;
+  color: var(--ink);
+  font-size: 12px;
+  font-weight: 600;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.files__clip-hint {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  color: var(--ink-faint, rgba(244, 239, 230, 0.45));
+  text-align: right;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.files__clip-paste,
+.files__clip-clear {
+  flex: none;
+  padding: 4px 10px;
+  border: 1px solid var(--border-strong, rgba(255, 255, 255, 0.14));
+  border-radius: 8px;
+  background: var(--glass, rgba(255, 255, 255, 0.06));
+  color: var(--ink);
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.files__clip-paste {
+  border-color: var(--accent, rgba(226, 180, 74, 0.55));
+  background: var(--accent-soft, rgba(226, 180, 74, 0.16));
+  color: var(--accent);
+}
+
+.files__clip-clear {
+  display: grid;
+  place-items: center;
+  width: 24px;
+  height: 24px;
+  padding: 0;
+}
+
+.files__hint {
+  flex: none;
+  margin: 0 0 4px;
+  padding: 5px 11px 0;
+  border-bottom: 1px solid var(--border, rgba(255, 255, 255, 0.05));
+  color: var(--ink-faint, rgba(244, 239, 230, 0.42));
+  font-size: 10.5px;
+}
+
 .files__list {
   flex: 1;
   min-height: 0;
@@ -908,6 +985,8 @@ body.chat-open .launcher,
   display: flex;
   align-items: center;
   gap: 6px;
+  /* Baris jadi objek seretan, jadi teksnya tidak ikut terseleksi. */
+  user-select: none;
   /* Isi folder terbuka mengikuti kedalaman pohon, tanpa nested div. */
   padding: 4px 10px 4px calc(10px + var(--depth, 0) * 13px);
   cursor: pointer;
@@ -920,6 +999,35 @@ body.chat-open .launcher,
 
 .files__row--active {
   background: var(--accent-soft, rgba(226, 180, 74, 0.1));
+}
+
+/* ditandai Cut */
+.files__row--cut {
+  opacity: 0.48;
+}
+
+/* sedang diseret */
+.files__row--drag {
+  opacity: 0.32;
+}
+
+/* tujuan lepas yang valid */
+.files__row--drop {
+  background: var(--accent-soft, rgba(226, 180, 74, 0.18));
+  box-shadow: inset 0 0 0 1px var(--accent, rgba(226, 180, 74, 0.6));
+}
+
+.files__list--drop {
+  box-shadow: inset 0 0 0 2px var(--accent, rgba(226, 180, 74, 0.5));
+}
+
+.files__list:focus {
+  outline: none;
+}
+
+.files__list:focus-visible {
+  outline: 1px solid var(--accent, rgba(226, 180, 74, 0.45));
+  outline-offset: -1px;
 }
 
 .files__twist {

@@ -4,6 +4,14 @@ Semua perubahan penting pada VirtOffice dicatat di sini. Format mengikuti
 [Keep a Changelog](https://keepachangelog.com/id/1.1.0/) dan versi mengikuti
 [Semantic Versioning](https://semver.org/lang/id/).
 
+## [0.15.0] - 2026-11-05
+
+### Ditambahkan
+
+- File List bisa menyalin, memotong, dan menempel file/folder. Satu baris ditandai lewat menu kanan-klik (Salin/Potong/Tempel ke …) atau `Ctrl+C`/`Ctrl+X`/`Ctrl+V` selama halaman itu yang tampil; chip di bawah toolbar menyimpan tandanya, tombol **Tempel** di chip menempel ke folder terpilih, dan baris yang dipotong dibuat redup. Pindah memakai `POST /api/chat/files/rename` yang sudah ada; salin memakai endpoint baru `POST /api/chat/files/copy` (`copyEntry` di `server/files.mjs`, rekursif lewat `fs.cp`). Menempel hasil salin ke folder asalnya tidak lagi menabrak: tujuannya dinamai ulang otomatis menjadi `a (2).ts` / `docs (2)` (`unique`), dan menandai ulang `a.ts` menghasilkan `a (3).ts`.
+- Baris File List bisa diseret ke folder untuk memindah; tahan `Ctrl` saat melepas untuk menyalin. Folder tujuan disorot selama seretan (`files__row--drop`), latar pohon menerima lepas untuk tujuan akar workspace, dan seretan dari luar aplikasi (tipe `Files`) tidak diterima supaya halaman tidak berpindah ke file itu.
+- Penjaga path berlaku untuk kedua jalur: folder tidak bisa dipindah atau disalin ke dalam dirinya sendiri/cabangnya (400), sumber yang hilang 404, tujuan yang sudah ada 409, dan `..`/path absolut tetap ditolak `resolveInside`. Menempel hasil potong ke folder yang sama hanya menampilkan "Sudah ada di folder itu." tanpa mengubah disk.
+
 ## [0.14.6] - 2026-11-04
 
 ### Ditambahkan

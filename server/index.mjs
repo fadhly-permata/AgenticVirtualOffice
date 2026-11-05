@@ -7,7 +7,7 @@ import { createCatalogCache } from './catalog.mjs';
 import { withSessionOwners } from './status.mjs';
 import { ClaudeBridge } from './claude.mjs';
 import { QoderBridge } from './qoder.mjs';
-import { createEntry, deleteEntry, readFileAt, readRawAt, renameEntry, resolveInside, searchIn, treeAt } from './files.mjs';
+import { createEntry, copyEntry, deleteEntry, readFileAt, readRawAt, renameEntry, resolveInside, searchIn, treeAt } from './files.mjs';
 import { HttpError, readJson, sendError, sendJson } from './http.mjs';
 import { lanInfo } from './network.mjs';
 import {
@@ -458,6 +458,15 @@ async function handleApi(req, res, url) {
   if (pathname === '/api/chat/files/rename' && method === 'POST') {
     const body = await readJson(req);
     return sendJson(res, 200, await renameEntry(workspaceOrThrow(), body.from, body.to));
+  }
+
+  if (pathname === '/api/chat/files/copy' && method === 'POST') {
+    const body = await readJson(req);
+    return sendJson(
+      res,
+      201,
+      await copyEntry(workspaceOrThrow(), body.from, body.to, Boolean(body.unique))
+    );
   }
 
   if (pathname === '/api/chat/files/delete' && method === 'POST') {

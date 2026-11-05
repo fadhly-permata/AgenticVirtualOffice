@@ -54,6 +54,16 @@ interface ViewTab {
 
 const MAX_TABS = 8;
 const IMAGE_EXTS = new Set(['png', 'jpg', 'jpeg', 'gif', 'webp', 'avif', 'bmp', 'ico', 'svg']);
+/** Tipe dataTransfer khusus supaya drag dari Explorer tidak dianggap seret internal. */
+const DRAG_TYPE = 'application/x-virtoffice-path';
+
+/** Satu entri yang ditandai untuk Copy/Cut; dipindah lewat rename, disalin lewat endpoint copy. */
+interface Clip {
+  path: string;
+  name: string;
+  dir: boolean;
+  cut: boolean;
+}
 
 function extensionOf(path: string): string {
   return path.slice(path.lastIndexOf('.') + 1).toLowerCase();
@@ -108,6 +118,9 @@ export function mountFiles(container: HTMLElement, hooks: FilesHooks = {}): File
   let findCount: HTMLElement | null = null;
   let results: SearchResult | null = null;
   let prompt: Prompt | null = null;
+  let clip: Clip | null = null;
+  let dragging: Clip | null = null;
+  let dropNode: HTMLElement | null = null;
   let busy = false;
   let message = '';
   let renderToken = 0;
@@ -152,8 +165,13 @@ export function mountFiles(container: HTMLElement, hooks: FilesHooks = {}): File
   const newFolderButton = iconButton(t('files.newFolder'), ICON.folderPlus, () => askCreate('folder'));
   toolRow.append(refreshButton, newFileButton, newFolderButton);
 
+  const clipBar = el('div', 'files__clip');
+  clipBar.hidden = true;
+
   const bar = el('div', 'files__bar');
   bar.append(searchForm, toolRow);
+
+  const dropHint = el('p', 'files__hint', t('files.dropHint'));
 
   const messageEl = el('p', 'files__message');
   messageEl.setAttribute('role', 'status');
@@ -169,6 +187,7 @@ export function mountFiles(container: HTMLElement, hooks: FilesHooks = {}): File
   const list = el('div', 'files__list');
   list.setAttribute('role', 'tree');
   list.setAttribute('aria-label', t('files.treeAria'));
+  list.tabIndex = 0;
 
   const viewer = el('section', 'files__viewer');
   viewer.hidden = true;
@@ -179,7 +198,7 @@ export function mountFiles(container: HTMLElement, hooks: FilesHooks = {}): File
   const split = splitHandle(panes, viewer);
   panes.append(list, split.el, viewer);
 
-  root.append(rootBar, bar, messageEl, promptEl, panes);
+  root.append(rootBar, bar, clipBar, dropHint, messageEl, promptEl, panes);
   container.append(root);
   setMode('name');
   applySplit();
@@ -350,6 +369,210 @@ export function mountFiles(container: HTMLElement, hooks: FilesHooks = {}): File
     renderPrompt();
   }
 
+  /* ------------------------------------ papan klip ------------------------------------ */
+
+  /** Baris mana pun yang sedang ditandai potong dibuat redup. */
+  function paintClipMarks(): void {
+    for (const rowEl of Array.from(list.querySelectorAll<HTMLElement>('.files__row'))) {
+      rowEl.classList.toggle('files__row--cut', Boolean(clip?.cut && rowEl.dataset.path === clip.path));
+    }
+  }
+
+  function renderClip(): void {
+    clipBar.textContent = '';
+    clipBar.hidden = !clip;
+    if (!clip) return;
+    const item = clip;
+    clipBar.append(icon(item.cut ? ICON.cut : ICON.copy, 13));
+    clipBar.append(
+      el(
+        'span',
+        'files__clip-name',
+        t('files.clipLabel', { mode: t(item.cut ? 'files.clipModeCut' : 'files.clipModeCopy'), name: item.name })
+      )
+    );
+    clipBar.append(el('span', 'files__clip-hint', t('files.clipHint')));
+
+    const paste = el('button', 'files__clip-paste', t('menu.paste'));
+    paste.type = 'button';
+    paste.addEventListener('click', () => void transferItem(item, targetDir()));
+    const clear = iconButton(t('menu.clearClip'), ICON.close, clearClip);
+    clear.className = 'files__clip-clear';
+    clipBar.append(paste, clear);
+    paintClipMarks();
+  }
+
+  function markClip(entry: TreeEntry, cut: boolean): void {
+    clip = { path: entry.path, name: entry.name, dir: entry.dir, cut };
+    renderClip();
+    message = t(cut ? 'files.clipCut' : 'files.clipCopied', { name: entry.name });
+    paintMessage();
+  }
+
+  function clearClip(): void {
+    if (!clip) return;
+    clip = null;
+    renderClip();
+    message = t('files.clipCleared');
+    paintMessage();
+  }
+
+  /** Pindah = rename lintas folder, salin = endpoint copy; keduanya pakai path relatif. */
+  async function transferItem(item: Clip, dir: string): Promise<void> {
+    if (busy) return;
+    const to = dir ? `${dir}/${item.name}` : item.name;
+    if (item.cut && to === item.path) {
+      message = t('files.alreadyThere');
+      paintMessage();
+      return;
+    }
+    busy = true;
+    paintMessage();
+    try {
+      const done = item.cut ? await chatApi.renameFile(item.path, to) : await chatApi.copyFile(item.path, to);
+      if (viewed && item.cut && (viewed.path === item.path || viewed.path.startsWith(`${item.path}/`))) {
+        closeViewer();
+      }
+      // Setelah pindah, jalurnya berubah jadi tandanya tidak berlaku lagi; salinan dibiarkan
+      // menempel supaya satu item bisa ditempel ke beberapa folder.
+      if (item.cut && clip && (clip.path === item.path || clip.path.startsWith(`${item.path}/`))) clip = null;
+      reveal(done.to);
+      invalidate();
+      await redraw();
+      message = t(item.cut ? 'files.movedTo' : 'files.copiedTo', { from: item.path, to: done.to });
+    } catch (error) {
+      message = describeError(error);
+    } finally {
+      busy = false;
+      paintMessage();
+    }
+  }
+
+  function selectedEntry(): TreeEntry | null {
+    return selected ? entryAt(selected) : null;
+  }
+
+  function markFromKeys(cut: boolean): boolean {
+    const entry = selectedEntry();
+    if (!entry) {
+      message = t('files.noSelection');
+      paintMessage();
+      return false;
+    }
+    markClip(entry, cut);
+    return true;
+  }
+
+  /* -------------------------------------- seret-lepas -------------------------------------- */
+
+  function rowUnder(event: DragEvent): HTMLElement | null {
+    return event.target instanceof Element ? event.target.closest<HTMLElement>('.files__row') : null;
+  }
+
+  function hasOwnDrag(event: DragEvent): boolean {
+    const types = event.dataTransfer?.types;
+    return Boolean(dragging || (types && Array.from(types).includes(DRAG_TYPE)));
+  }
+
+  /** Folder tujuan di bawah kursor; file row menerima untuk folder induknya. */
+  function dropTarget(event: DragEvent): { dir: string; node: HTMLElement } | null {
+    if (!dragging || !hasOwnDrag(event)) return null;
+    const rowEl = rowUnder(event);
+    if (!rowEl?.dataset.path) return { dir: '', node: list };
+    const path = rowEl.dataset.path;
+    if (path === dragging.path) return null;
+    const dir = rowEl.dataset.dir === 'true' ? path : parentOf(path);
+    // Menaruh folder ke dalam dirinya sendiri akan menghapus seluruh cabangnya.
+    if (dir === dragging.path || dir.startsWith(`${dragging.path}/`)) return null;
+    return { dir, node: rowEl };
+  }
+
+  function paintDrop(node: HTMLElement | null): void {
+    if (dropNode === node) return;
+    dropNode?.classList.remove('files__row--drop', 'files__list--drop');
+    dropNode = node;
+    if (node) node.classList.add(node === list ? 'files__list--drop' : 'files__row--drop');
+  }
+
+  function bindDragAndDrop(): void {
+    list.addEventListener('dragstart', (event) => {
+      const rowEl = rowUnder(event);
+      const entry = rowEl?.dataset.path ? entryAt(rowEl.dataset.path) : null;
+      if (!rowEl || !entry) {
+        event.preventDefault();
+        return;
+      }
+      dragging = { path: entry.path, name: entry.name, dir: entry.dir, cut: false };
+      selected = entry.path;
+      const data = event.dataTransfer;
+      if (data) {
+        data.effectAllowed = 'copyMove';
+        data.setData(DRAG_TYPE, entry.path);
+        data.setData('text/plain', entry.path);
+      }
+      rowEl.classList.add('files__row--drag');
+    });
+
+    list.addEventListener('dragover', (event) => {
+      if (dropTarget(event)) {
+        event.preventDefault();
+        if (event.dataTransfer) event.dataTransfer.dropEffect = event.ctrlKey || event.metaKey ? 'copy' : 'move';
+        paintDrop(dropTarget(event)?.node ?? null);
+        return;
+      }
+      // Seretan dari Explorer tidak ditampung; cegah supaya halaman tidak berpindah ke file itu.
+      if (!hasOwnDrag(event) && event.dataTransfer?.types?.includes('Files')) event.preventDefault();
+    });
+
+    list.addEventListener('dragleave', (event) => {
+      if (!list.contains(event.relatedTarget as Node | null)) paintDrop(null);
+    });
+
+    list.addEventListener('drop', (event) => {
+      const hit = dropTarget(event);
+      const item = dragging;
+      paintDrop(null);
+      if (!hit || !item) return;
+      event.preventDefault();
+      const copy = event.ctrlKey || event.metaKey;
+      void transferItem({ ...item, cut: !copy }, hit.dir);
+    });
+
+    list.addEventListener('dragend', () => {
+      dragging = null;
+      paintDrop(null);
+      for (const rowEl of Array.from(list.querySelectorAll<HTMLElement>('.files__row--drag'))) {
+        rowEl.classList.remove('files__row--drag');
+      }
+    });
+  }
+
+  function bindClipKeys(): void {
+    document.addEventListener('keydown', (event) => {
+      // Hanya saat halaman File List yang tampil; kolom teks dan blok teks yang diseleksi
+      // dibiarkan memakai Ctrl+C/X/V biasa, dan pohon tidak selalu bisa memegang fokus.
+      if (root.offsetParent === null) return;
+      const target = event.target;
+      if (target instanceof HTMLElement) {
+        const tag = target.tagName;
+        if (target.isContentEditable || tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return;
+      }
+      if (!(event.ctrlKey || event.metaKey)) return;
+      const key = event.key.toLowerCase();
+      if (key === 'c') {
+        if (window.getSelection()?.toString()) return;
+        if (markFromKeys(false)) event.preventDefault();
+      } else if (key === 'x') {
+        if (markFromKeys(true)) event.preventDefault();
+      } else if (key === 'v') {
+        if (clip) {
+          event.preventDefault();
+          void transferItem(clip, targetDir());
+        }
+      }
+    });
+  }
+
   /* ------------------------------------ pohon file ------------------------------------ */
 
   function invalidate(): void {
@@ -369,6 +592,8 @@ export function mountFiles(container: HTMLElement, hooks: FilesHooks = {}): File
     line.setAttribute('role', 'treeitem');
     line.dataset.path = entry.path;
     line.dataset.dir = String(entry.dir);
+    line.draggable = true;
+    if (clip?.cut && clip.path === entry.path) line.classList.add('files__row--cut');
     line.style.setProperty('--depth', String(depth));
     if (entry.dir) {
       line.setAttribute('aria-expanded', String(expanded.has(entry.path)));
@@ -395,6 +620,8 @@ export function mountFiles(container: HTMLElement, hooks: FilesHooks = {}): File
     line.addEventListener('click', (event) => {
       if (event.target instanceof Element && event.target.closest('.files__actions')) return;
       selected = entry.path;
+      // Fokus ke pohon supaya Ctrl+C/X/V langsung jalan tanpa klik tambahan.
+      list.focus({ preventScroll: true });
       if (entry.dir) {
         if (expanded.has(entry.path)) expanded.delete(entry.path);
         else expanded.add(entry.path);
@@ -404,6 +631,13 @@ export function mountFiles(container: HTMLElement, hooks: FilesHooks = {}): File
       }
     });
     return line;
+  }
+
+  /** Item "Tempel" hanya muncul saat ada yang ditandai; arahnya diambil saat menu dibangun. */
+  function pasteItem(dir: string, label: string): MenuEntry[] {
+    if (!clip) return [];
+    const item = clip;
+    return [{ label, glyph: ICON.paste, run: () => void transferItem(item, dir) }];
   }
 
   function buildMenu(entry: TreeEntry | null): MenuEntry[] {
@@ -433,6 +667,7 @@ export function mountFiles(container: HTMLElement, hooks: FilesHooks = {}): File
           run: () => hooks.onReference?.(entry.path),
         });
       }
+      items.push(...pasteItem(parentOf(entry.path), t('menu.paste')));
       items.push({ separator: true });
     }
     if (entry?.dir) {
@@ -446,6 +681,7 @@ export function mountFiles(container: HTMLElement, hooks: FilesHooks = {}): File
         glyph: ICON.folderPlus,
         run: () => askCreate('folder', entry.path),
       });
+      items.push(...pasteItem(entry.path, t('menu.pasteInto', { name: entry.name })));
       items.push({ separator: true });
     } else if (!entry) {
       items.push({
@@ -458,9 +694,17 @@ export function mountFiles(container: HTMLElement, hooks: FilesHooks = {}): File
         glyph: ICON.folderPlus,
         run: () => askCreate('folder', ''),
       });
+      const dir = targetDir();
+      items.push(
+        ...pasteItem(dir, dir ? t('menu.pasteInto', { name: dir.split('/').pop() ?? dir }) : t('menu.paste'))
+      );
       items.push({ separator: true });
     }
     if (entry) {
+      items.push({ label: t('menu.copy'), glyph: ICON.copy, run: () => markClip(entry, false) });
+      items.push({ label: t('menu.cut'), glyph: ICON.cut, run: () => markClip(entry, true) });
+      if (clip) items.push({ label: t('menu.clearClip'), glyph: ICON.close, run: clearClip });
+      items.push({ separator: true });
       items.push({
         label: t('menu.rename'),
         glyph: ICON.pencil,
@@ -1072,6 +1316,7 @@ export function mountFiles(container: HTMLElement, hooks: FilesHooks = {}): File
     message = '';
     paintMessage();
     renderPrompt();
+    renderClip();
     paintSearchLabels();
 
     if (!workspace) {
@@ -1089,6 +1334,7 @@ export function mountFiles(container: HTMLElement, hooks: FilesHooks = {}): File
   }
 
   function paintSearchLabels(): void {
+    dropHint.textContent = t('files.dropHint');
     setMode(mode);
     searchInput.setAttribute('aria-label', t('files.searchAria'));
     list.setAttribute('aria-label', t('files.treeAria'));
@@ -1116,6 +1362,8 @@ export function mountFiles(container: HTMLElement, hooks: FilesHooks = {}): File
   });
 
   bindContextMenu();
+  bindDragAndDrop();
+  bindClipKeys();
 
   // Geseran pembatas hanya perlu rasio baru; menulis ulang isi viewer dan pohon
   // akan membuang posisi gulir user tepat setelah ia mengatur ukuran.
@@ -1151,6 +1399,9 @@ export function mountFiles(container: HTMLElement, hooks: FilesHooks = {}): File
       hits = [];
       results = null;
       prompt = null;
+      clip = null;
+      dragging = null;
+      paintDrop(null);
       searchInput.value = '';
       renderViewer();
       void redraw();

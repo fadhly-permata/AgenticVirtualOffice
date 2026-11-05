@@ -144,6 +144,11 @@ export const chatApi = {
       method: 'POST',
       body: JSON.stringify({ from, to }),
     }),
+  copyFile: (from: string, to: string, unique = true) =>
+    request<{ from: string; to: string }>('/api/chat/files/copy', {
+      method: 'POST',
+      body: JSON.stringify({ from, to, unique }),
+    }),
   deleteFile: (path: string) =>
     request<{ path: string }>('/api/chat/files/delete', { method: 'POST', body: JSON.stringify({ path }) }),
   scmStatus: () => request<ScmStatus>('/api/chat/scm/status', {}, 20_000),

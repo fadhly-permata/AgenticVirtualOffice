@@ -261,6 +261,49 @@ export async function renameEntry(root, fromInput, toInput) {
   return { from: from.rel, to: to.rel };
 }
 
+/** Nama salinan: 'a.ts' -> 'a (2).ts', '.env' -> '.env (2)' — titik di depan bukan ekstensi. */
+function suffixName(name, index) {
+  const dot = name.lastIndexOf('.');
+  return dot > 0 ? `${name.slice(0, dot)} (${index})${name.slice(dot)}` : `${name} (${index})`;
+}
+
+async function uniqueTarget(root, to) {
+  const cut = to.rel.lastIndexOf('/');
+  const parent = cut < 0 ? '' : to.rel.slice(0, cut + 1);
+  const base = to.rel.slice(parent.length);
+  for (let index = 2; index <= 50; index += 1) {
+    const candidate = resolveInside(root, `${parent}${suffixName(base, index)}`);
+    if (!(await exists(candidate.abs))) return candidate;
+  }
+  throw new HttpError(409, 'Terlalu banyak salinan di folder ini.');
+}
+
+/**
+ * Salinan rekursif. `unique` dipakai UI Paste: tab clipboard selalu menghasilkan nama baru
+ * ('a (2).ts') alih-alih menabrak yang lama, jadi menyalin ke folder sendiri tetap berguna.
+ */
+export async function copyEntry(root, fromInput, toInput, unique = false) {
+  const from = resolveInside(root, fromInput);
+  let to = resolveInside(root, toInput);
+  if (!from.rel) throw new HttpError(400, 'Path asal harus diisi.');
+  if (!to.rel) throw new HttpError(400, 'Path tujuan harus diisi.');
+
+  const origin = await fs.stat(from.abs).catch(() => null);
+  if (!origin) throw new HttpError(404, 'Path asal tidak ditemukan.');
+  if (origin.isDirectory() && (to.abs === from.abs || to.abs.startsWith(from.abs + path.sep))) {
+    throw new HttpError(400, 'Tidak bisa menyalin folder ke dalam dirinya sendiri.');
+  }
+
+  if (await exists(to.abs)) {
+    if (!unique) throw new HttpError(409, 'Sudah ada.');
+    to = await uniqueTarget(root, to);
+  }
+
+  await fs.mkdir(path.dirname(to.abs), { recursive: true });
+  await fs.cp(from.abs, to.abs, { recursive: true, force: false, errorOnExist: true });
+  return { from: from.rel, to: to.rel };
+}
+
 export async function deleteEntry(root, input) {
   const { rel, abs } = resolveInside(root, input);
   if (!rel) throw new HttpError(400, 'Workspace root tidak bisa dihapus.');

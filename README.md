@@ -118,6 +118,8 @@ Tool calls that need approval raise an **Allow / Always allow / Deny** card insi
 
 The active workspace as a tree, with the full workspace path printed at the top. Folders load lazily, files preview on click with line numbers and syntax highlighting, and rows show sizes. Hover a row to rename or delete — deletion confirms itself inside the panel, never with a browser dialog. There are new-file and new-folder buttons, a reload button, and a search that matches names or file contents (with line numbers and snippets; opening a hit jumps to that line). The `＋` button in the preview toolbar writes `@path/to/file.ts` into the composer and returns you to Agentic, so the file you're looking at becomes the file the agent is working on.
 
+Rows also carry a clipboard: right-click gives **Copy** / **Cut** / **Paste into …**, and `Ctrl+C`, `Ctrl+X`, `Ctrl+V` do the same while this page is showing (inputs and text selections keep their normal shortcuts). The marked item sits in a chip under the toolbar, a cut row goes dim, and pasting into a folder that already holds it just says so instead of touching the disk. Any row can be dragged onto a folder to move it — hold `Ctrl` while dropping to copy instead, and drop on empty list space to target the workspace root. The target folder is highlighted during the drag. Copies pasted where the name is taken come out as `a (2).ts` / `docs (2)` rather than failing.
+
 The preview window docks below the list or beside it (**Settings → Preview → Preview window position**); side-by-side only applies when maximised. The divider between list and preview drags to any split between 20–80%, the ratio is stored locally, and **Restore defaults** puts it back. The same rules apply to diffs in Source Control.
 
 Paths travel relative to the workspace root and the bridge rejects `..`, absolute paths, drive letters, and separator characters — see `server/files.mjs`.
@@ -209,6 +211,7 @@ Everything the popup does goes through these routes on the same origin.
 | GET | `/api/chat/search?q=&mode=name\|content` | search names or file contents |
 | POST | `/api/chat/files` | create file/folder (`path`, `kind`) |
 | POST | `/api/chat/files/rename` | rename / move (`from`, `to`) |
+| POST | `/api/chat/files/copy` | copy file/folder recursively (`from`, `to`, `unique`) |
 | POST | `/api/chat/files/delete` | delete file or folder recursively |
 | GET | `/api/chat/scm/status` | branch, upstream, last commit, change list |
 | GET | `/api/chat/scm/diff?path=&staged=1` | one-file diff; untracked renders as all-added |

@@ -4,6 +4,7 @@ import path from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import { HttpError } from '../server/http.mjs';
 import {
+  copyEntry,
   createEntry,
   deleteEntry,
   readFileAt,
@@ -144,6 +145,56 @@ describe('create, rename, delete', () => {
     expect(await fs.stat(path.join(root, 'src')).catch(() => null)).toBeNull();
     expect(await rejected(deleteEntry(root, 'src'))).toBe(404);
     expect(await rejected(deleteEntry(root, ''))).toBe(400);
+  });
+});
+
+describe('copy', () => {
+  it('copies a file without touching the original', async () => {
+    const root = await workspace();
+    await write(root, 'a.txt', 'one');
+    expect(await copyEntry(root, 'a.txt', 'nested/b.txt')).toEqual({ from: 'a.txt', to: 'nested/b.txt' });
+    expect(await fs.readFile(path.join(root, 'nested', 'b.txt'), 'utf8')).toBe('one');
+    expect(await fs.readFile(path.join(root, 'a.txt'), 'utf8')).toBe('one');
+  });
+
+  it('copies a folder with its tree', async () => {
+    const root = await workspace();
+    await write(root, 'src/deep/a.ts', '1');
+    await write(root, 'src/b.ts', '2');
+    expect(await copyEntry(root, 'src', 'backup/src')).toEqual({ from: 'src', to: 'backup/src' });
+    expect((await treeAt(root, 'backup/src/deep')).entries[0].path).toBe('backup/src/deep/a.ts');
+    expect(await fs.readFile(path.join(root, 'src', 'deep', 'a.ts'), 'utf8')).toBe('1');
+  });
+
+  it('refuses duplicates unless unique naming is asked for', async () => {
+    const root = await workspace();
+    await write(root, 'a.ts', '1');
+    expect(await rejected(copyEntry(root, 'a.ts', 'a.ts'))).toBe(409);
+    expect(await copyEntry(root, 'a.ts', 'a.ts', true)).toEqual({ from: 'a.ts', to: 'a (2).ts' });
+    expect(await copyEntry(root, 'a.ts', 'a.ts', true)).toEqual({ from: 'a.ts', to: 'a (3).ts' });
+    await write(root, 'docs/note.md', 'x');
+    expect(await copyEntry(root, 'docs/note.md', 'docs/note.md', true)).toEqual({
+      from: 'docs/note.md',
+      to: 'docs/note (2).md',
+    });
+    expect(await fs.readdir(path.join(root, 'docs'))).toEqual(['note (2).md', 'note.md']);
+  });
+
+  it('keeps dotfile names readable when uniquifying', async () => {
+    const root = await workspace();
+    await write(root, '.env', 'A=1');
+    expect(await copyEntry(root, '.env', '.env', true)).toEqual({ from: '.env', to: '.env (2)' });
+  });
+
+  it('refuses copying a folder into itself and reports missing sources', async () => {
+    const root = await workspace();
+    await write(root, 'src/a.ts', '1');
+    expect(await rejected(copyEntry(root, 'src', 'src/inner'))).toBe(400);
+    expect(await rejected(copyEntry(root, 'src', 'src'))).toBe(400);
+    expect(await rejected(copyEntry(root, 'gone.ts', 'x.ts'))).toBe(404);
+    expect(await rejected(copyEntry(root, 'a.txt', '../escape'))).toBe(400);
+    expect(await rejected(copyEntry(root, '', 'x'))).toBe(400);
+    expect(await rejected(copyEntry(root, 'a.txt', ''))).toBe(400);
   });
 });
 
