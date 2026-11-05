@@ -116,7 +116,7 @@ Tool calls that need approval raise an **Allow / Always allow / Deny** card insi
 
 ![File List with a syntax-highlighted preview under the tree](docs/screenshots/chat-files.png)
 
-The active workspace as a tree, with the full workspace path printed at the top. Folders load lazily, files preview on click with line numbers and syntax highlighting, and rows show sizes. Hover a row to rename or delete — deletion confirms itself inside the panel, never with a browser dialog. The toolbar above the tree holds, one icon per action with a hairline between them: search, reload, copy, cut, paste, new file, new folder. The search icon shows or hides the search row and the choice is remembered; the search itself matches names or file contents (with line numbers and snippets; opening a hit jumps to that line). The `＋` button in the preview toolbar writes `@path/to/file.ts` into the composer and returns you to Agentic, so the file you're looking at becomes the file the agent is working on.
+The active workspace as a tree, with the full workspace path printed at the top. Folders load lazily, files preview on click with line numbers and syntax highlighting, and rows show sizes. Hover a row to rename or delete — deletion confirms itself inside the panel, never with a browser dialog. The toolbar above the tree holds, in three groups split by a hairline — search and reload, copy / cut / paste, new file and new folder. The search icon shows or hides the search row and the choice is remembered; the search itself matches names or file contents (with line numbers and snippets; opening a hit jumps to that line). The `＋` button in the preview toolbar writes `@path/to/file.ts` into the composer and returns you to Agentic, so the file you're looking at becomes the file the agent is working on.
 
 Rows also carry a clipboard: right-click gives **Copy** / **Cut** / **Paste into …**, the toolbar icons do the same, and `Ctrl+C`, `Ctrl+X`, `Ctrl+V` work while this page is showing (inputs and text selections keep their normal shortcuts). Paste stays dimmed until something is marked. The marked item sits in a chip under the toolbar, a cut row goes dim, and pasting into a folder that already holds it just says so instead of touching the disk. Any row can be dragged onto a folder to move it — hold `Ctrl` while dropping to copy instead, and drop on empty list space to target the workspace root. The target folder is highlighted during the drag. Copies pasted where the name is taken come out as `a (2).ts` / `docs (2)` rather than failing.
 
@@ -125,6 +125,8 @@ Files can also be dropped straight from Windows Explorer onto the tree to upload
 The preview window docks below the list or beside it (**Settings → Preview → Preview window position**); side-by-side only applies when maximised. The divider between list and preview drags to any split between 20–80%, the ratio is stored locally, and **Restore defaults** puts it back. The same rules apply to diffs in Source Control.
 
 Paths travel relative to the workspace root and the bridge rejects `..`, absolute paths, drive letters, and separator characters — see `server/files.mjs`.
+
+Rows are badged with git status the way VS Code's explorer does: the letter (`M` modified, `A` added, `D` deleted, `R` renamed, `C` copied, `U` untracked) sits at the right edge and colours the name — amber for modified, green for added/untracked, red for deleted, blue for renamed/copied. Folders take the colour of the most important change inside them, so a directory the agent touched is visible without expanding it. The marks come from the same `GET /api/chat/scm/status` the Source Control tab uses, refreshed on every tree reload and every 6 seconds while the page is visible; a workspace that isn't a git repo simply shows no badges.
 
 ### Source Control
 
@@ -284,6 +286,7 @@ src/
     toolswitch.ts   HUD tool pill: menu, inline confirm, switching state, undo toast
     client.ts       fetch wrapper for /api/chat
     files.ts        File List page: tree, preview, CRUD, search, upload
+    gitmarks.ts     porcelain letter → row status badge, with folder inheritance
     scm.ts          Source Control page: status, diff, commit, branches, history
     settings.ts     Settings page: language, theme, preview, agent pause
     about.ts        About page: identity, author, links

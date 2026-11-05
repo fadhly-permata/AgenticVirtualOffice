@@ -4,6 +4,22 @@ Semua perubahan penting pada VirtOffice dicatat di sini. Format mengikuti
 [Keep a Changelog](https://keepachangelog.com/id/1.1.0/) dan versi mengikuti
 [Semantic Versioning](https://semver.org/lang/id/).
 
+## [0.18.0] - 2026-11-05
+
+### Ditambahkan
+
+- Baris File List sekarang memakai tanda status git seperti Explorer VSCode: huruf `M`/`A`/`D`/`R`/`C`/`U` di ujung kanan dan warna nama ikut status (amber berubah, hijau baru/untracked, merah terhapus, biru rename/salin). Folder tidak dapat huruf tapi ikut warna anak paling penting di dalamnya, jadi direktori yang diutak-atik agent terlihat tanpa harus dibuka.
+- `src/chat/gitmarks.ts` (`statusLetter` + `marksFor`): memetakan `ScmFile` hasil `GET /api/chat/scm/status` menjadi path → huruf, lengkap dengan pewarisan ke induk. Ditutupi 14 tes di `tests/gitmarks.test.ts`, termasuk kolom porcelain berupa spasi literal.
+- Tanda disegarkan otomatis tiap 6 detik selagi halaman File List terlihat (`root.offsetParent`), dan seketika setiap kali pohon di-`invalidate()` — muat ulang, ganti workspace, buat/ganti nama/hapus/pindah/tempel/unggah. Tooltips hurufnya ada di namespace `files` (`gitM`…`gitU`), dua bahasa.
+
+### Berubah
+
+- Pembatas toolbar File List sekarang satu di antara grup, bukan satu di antara setiap icon: `[cari · muat ulang] | [salin · potong · tempel] | [file baru · folder baru]` — dua garis, bukan enam.
+
+### Diperbaiki
+
+- `setWorkspace()` memakai `invalidate()` alih-alih `children.clear()` dan mengosongkan `gitMarks` lebih dulu, supaya tanda dari workspace lama tidak menempel di baris workspace baru.
+
 ## [0.17.0] - 2026-11-05
 
 ### Ditambahkan

@@ -2,6 +2,7 @@ import { subscribeLocale, t } from '../i18n';
 import { chatApi } from './client';
 import { ICON, el, icon, iconButton } from './dom';
 import { openContextMenu } from './context-menu';
+import { marksFor } from './gitmarks';
 import type { MenuEntry } from './context-menu';
 import { highlightLines, languageForPath } from './highlight';
 import { renderMarkdown } from './markdown';
@@ -40,6 +41,24 @@ function parentOf(path: string): string {
 function describeError(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
 }
+
+const GIT_LABELS: Record<string, string> = {
+  M: 'files.gitM',
+  A: 'files.gitA',
+  D: 'files.gitD',
+  R: 'files.gitR',
+  C: 'files.gitC',
+  U: 'files.gitU',
+};
+
+/** Tooltip singkat untuk huruf status; huruf tak dikenal tidak dapat tooltip. */
+function gitTitle(mark: string): string {
+  const key = GIT_LABELS[mark];
+  return key ? t(key) : '';
+}
+
+/** Agent bisa menulis file kapan saja, jadi tanda git disegarkan selagi halamannya terlihat. */
+const GIT_POLL_MS = 6000;
 
 type PreviewKind = 'markdown' | 'html' | 'image' | 'pdf' | null;
 
@@ -119,6 +138,7 @@ export function mountFiles(container: HTMLElement, hooks: FilesHooks = {}): File
   let results: SearchResult | null = null;
   let prompt: Prompt | null = null;
   let clip: Clip | null = null;
+  let gitMarks = new Map<string, string>();
   let dragging: Clip | null = null;
   let dropNode: HTMLElement | null = null;
   let busy = false;
@@ -171,19 +191,16 @@ export function mountFiles(container: HTMLElement, hooks: FilesHooks = {}): File
   const newFileButton = iconButton(t('files.newFile'), ICON.filePlus, () => askCreate('file'));
   const newFolderButton = iconButton(t('files.newFolder'), ICON.folderPlus, () => askCreate('folder'));
 
-  // Dipisahkan satu-satu: tanpa pembatas, tujuh icon kecil terbaca sebagai satu gumpalan.
-  const toolButtons = [
-    searchButton,
-    refreshButton,
-    copyButton,
-    cutButton,
-    pasteButton,
-    newFileButton,
-    newFolderButton,
+  // Pembatas hanya di antara grup: lihat/cari, papan klip, buat baru.
+  // Satu-satu per icon membuat tujuh button terlihat seperti daftar bertanda.
+  const toolGroups = [
+    [searchButton, refreshButton],
+    [copyButton, cutButton, pasteButton],
+    [newFileButton, newFolderButton],
   ];
-  toolButtons.forEach((button, index) => {
+  toolGroups.forEach((group, index) => {
     if (index) toolRow.append(el('span', 'files__sep'));
-    toolRow.append(button);
+    toolRow.append(...group);
   });
   pasteButton.disabled = true;
 
@@ -686,8 +703,10 @@ export function mountFiles(container: HTMLElement, hooks: FilesHooks = {}): File
 
   /* ------------------------------------ pohon file ------------------------------------ */
 
+  /** Isi disk berubah: buang cache direktori sekaligus minta tanda git yang baru. */
   function invalidate(): void {
     children.clear();
+    void syncGit();
   }
 
   async function loadDir(dirPath: string): Promise<TreeEntry[]> {
@@ -696,6 +715,33 @@ export function mountFiles(container: HTMLElement, hooks: FilesHooks = {}): File
     const tree = await chatApi.tree(dirPath);
     children.set(dirPath, tree.entries);
     return tree.entries;
+  }
+
+  /** Huruf status git per path, dari endpoint SCM yang sama dengan tab Source Control. */
+  async function syncGit(): Promise<void> {
+    if (!workspace) {
+      gitMarks = new Map();
+      return;
+    }
+    try {
+      gitMarks = marksFor((await chatApi.scmStatus()).files);
+    } catch {
+      // Bukan repo git atau git belum siap: pohon tampil tanpa tanda.
+      gitMarks = new Map();
+    }
+    paintGitMarks();
+  }
+
+  /** Menempelkan huruf status ke baris yang sudah ada, tanpa menggambar ulang pohon. */
+  function paintGitMarks(): void {
+    for (const rowEl of Array.from(list.querySelectorAll<HTMLElement>('.files__row'))) {
+      const mark = gitMarks.get(rowEl.dataset.path ?? '') ?? '';
+      rowEl.dataset.git = mark;
+      const badge = rowEl.querySelector<HTMLElement>('.files__git');
+      if (!badge) continue;
+      badge.textContent = rowEl.dataset.dir === 'true' ? '' : mark;
+      badge.title = gitTitle(mark);
+    }
   }
 
   function row(entry: TreeEntry, depth: number): HTMLElement {
@@ -718,8 +764,13 @@ export function mountFiles(container: HTMLElement, hooks: FilesHooks = {}): File
     const name = el('span', 'files__name', entry.name);
     name.title = entry.path;
     const meta = el('span', 'files__meta', entry.dir ? '' : humanSize(entry.size));
+    const mark = gitMarks.get(entry.path) ?? '';
+    // Huruf status hanya di baris file; folder cukup ikut warna namanya.
+    const git = el('span', 'files__git', entry.dir ? '' : mark);
+    git.title = gitTitle(mark);
+    line.dataset.git = mark;
 
-    line.append(glyph, name, meta);
+    line.append(glyph, name, meta, git);
 
     const actions = el('span', 'files__actions');
     actions.append(
@@ -1508,6 +1559,11 @@ export function mountFiles(container: HTMLElement, hooks: FilesHooks = {}): File
   bindDragAndDrop();
   bindClipKeys();
 
+  window.setInterval(() => {
+    // Halaman tersembunyi tidak perlu ikut mengantri proses git.
+    if (root.offsetParent !== null && !busy) void syncGit();
+  }, GIT_POLL_MS);
+
   // Geseran pembatas hanya perlu rasio baru; menulis ulang isi viewer dan pohon
   // akan membuang posisi gulir user tepat setelah ia mengatur ukuran.
   let lastPrefs = prefs();
@@ -1537,7 +1593,9 @@ export function mountFiles(container: HTMLElement, hooks: FilesHooks = {}): File
     setWorkspace(next) {
       workspace = next;
       paintRoot();
-      children.clear();
+      // Tanda workspace lama tidak boleh menempel di baris workspace baru.
+      gitMarks = new Map();
+      invalidate();
       expanded.clear();
       selected = '';
       tabs.length = 0;

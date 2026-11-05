@@ -810,11 +810,11 @@ body.chat-open .launcher,
   gap: 4px;
 }
 
-/* Pembatas tipis antar icon: tujuh button tanpa batas terbaca sebagai satu gumpalan. */
+/* Pembatas tipis antar grup icon (lihat | papan klip | buat baru). */
 .files__sep {
   flex: none;
   width: 1px;
-  margin: 4px 0;
+  margin: 4px 3px;
   background: var(--border-strong, rgba(255, 255, 255, 0.1));
 }
 
@@ -1065,6 +1065,46 @@ body.chat-open .launcher,
   color: var(--ink-faint, rgba(244, 239, 230, 0.42));
   font-size: 11px;
   font-family: ui-monospace, 'SF Mono', 'Cascadia Mono', monospace;
+}
+
+/* Huruf status git di ujung kanan; baris bersih tetap butuh span ini supaya
+   margin-left:auto ada di DOM dan aksi tetap menempel di tepi. */
+.files__git {
+  flex: none;
+  margin-left: auto;
+  color: var(--ink-faint, rgba(244, 239, 230, 0.42));
+  font-size: 11px;
+  font-weight: 700;
+  font-family: ui-monospace, 'SF Mono', 'Cascadia Mono', monospace;
+}
+
+.files__git ~ .files__actions {
+  margin-left: 8px;
+}
+
+/* Nama ikut warna status, seperti Explorer VSCode. */
+.files__row[data-git='M'] .files__name,
+.files__row[data-git='M'] .files__git {
+  color: var(--accent, #e2b44a);
+}
+
+.files__row[data-git='A'] .files__name,
+.files__row[data-git='U'] .files__name,
+.files__row[data-git='A'] .files__git,
+.files__row[data-git='U'] .files__git {
+  color: var(--ok, #79b884);
+}
+
+.files__row[data-git='D'] .files__name,
+.files__row[data-git='D'] .files__git {
+  color: var(--err, #e07a5f);
+}
+
+.files__row[data-git='R'] .files__name,
+.files__row[data-git='C'] .files__name,
+.files__row[data-git='R'] .files__git,
+.files__row[data-git='C'] .files__git {
+  color: var(--info, #7fb2d8);
 }
 
 .files__preview {
